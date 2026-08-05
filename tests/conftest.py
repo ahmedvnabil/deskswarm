@@ -49,6 +49,9 @@ def client(monkeypatch):
     monkeypatch.setattr(fleet, "resume_computer",
                         lambda slug: states.__setitem__(slug, "running"))
     monkeypatch.setattr(fleet, "vnc_watchers", lambda slug: 0)
+    monkeypatch.setattr(
+        fleet, "awake_machine_count",
+        lambda: sum(1 for s in created if states.get(s, "running") == "running"))
 
     clipboards: dict[str, str] = {}
     pasted: list[tuple[str, str]] = []

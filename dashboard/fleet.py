@@ -344,6 +344,21 @@ VNC_WATCHERS_SCRIPT = (
 )
 
 
+def awake_machine_count() -> int | None:
+    """How many machines are actually running.
+
+    The memory guard budgets per machine, and a sleeping machine costs
+    nothing — counting it would refuse new machines while the RAM it is
+    supposedly using sits free. One labelled `docker ps`, not one inspect per
+    machine, so the fleet page doesn't pay for it.
+    """
+    try:
+        return len(client().containers.list(
+            filters={"label": "deskswarm.role=desktop", "status": "running"}))
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def vnc_watchers(slug: str) -> int | None:
     """How many browsers have this machine's screen open, or None if it is
     asleep or unreachable.

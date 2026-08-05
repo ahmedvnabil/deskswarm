@@ -133,6 +133,27 @@ def test_first_sweep_starts_the_clock_instead_of_suspending(client, monkeypatch)
     assert view(client, comp_id)["last_active_at"] is not None
 
 
+def test_sleeping_machines_do_not_spend_the_memory_budget(client):
+    """A sleeping machine costs nothing, so charging the budget for it would
+    refuse new machines while the RAM it supposedly holds sits free."""
+    app = client.module
+    for n in ("m1", "m2", "m3"):
+        add(client, n)
+    assert app.budgeted_machine_count() == 3
+
+    client.post(f"/api/v1/computers/{add(client, 'm4')}/sleep")
+    assert app.budgeted_machine_count() == 3, "the sleeper should not be counted"
+
+
+def test_budget_falls_back_to_the_whole_fleet_if_docker_is_silent(client, monkeypatch):
+    """Over-counting is the safe direction for an admission check."""
+    app = client.module
+    add(client, "m1")
+    add(client, "m2")
+    monkeypatch.setattr(app.fleet, "awake_machine_count", lambda: None)
+    assert app.budgeted_machine_count() == 2
+
+
 def test_wake_recreates_a_bridge_that_will_not_come_back(client, monkeypatch):
     """A started container keeps its old filesystem, and things that refuse to
     start twice live there — stale X locks, sockets, pid files. Recreating

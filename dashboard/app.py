@@ -270,6 +270,16 @@ def computer_views(comps: list[dict]) -> list[dict]:
         return list(pool.map(computer_view, comps))
 
 
+def budgeted_machine_count() -> int:
+    """Machines to charge against the memory budget: the awake ones.
+
+    Falls back to the whole fleet if Docker can't be asked — over-counting is
+    the safe direction for an admission check.
+    """
+    awake = fleet.awake_machine_count()
+    return len(list_computers()) if awake is None else awake
+
+
 # -------------------------------------------------------------------- tasks
 
 def create_task_row(desktop: str, description: str) -> int:
@@ -583,7 +593,7 @@ def api_computers_create():
     except ValueError as exc:
         return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
 
-    fleet_size = len(list_computers())
+    fleet_size = budgeted_machine_count()
     for ok, msg in (guards.check_memory(len(names), fleet_size), guards.check_disk()):
         if not ok:
             return jsonify({"ok": False, "data": None, "error": msg}), 507
@@ -1287,7 +1297,7 @@ def scheduler_loop() -> None:
 @app.route("/api/v1/guards")
 def api_guards():
     conn = connect()
-    data = guards.status(conn, len(list_computers()))
+    data = guards.status(conn, budgeted_machine_count())
     conn.close()
     return jsonify({"ok": True, "data": data, "error": None})
 
@@ -1295,7 +1305,7 @@ def api_guards():
 @app.route("/partials/guards")
 def partial_guards():
     conn = connect()
-    data = guards.status(conn, len(list_computers()))
+    data = guards.status(conn, budgeted_machine_count())
     conn.close()
     return render_template("_guards.html", g=data)
 
