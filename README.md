@@ -196,17 +196,37 @@ entire Linux desktop:
 
 ## Why
 
-Most "AI browser agent" tools give the model a browser tab. deskswarm gives
-it a **whole desktop** — any app, not just a browser — and lets you run
-**several of them in parallel**, from one place, with a real task history
-instead of a chat log you have to scroll through.
+**A disposable Linux desktop is a useful thing to have, and awkward to get.**
+A VM is heavy and slow to make; a cloud workspace means an account, a bill and
+someone else holding your files; a container is a shell, not a desktop. This
+gives you a real one in about a second, on your own hardware, reachable from a
+browser — and thirty of them if you want, on a box with 8 GB of RAM, because
+the ones you aren't using can sleep.
 
 Good fits:
-- Fanning the same task out across N desktops for throughput or comparison
-- Anything that needs a real desktop app, not just a browser (file managers,
-  PDF viewers, office tools, legacy GUI-only software)
+- A clean machine per task, client or experiment — no clutter, no leftovers
+- Trying something you don't want on your own computer
+- Handing one machine to someone else for an afternoon without giving them
+  your network
+- Anything that needs a real desktop app rather than a browser — file
+  managers, PDF viewers, office suites, GUI-only legacy software
+
+And, if you want it, the agent side:
+
+- Most "AI browser agent" tools give the model a browser tab. deskswarm gives
+  it a **whole desktop**, and lets you run several in parallel with a real
+  task history instead of a chat log you scroll through
 - A cheap way to try computer-use agents without committing to a cloud
   provider's hosted sandbox
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="The wall — every machine shown as its live screen, the busy one outlined amber" width="760">
+</p>
+
+<p align="center">
+  <sub>The wall with an agent working: amber is a machine mid-task, showing its
+  current step; red is a machine that is down.</sub>
+</p>
 
 ## Adding an AI agent (optional)
 
