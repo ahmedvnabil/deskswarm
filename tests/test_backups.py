@@ -67,8 +67,7 @@ def test_restore_stops_a_running_machine_and_starts_it_again(client):
 
 
 def test_old_backups_are_pruned(client, monkeypatch):
-    app = client.module
-    monkeypatch.setattr(app.backups, "KEEP_PER_MACHINE", 2)
+    monkeypatch.setattr(client.backups, "KEEP_PER_MACHINE", 2)
     comp_id = add(client)
     client.homes["m1"] = {"a.txt": b"x"}
 
@@ -76,7 +75,7 @@ def test_old_backups_are_pruned(client, monkeypatch):
     for i in range(4):
         # The filename is a UTC second, so distinct backups need distinct
         # stamps — otherwise this test measures the clock, not the pruning.
-        monkeypatch.setattr(app.backups, "stamp", lambda i=i: f"2026010{i}T000000Z")
+        monkeypatch.setattr(client.backups, "stamp", lambda i=i: f"2026010{i}T000000Z")
         names.append(client.post(f"/api/v1/computers/{comp_id}/backups")
                      .get_json()["data"]["name"])
 
@@ -190,10 +189,9 @@ def test_a_file_that_is_not_an_archive_is_refused(client):
 def test_restored_files_belong_to_the_desktop_user(client, monkeypatch):
     """Root-owned files under /home/cua are the exact fault that broke
     LibreOffice for the desktop session once already."""
-    app = client.module
     comp_id = add(client)
     seen = []
-    real = app.backups.sanitise
+    real = client.backups.sanitise
 
     def spy(source, dest):
         kept = real(source, dest)
@@ -201,6 +199,6 @@ def test_restored_files_belong_to_the_desktop_user(client, monkeypatch):
             seen.extend((m.uid, m.gid, m.uname) for m in tar.getmembers())
         return kept
 
-    monkeypatch.setattr(app.backups, "sanitise", spy)
+    monkeypatch.setattr(client.backups, "sanitise", spy)
     upload(client, comp_id, make_upload([("cua/a.txt", b"x")]))
     assert seen and all(u == (1000, 1000, "cua") for u in seen)

@@ -343,6 +343,30 @@ Docker, an agent, or a desktop.
 - **bridge-N**: `cua-computer-server` in VNC-backend mode, translating REST/WS calls into VNC input events + screenshots. See `bridge/`.
 - **dashboard**: Flask + HTMX + Chart.js + SQLite (WAL mode). Mounts the Docker socket and creates/destroys the container pairs itself (`dashboard/fleet.py`); the fleet lives in the `computers` table, not in compose. Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state. The subprocess writes its `current_action` back to SQLite after every agent turn — that's what makes progress visible before the task finishes. Cancelling a task sends `SIGTERM` to that subprocess's PID.
 
+### Where things live
+
+`dashboard/` is layered so that nothing imports upwards; `fleet.py` is the only
+module that talks to Docker.
+
+```
+app.py          build the app, attach hooks, mount blueprints, start the loop
+settings.py     every environment-derived setting, in one place
+db.py           where the database is        schema.py    tables + migrations
+security.py     cross-site check, audit hook, token check
+fleet.py        the only module that talks to Docker
+machines.py     machine queries, views, creation, sleep/wake
+tasks.py        task rows, the worker, dispatch, analytics
+screens.py      cached stills          scheduler.py  schedules, idle, nightly
+guards.py       cost / memory / disk / failure limits
+backups.py      archive a home and put it back
+shares.py       links that reach one machine     audit.py   who did what
+routes/         system machines files snapshots tasks schedules backups
+                shares audit — one blueprint each
+```
+
+`app.py` was 1,900 lines until these boundaries were made explicit; the
+`url_map` is unchanged by the split, and there are no import cycles.
+
 ## Credits
 
 Built on [cua](https://github.com/trycua/cua) by the Cua team — deskswarm

@@ -10,6 +10,8 @@ import os
 import sqlite3
 from pathlib import Path
 
+from flask import g
+
 
 def db_path() -> Path:
     return Path(os.environ["DESKSWARM_DB_PATH"])
@@ -19,3 +21,14 @@ def connect() -> sqlite3.Connection:
     conn = sqlite3.connect(db_path(), timeout=10)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def get_db() -> sqlite3.Connection:
+    """A connection that lives as long as the request.
+
+    Handlers that read several times in one request share it; app.py closes it
+    on teardown.
+    """
+    if "db" not in g:
+        g.db = connect()
+    return g.db

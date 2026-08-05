@@ -6,9 +6,6 @@ that sweeps every mutating endpoint and insists each left a line — a log with
 holes is worse than no log, because it reads as complete.
 """
 
-import pytest
-
-
 def add(client, name="m1"):
     return client.post("/api/v1/computers", json={"name": name}).get_json()["data"]["id"]
 
@@ -105,13 +102,12 @@ def test_export_is_csv(client):
 
 
 def test_retention_drops_old_entries_only(client, monkeypatch):
-    app = client.module
     add(client)
-    conn = app.connect()
+    conn = client.module.connect()
     conn.execute("UPDATE audit SET at = '2020-01-01T00:00:00+00:00'")
     conn.commit()
-    app.audit.record("recent thing")
-    dropped = app.audit.prune(conn)
+    client.audit.record("recent thing")
+    dropped = client.audit.prune(conn)
     conn.close()
 
     assert dropped >= 1
@@ -121,7 +117,6 @@ def test_retention_drops_old_entries_only(client, monkeypatch):
 
 
 def test_a_broken_audit_never_breaks_the_request(client, monkeypatch):
-    app = client.module
-    monkeypatch.setattr(app.audit, "record",
+    monkeypatch.setattr(client.audit, "record",
                         lambda *a, **k: (_ for _ in ()).throw(RuntimeError("disk full")))
     assert client.post("/api/v1/computers", json={"name": "still-works"}).status_code == 201

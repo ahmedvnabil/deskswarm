@@ -4,7 +4,6 @@ filling with snapshots, or every task failing because the provider is down."""
 
 from datetime import datetime, timedelta, timezone
 
-import pytest
 
 
 def add(client, name="m1"):

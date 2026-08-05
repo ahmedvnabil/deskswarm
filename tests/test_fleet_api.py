@@ -1,4 +1,3 @@
-import json
 
 
 def add(client, name, **kw):

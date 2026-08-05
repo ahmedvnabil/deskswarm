@@ -52,10 +52,10 @@ def test_sleep_refused_while_a_task_is_running(client):
 
 def test_idle_sweep_is_off_by_default(client):
     """Suspending costs someone their open windows, so it has to be opted in."""
-    app = client.module
-    assert app.IDLE_SUSPEND_MINUTES == 0
+    sched = client.scheduler
+    assert sched.IDLE_SUSPEND_MINUTES == 0
     comp_id = add(client)
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False
 
 
@@ -69,66 +69,61 @@ def stale(client, comp_id, minutes):
 
 
 def test_idle_sweep_suspends_only_after_the_timeout(client, monkeypatch):
-    app = client.module
-    monkeypatch.setattr(app, "IDLE_SUSPEND_MINUTES", 30)
+    monkeypatch.setattr(client.scheduler, "IDLE_SUSPEND_MINUTES", 30)
     comp_id = add(client)
 
     stale(client, comp_id, 5)
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False, "5 minutes idle is not idle"
 
     stale(client, comp_id, 45)
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is True
 
 
 def test_idle_sweep_spares_a_watched_machine(client, monkeypatch):
     """Someone with the screen open is using it, however long since a task."""
-    app = client.module
-    monkeypatch.setattr(app, "IDLE_SUSPEND_MINUTES", 30)
-    monkeypatch.setattr(app.fleet, "vnc_watchers", lambda slug: 1)
+    monkeypatch.setattr(client.scheduler, "IDLE_SUSPEND_MINUTES", 30)
+    monkeypatch.setattr(client.fleet, "vnc_watchers", lambda slug: 1)
     comp_id = add(client)
     stale(client, comp_id, 120)
 
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False
 
 
 def test_idle_sweep_spares_a_busy_machine(client, monkeypatch):
-    app = client.module
-    monkeypatch.setattr(app, "IDLE_SUSPEND_MINUTES", 30)
+    monkeypatch.setattr(client.scheduler, "IDLE_SUSPEND_MINUTES", 30)
     comp_id = add(client)
     stale(client, comp_id, 120)
     client.post("/api/v1/tasks", json={"desktop": "m1", "description": "long job"})
 
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False
 
 
 def test_no_suspend_flag_is_honoured(client, monkeypatch):
-    app = client.module
-    monkeypatch.setattr(app, "IDLE_SUSPEND_MINUTES", 30)
+    monkeypatch.setattr(client.scheduler, "IDLE_SUSPEND_MINUTES", 30)
     comp_id = add(client)
     assert client.patch(f"/api/v1/computers/{comp_id}",
                         json={"no_suspend": "1"}).status_code == 200
     stale(client, comp_id, 999)
 
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False
     assert view(client, comp_id)["no_suspend"] is True
 
 
 def test_first_sweep_starts_the_clock_instead_of_suspending(client, monkeypatch):
     """Turning the feature on must not stop every machine at the next tick."""
-    app = client.module
-    monkeypatch.setattr(app, "IDLE_SUSPEND_MINUTES", 30)
+    monkeypatch.setattr(client.scheduler, "IDLE_SUSPEND_MINUTES", 30)
     comp_id = add(client)
-    conn = app.connect()
+    conn = client.module.connect()
     conn.execute("UPDATE computers SET last_active_at = NULL WHERE id = ?", (comp_id,))
     conn.commit()
     conn.close()
 
-    app.idle_tick()
+    client.scheduler.idle_tick()
     assert view(client, comp_id)["sleeping"] is False
     assert view(client, comp_id)["last_active_at"] is not None
 
@@ -136,34 +131,31 @@ def test_first_sweep_starts_the_clock_instead_of_suspending(client, monkeypatch)
 def test_sleeping_machines_do_not_spend_the_memory_budget(client):
     """A sleeping machine costs nothing, so charging the budget for it would
     refuse new machines while the RAM it supposedly holds sits free."""
-    app = client.module
     for n in ("m1", "m2", "m3"):
         add(client, n)
-    assert app.budgeted_machine_count() == 3
+    assert client.machines.budgeted_machine_count() == 3
 
     client.post(f"/api/v1/computers/{add(client, 'm4')}/sleep")
-    assert app.budgeted_machine_count() == 3, "the sleeper should not be counted"
+    assert client.machines.budgeted_machine_count() == 3, "the sleeper should not be counted"
 
 
 def test_budget_falls_back_to_the_whole_fleet_if_docker_is_silent(client, monkeypatch):
     """Over-counting is the safe direction for an admission check."""
-    app = client.module
     add(client, "m1")
     add(client, "m2")
-    monkeypatch.setattr(app.fleet, "awake_machine_count", lambda: None)
-    assert app.budgeted_machine_count() == 2
+    monkeypatch.setattr(client.fleet, "awake_machine_count", lambda: None)
+    assert client.machines.budgeted_machine_count() == 2
 
 
 def test_wake_recreates_a_bridge_that_will_not_come_back(client, monkeypatch):
     """A started container keeps its old filesystem, and things that refuse to
     start twice live there — stale X locks, sockets, pid files. Recreating
     clears them; the home volume is untouched either way."""
-    app = client.module
     comp_id = add(client)
     client.post(f"/api/v1/computers/{comp_id}/sleep")
 
-    monkeypatch.setattr(app, "check_bridge", lambda view: False)
-    monkeypatch.setattr(app, "WAKE_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(client.machines, "check_bridge", lambda view: False)
+    monkeypatch.setattr(client.machines, "WAKE_TIMEOUT_SECONDS", 0.01)
     client.created.clear()
 
     r = client.post(f"/api/v1/computers/{comp_id}/wake")

@@ -32,23 +32,22 @@ def test_daily_next_run_is_in_the_future(client):
 def test_a_due_schedule_fires_once_even_with_racing_workers(client, monkeypatch):
     """The scheduler runs in every gunicorn worker. Claiming is a conditional
     UPDATE on next_run_at, so only one tick may dispatch a given schedule."""
-    app = client.module
     fired = []
-    monkeypatch.setattr(app, "dispatch_task", lambda d, desc: fired.append((d, desc)))
+    monkeypatch.setattr(client.scheduler, "dispatch_task", lambda d, desc: fired.append((d, desc)))
 
     client.post("/api/v1/computers", json={"name": "m1"})
     client.post("/api/v1/schedules", json={
         "desktop": "m1", "description": "repeat me", "kind": "interval", "every_minutes": 1})
 
     # make it due
-    conn = app.connect()
+    conn = client.module.connect()
     conn.execute("UPDATE schedules SET next_run_at = ?",
                  ((datetime.now(timezone.utc) - timedelta(minutes=5)).isoformat(timespec="seconds"),))
     conn.commit()
     conn.close()
 
-    app.scheduler_tick()
-    app.scheduler_tick()   # a second worker arriving right behind the first
+    client.scheduler.scheduler_tick()
+    client.scheduler.scheduler_tick()   # a second worker arriving right behind the first
 
     assert fired == [("m1", "repeat me")]
     assert client.get("/api/v1/schedules").get_json()["data"][0]["run_count"] == 1

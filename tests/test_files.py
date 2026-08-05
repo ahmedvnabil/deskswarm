@@ -47,8 +47,7 @@ def test_traversal_is_refused_over_http(client):
 
 
 def test_upload_rejects_an_oversized_file(client, monkeypatch):
-    import app as app_module
-    monkeypatch.setattr(app_module, "MAX_UPLOAD_MB", 1)
+    monkeypatch.setattr(client.routes_files, "MAX_UPLOAD_MB", 1)
     client.post("/api/v1/computers", json={"name": "m1"})
     big = io.BytesIO(b"x" * (2 * 1024 * 1024))
     r = client.post("/api/v1/computers/1/files",

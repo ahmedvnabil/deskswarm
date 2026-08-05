@@ -63,6 +63,11 @@
   so a fleet-wide dispatch drains instead of starting everything at once.
 
 ### Changed
+- `dashboard/app.py` is 61 lines instead of 1,957. The routes moved into nine
+  blueprints under `dashboard/routes/`, and the logic they called into a
+  layer of modules beside them — settings, schema, security, machines, tasks,
+  screens, scheduler. Nothing imports upwards and there are no cycles; the
+  `url_map` is byte-identical either side of the split.
 - The bridge image is built in two stages: 1.42 GB -> 762 MB. The toolchain
   needed to compile evdev was shipping in the runtime image (~680 MB of apt
   packages including LLVM, gcc and g++) along with playwright's browser driver

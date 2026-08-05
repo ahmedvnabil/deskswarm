@@ -66,7 +66,7 @@ def test_empty_string_is_allowed_but_missing_text_is_not(client):
 
 def test_oversized_clipboard_is_refused(client):
     comp_id = add(client)
-    huge = "a" * (client.module.MAX_CLIPBOARD_KB * 1024 + 1)
+    huge = "a" * (client.settings.MAX_CLIPBOARD_KB * 1024 + 1)
     r = client.post(f"/api/v1/computers/{comp_id}/clipboard", json={"text": huge})
     assert r.status_code == 413
 

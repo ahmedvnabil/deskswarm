@@ -24,7 +24,16 @@ def client(monkeypatch):
     os.environ.pop("DASHBOARD_TOKEN", None)
     os.environ["DESKSWARM_DISABLE_SCHEDULER"] = "1"
 
-    for mod in ("app", "audit", "backups", "db", "fleet", "shares"):
+    # Every dashboard module, re-imported per test so each gets a clean
+    # database and fresh stubs. The `routes.` prefix matters: popping the
+    # package alone leaves its submodules cached, and those hold `from machines
+    # import get_computer`-style references to the *previous* test's modules —
+    # which fails in whichever test runs second, not the one at fault.
+    OWN = {"app", "audit", "backups", "db", "fleet", "guards", "machines",
+           "reclaim", "routes", "scheduler", "schema", "screens", "security",
+           "settings", "shares", "tasks"}
+    for mod in [m for m in sys.modules
+                if m in OWN or m.startswith("routes.")]:
         sys.modules.pop(mod, None)
 
     import fleet
@@ -103,21 +112,35 @@ def client(monkeypatch):
                         lambda slug: states.get(slug, "running") == "running")
 
     import app as app_module
+    import machines, scheduler, tasks as tasks_module
 
-    monkeypatch.setattr(app_module, "check_bridge", lambda view: True)
+    # Patched on the module that owns the name: re-exporting it elsewhere would
+    # not change the global the caller actually looks up.
+    monkeypatch.setattr(machines, "check_bridge", lambda view: True)
 
     # Dispatch normally starts a thread that runs an agent in a subprocess.
     # Left real, those threads outlive the fixture and go looking for a
     # database that has already been deleted. Tests care that dispatch was
     # *decided*, not that an agent ran; test_reserved.py reads the rows back.
     dispatched: list[int] = []
-    monkeypatch.setattr(app_module, "run_task_worker",
+    monkeypatch.setattr(tasks_module, "run_task_worker",
                         lambda tid, host, port, desc: dispatched.append(tid))
     app_module.app.config.update(TESTING=True)
 
     c = app_module.app.test_client()
     c.created = created
     c.module = app_module
+    c.machines = machines
+    c.tasks = tasks_module
+    c.scheduler = scheduler
+    c.fleet = fleet
+    c.backups = __import__("backups")
+    c.audit = __import__("audit")
+    c.settings = __import__("settings")
+    # The blueprint module, for the few settings a handler reads as its own
+    # global rather than through `settings.`
+    c.routes_machines = sys.modules["routes.machines"]
+    c.routes_files = sys.modules["routes.files"]
     c.dispatched = dispatched
     c.states = states
     c.clipboards = clipboards
