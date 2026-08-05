@@ -13,7 +13,7 @@
 </style>
 </head>
 <body class="bg-neutral-950 text-neutral-200 min-h-screen">
-  <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-10 backdrop-blur">
+  <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-20 backdrop-blur">
     <div class="flex items-center gap-3">
       <span class="text-lg font-bold text-amber-400">deskswarm</span>
       <span class="text-xs text-neutral-500 mono">self-hosted computer-use agent fleet</span>
@@ -27,8 +27,18 @@
   <main class="max-w-7xl mx-auto p-6 space-y-8">
 
     <section>
-      <h2 class="text-sm font-semibold text-neutral-400 mb-3 tracking-wide uppercase">Fleet status</h2>
-      <div id="fleet-status" hx-get="/partials/fleet" hx-trigger="load, every 5s" hx-swap="innerHTML">
+      <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Fleet</h2>
+        <form onsubmit="addComputer(event)" class="flex items-center gap-2">
+          <input id="new-computer-name" required placeholder="new computer name…"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-56">
+          <button type="submit" id="add-btn"
+            class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">
+            + add computer
+          </button>
+        </form>
+      </div>
+      <div id="fleet-status" hx-get="/partials/fleet" hx-trigger="load, every 5s, refresh" hx-swap="innerHTML">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
     </section>
@@ -39,10 +49,13 @@
             hx-on::after-request="if(event.detail.successful){ this.reset(); htmx.trigger('#task-log','refresh'); htmx.trigger('#analytics','refresh'); }"
             class="space-y-3">
         <div class="flex gap-3 flex-wrap items-start">
-          <select name="desktop" class="bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm">
+          {# Options are kept in sync by refreshTargets() in JS — htmx can't
+             swap bare <option> tags (the parser strips them outside a select). #}
+          <select name="desktop" id="task-target"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm">
             <option value="all">whole fleet (parallel)</option>
-            {% for d in fleet %}
-            <option value="{{ d.name }}">{{ d.name }}</option>
+            {% for c in computers %}
+            <option value="{{ c.name }}">{{ c.name }}</option>
             {% endfor %}
           </select>
           <textarea name="description" required placeholder="Describe the task... e.g. open a browser and search for today's top news"
@@ -67,21 +80,9 @@
 
     <section>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Live view</h2>
-        <span class="text-xs text-neutral-600">click a desktop to embed its live screen</span>
-      </div>
-      <div id="live-view" hx-get="/partials/live" hx-trigger="load" hx-swap="innerHTML">
-        <div class="text-neutral-600 text-sm">loading...</div>
-      </div>
-    </section>
-
-    <section>
-      <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Task log / reports</h2>
         <div class="flex items-center gap-3">
-          <a href="/api/v1/tasks/export.csv" class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">
-            export CSV
-          </a>
+          <a href="/api/v1/tasks/export.csv" class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">export CSV</a>
           <span class="text-xs text-neutral-600">refreshes every 4s</span>
         </div>
       </div>
@@ -92,38 +93,200 @@
 
   </main>
 
-  <script>
-    function tick(){
-      document.getElementById('clock').textContent = new Date().toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
-    }
-    tick(); setInterval(tick, 1000);
+  <!-- ------------------------------------------------------------ modal -->
+  <div id="modal" class="hidden fixed inset-0 z-30 bg-black/70 backdrop-blur-sm p-4 sm:p-8 overflow-y-auto"
+       onclick="if(event.target===this) closeModal()">
+    <div class="max-w-3xl mx-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-neutral-800">
+        <h3 id="modal-title" class="text-sm font-semibold"></h3>
+        <button onclick="closeModal()" class="text-neutral-500 hover:text-neutral-200 text-lg leading-none">✕</button>
+      </div>
+      <div id="modal-body" class="p-5"></div>
+    </div>
+  </div>
 
-    let dailyChart = null;
-    function renderDailyChart(labels, counts, costs){
-      const canvas = document.getElementById('daily-chart');
-      if(!canvas) return;
-      if(dailyChart) dailyChart.destroy();
-      dailyChart = new Chart(canvas, {
-        type: 'bar',
-        data: {
-          labels: labels,
-          datasets: [
-            { label: 'tasks', data: counts, backgroundColor: '#f59e0b', yAxisID: 'y' },
-            { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399', backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3 }
-          ]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          scales: {
-            y: { position: 'left', ticks: { color: '#a3a3a3' }, grid: { color: '#262626' }, title: { display: true, text: 'tasks', color: '#a3a3a3' } },
-            y1: { position: 'right', ticks: { color: '#a3a3a3' }, grid: { display: false }, title: { display: true, text: 'USD', color: '#a3a3a3' } },
-            x: { ticks: { color: '#a3a3a3' }, grid: { display: false } }
-          },
-          plugins: { legend: { labels: { color: '#d4d4d4' } } }
-        }
+<script>
+  function tick(){
+    document.getElementById('clock').textContent =
+      new Date().toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
+  }
+  tick(); setInterval(tick, 1000);
+
+  // ---------------------------------------------------------------- modal
+  function openModal(title){
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal').classList.remove('hidden');
+  }
+  function closeModal(){
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal-body').innerHTML = '';
+  }
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+
+  // ------------------------------------------------------- fleet actions
+  // Rebuilds the task-target dropdown from the JSON API, preserving the
+  // current selection where possible.
+  async function refreshTargets(){
+    try {
+      const r = await fetch('/api/v1/computers');
+      const j = await r.json();
+      if(!j.ok) return;
+      const sel = document.getElementById('task-target');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      const all = new Option('whole fleet (parallel)', 'all');
+      sel.add(all);
+      for(const c of j.data) sel.add(new Option(c.name, c.name));
+      sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
+    } catch(_){}
+  }
+  setInterval(refreshTargets, 15000);
+
+  async function addComputer(e){
+    e.preventDefault();
+    const input = document.getElementById('new-computer-name');
+    const btn = document.getElementById('add-btn');
+    const name = input.value.trim();
+    if(!name) return;
+    btn.disabled = true; btn.textContent = 'creating…';
+    try {
+      const r = await fetch('/api/v1/computers', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name})
       });
+      const j = await r.json();
+      if(!j.ok){ alert(j.error || 'failed to create'); }
+      else { input.value = ''; htmx.trigger('#fleet-status','refresh'); refreshTargets(); }
+    } catch(err){ alert(err); }
+    btn.disabled = false; btn.textContent = '+ add computer';
+  }
+
+  async function removeComputer(id, name){
+    if(!confirm(`Remove "${name}"?\n\nIts desktop and bridge containers are destroyed. Task history is kept.`)) return;
+    const r = await fetch('/api/v1/computers/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed to remove');
+    htmx.trigger('#fleet-status','refresh'); refreshTargets();
+  }
+
+  async function renameComputer(id, current){
+    const name = prompt('Rename computer', current);
+    if(!name || name === current) return;
+    const r = await fetch('/api/v1/computers/' + id, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed to rename');
+    htmx.trigger('#fleet-status','refresh'); refreshTargets();
+  }
+
+  function toggleLive(btn){
+    const container = document.getElementById(btn.dataset.target);
+    if(!container) return;
+    if(container.dataset.loaded !== '1'){
+      const iframe = document.createElement('iframe');
+      iframe.src = btn.dataset.novncUrl;
+      iframe.style.cssText = 'width:100%;height:100%;border:0;';
+      container.appendChild(iframe);
+      container.dataset.loaded = '1';
     }
-  </script>
+    container.classList.toggle('hidden');
+  }
+
+  // ------------------------------------------------------------- software
+  function openInventory(id, name){
+    openModal('Installed software — ' + name);
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-xs">inspecting the machine…</div>';
+    fetch('/partials/computers/' + id + '/inventory')
+      .then(r => r.text())
+      .then(html => { body.innerHTML = html; })
+      .catch(err => { body.innerHTML = '<div class="text-red-400 text-xs">' + err + '</div>'; });
+  }
+
+  // ------------------------------------------------------------- terminal
+  function openTerminal(id, name){
+    openModal('Terminal — ' + name);
+    document.getElementById('modal-body').innerHTML = `
+      <div class="space-y-3">
+        <div id="term-out" class="bg-black border border-neutral-800 rounded p-3 h-80 overflow-y-auto mono text-xs whitespace-pre-wrap text-neutral-300"
+        >Shell into the desktop container — runs as root in /home/cua, so you can\napt-get install extra software onto this machine.\n</div>
+        <form onsubmit="runCommand(event, ${id})" class="flex gap-2">
+          <span class="mono text-emerald-400 self-center text-sm">$</span>
+          <input id="term-in" autocomplete="off" autofocus placeholder="e.g. pip3 list | head -20"
+            class="flex-1 bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm mono">
+          <button type="submit" class="bg-neutral-800 hover:bg-neutral-700 px-4 py-2 rounded text-sm">run</button>
+        </form>
+        <div class="text-xs text-neutral-600">
+          Each command runs independently — <span class="mono">cd</span> does not persist between commands.
+          Use <span class="mono">cd /path &amp;&amp; cmd</span> instead.
+        </div>
+      </div>`;
+    setTimeout(() => document.getElementById('term-in')?.focus(), 50);
+  }
+
+  async function runCommand(e, id){
+    e.preventDefault();
+    const input = document.getElementById('term-in');
+    const out = document.getElementById('term-out');
+    const cmd = input.value.trim();
+    if(!cmd) return;
+    input.value = '';
+    out.textContent += '\n$ ' + cmd + '\n';
+    out.scrollTop = out.scrollHeight;
+    try {
+      const r = await fetch('/api/v1/computers/' + id + '/exec', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({command: cmd})
+      });
+      const j = await r.json();
+      if(!j.ok){ out.textContent += (j.error || 'command failed') + '\n'; }
+      else {
+        out.textContent += j.data.output;
+        if(j.data.exit_code !== 0) out.textContent += `\n[exit ${j.data.exit_code}]\n`;
+      }
+    } catch(err){ out.textContent += err + '\n'; }
+    out.scrollTop = out.scrollHeight;
+  }
+
+  // Deep links: /?open=terminal&computer=<id> or /?open=software&computer=<id>
+  // so you can jump straight to one machine's shell or software list.
+  (function openFromQuery(){
+    const q = new URLSearchParams(location.search);
+    const what = q.get('open'), id = parseInt(q.get('computer'), 10);
+    if(!what || !id) return;
+    fetch('/api/v1/computers').then(r => r.json()).then(j => {
+      const c = (j.data || []).find(x => x.id === id);
+      if(!c) return;
+      if(what === 'terminal') openTerminal(c.id, c.name);
+      else if(what === 'software') openInventory(c.id, c.name);
+    });
+  })();
+
+  // ------------------------------------------------------------ analytics
+  let dailyChart = null;
+  function renderDailyChart(labels, counts, costs){
+    const canvas = document.getElementById('daily-chart');
+    if(!canvas) return;
+    if(dailyChart) dailyChart.destroy();
+    dailyChart = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [
+        { label: 'tasks', data: counts, backgroundColor: '#f59e0b', yAxisID: 'y' },
+        { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399', backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3 }
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y:  { position: 'left',  ticks:{color:'#a3a3a3'}, grid:{color:'#262626'}, title:{display:true,text:'tasks',color:'#a3a3a3'} },
+          y1: { position: 'right', ticks:{color:'#a3a3a3'}, grid:{display:false},   title:{display:true,text:'USD',color:'#a3a3a3'} },
+          x:  { ticks:{color:'#a3a3a3'}, grid:{display:false} }
+        },
+        plugins: { legend: { labels: { color: '#d4d4d4' } } }
+      }
+    });
+  }
+</script>
 </body>
 </html>

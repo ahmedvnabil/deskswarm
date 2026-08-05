@@ -27,32 +27,60 @@ management + dashboard layer on top.
 
 ## Features
 
-- **Control** — dispatch a task to one desktop or the whole fleet in
+- **Manage the fleet from the UI** — add a computer by typing a name, and
+  deskswarm creates its desktop + agent-bridge containers on the fly.
+  Rename it, remove it, or grow to dozens of machines without touching
+  `docker-compose.yml`. Each one is an independent machine with its own
+  agent, its own screen, and its own installed software.
+- **Per-machine terminal** — shell into any computer straight from the
+  dashboard (runs as root), so you can `apt-get install` whatever that
+  machine needs for its job.
+- **Software inventory** — one click shows a machine's OS, kernel, runtimes
+  (Python/Node/Go/…), installed apps, package count, and disk/RAM.
+- **Control** — dispatch a task to one computer or the whole fleet in
   parallel; **cancel** a running task (kills the agent process cleanly);
-  **retry** a failed one with one click, without retyping the description.
-- **Live progress, not just a final answer** — while a task is running, the
-  task log shows the agent's *current step* (`screenshot`, `left_click`,
-  `type_text`, ...), updated after every turn, not just once it finishes.
-- **Analytics** — total tasks, success rate, total cost, average duration,
-  a per-day tasks/cost chart, and a per-desktop breakdown, all computed live
-  from task history.
-- **Live monitoring** — click any desktop to embed its live noVNC screen
-  directly in the dashboard, no extra tab, no extra setup.
-- **Reports** — every task's full result, cost, and duration is kept;
-  export the whole history as CSV for a report you can hand someone.
+  **retry** a failed one with one click.
+- **Live progress, not just a final answer** — while a task runs, the log
+  shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
+  ...), updated after every turn.
+- **Live monitoring** — embed any machine's live noVNC screen inline.
+- **Analytics & reports** — success rate, cost, average duration, a per-day
+  chart, a per-machine breakdown, and CSV export of the full history.
 
 ```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│  desktop-1  │◄────►│  bridge-1   │◄─┐   │             │
-│  (XFCE/VNC) │      │ (REST↔VNC)  │  │   │             │
-└─────────────┘      └─────────────┘  │   │             │
-┌─────────────┐      ┌─────────────┐  ├──►│  dashboard  │◄── you
-│  desktop-2  │◄────►│  bridge-2   │◄─┤   │ (Flask/HTMX)│
-└─────────────┘      └─────────────┘  │   │             │
-┌─────────────┐      ┌─────────────┐  │   │             │
-│  desktop-3  │◄────►│  bridge-3   │◄─┘   │             │
-└─────────────┘      └─────────────┘      └─────────────┘
+                      ┌───────────────────────────┐
+  you ───────────────►│         dashboard         │
+                      │  Flask · HTMX · SQLite    │
+                      │  + Docker API (creates    │
+                      │    and destroys machines) │
+                      └────────────┬──────────────┘
+                                   │
+        ┌──────────────────────────┼──────────────────────────┐
+        ▼                          ▼                          ▼
+┌───────────────┐          ┌───────────────┐          ┌───────────────┐
+│  computer A   │          │  computer B   │          │  computer C   │
+│ ┌───────────┐ │          │ ┌───────────┐ │          │ ┌───────────┐ │
+│ │  desktop  │ │          │ │  desktop  │ │          │ │  desktop  │ │
+│ │ XFCE/VNC  │ │          │ │ XFCE/VNC  │ │          │ │ XFCE/VNC  │ │
+│ └─────▲─────┘ │          │ └─────▲─────┘ │          │ └─────▲─────┘ │
+│ ┌─────┴─────┐ │          │ ┌─────┴─────┐ │          │ ┌─────┴─────┐ │
+│ │  bridge   │ │          │ │  bridge   │ │          │ │  bridge   │ │
+│ │ REST↔VNC  │ │          │ │ REST↔VNC  │ │          │ │ REST↔VNC  │ │
+│ └───────────┘ │          │ └───────────┘ │          │ └───────────┘ │
+└───────────────┘          └───────────────┘          └───────────────┘
 ```
+
+Every computer is a pair of containers created at runtime — there are no
+desktops hard-coded in `docker-compose.yml`, which only runs the dashboard.
+
+<p align="center">
+  <img src="docs/screenshots/terminal.png" alt="Per-machine terminal modal" width="410">
+  <img src="docs/screenshots/software.png" alt="Software inventory modal" width="410">
+</p>
+
+<p align="center">
+  <sub>Left: shell into any machine to provision it. Right: what's actually installed on it.</sub>
+</p>
 
 Each `desktop-N` is a full XFCE session — the agent doesn't just see a
 browser viewport, it sees (and can click, type into, and screenshot) an
@@ -92,10 +120,11 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7861`. You should see 4 desktops (green = healthy),
-a task box, an analytics panel, and an empty task log. Send a task and watch
-its status go `pending → running (screenshot) → completed` live, or click
-into the Live View section to embed a desktop's screen right on the page.
+Open `http://localhost:7861`. The fleet starts empty — type a name and hit
+**+ add computer** to boot your first machine (the first one also builds the
+bridge image, so give it a minute; later ones take about a second). Then send
+it a task and watch its status go `pending → running (screenshot) → completed`
+live.
 
 ## Configuring a model
 
@@ -127,20 +156,22 @@ package for what's natively supported.
 
 ## Scaling the fleet
 
-The default `docker-compose.yml` ships 4 desktop+bridge pairs. To add more:
+Just add more computers from the UI — each gets its own containers and the
+next free noVNC port automatically. Nothing to edit, nothing to restart.
 
-1. Duplicate a `desktop-N` / `bridge-N` block in `docker-compose.yml`,
-   incrementing the number and picking a free host port for
-   `DESKTOP_N_NOVNC_PORT`.
-2. Add the matching entry to `FLEET_JSON` in `.env`
-   (`bridge_host` = the new bridge service name).
-3. `docker compose up -d --build`.
+Sizing: each desktop is a full XFCE session, so budget roughly 0.5–1 GB RAM
+per idle machine plus whatever its tasks need. `DESKSWARM_NOVNC_PORT_BASE`
+sets where port allocation starts (default 6901).
+
+If you open the dashboard from another device, set `DESKSWARM_PUBLIC_HOST`
+to this host's LAN IP — it's what the embedded live screens are linked to.
 
 ## API
 
-See [`docs/APIs.md`](docs/APIs.md) — fleet status, task CRUD (create,
-list, detail, **cancel**, **retry**), live **analytics**, and **CSV export**,
-all under `/api/v1/*` with optional bearer-token auth.
+See [`docs/APIs.md`](docs/APIs.md) — computer CRUD (create, rename, delete,
+**exec**, **inventory**), task CRUD (create, list, detail, **cancel**,
+**retry**), live **analytics**, and **CSV export**, all under `/api/v1/*`
+with optional bearer-token auth.
 
 ## Known issues
 
@@ -159,12 +190,17 @@ full writeup in [`docs/UPSTREAM_CUA_BUG.md`](docs/UPSTREAM_CUA_BUG.md).
   (mouse, keyboard, any installed app). Don't give it tasks involving
   credentials or payment details, and don't expose the dashboard to anyone
   you wouldn't trust to run arbitrary commands on a sandboxed machine.
+- **The dashboard mounts the Docker socket** so it can create and destroy
+  machines. That is equivalent to root on the host: anyone who can reach the
+  dashboard can start containers on it. Set `DASHBOARD_TOKEN` and keep it on
+  a trusted network. The per-machine terminal runs as root *inside a desktop
+  container* — that part is sandboxed, but the socket mount is not.
 
 ## Architecture notes
 
 - **desktop-N**: [`trycua/xfce-cua`](https://hub.docker.com/r/trycua/xfce-cua) — a real XFCE session over VNC/noVNC.
 - **bridge-N**: `cua-computer-server` in VNC-backend mode, translating REST/WS calls into VNC input events + screenshots. See `bridge/`.
-- **dashboard**: Flask + HTMX + Chart.js + SQLite (WAL mode). Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state. The subprocess writes its `current_action` back to SQLite after every agent turn — that's what makes progress visible before the task finishes. Cancelling a task sends `SIGTERM` to that subprocess's PID.
+- **dashboard**: Flask + HTMX + Chart.js + SQLite (WAL mode). Mounts the Docker socket and creates/destroys the container pairs itself (`dashboard/fleet.py`); the fleet lives in the `computers` table, not in compose. Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state. The subprocess writes its `current_action` back to SQLite after every agent turn — that's what makes progress visible before the task finishes. Cancelling a task sends `SIGTERM` to that subprocess's PID.
 
 ## Credits
 

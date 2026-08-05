@@ -16,7 +16,9 @@ or, on failure:
 
 ## Authentication
 
-If `DASHBOARD_TOKEN` is set in the environment, `POST /api/v1/tasks` requires:
+If `DASHBOARD_TOKEN` is set in the environment, every mutating endpoint
+(creating/renaming/deleting a computer, running a command, dispatching or
+cancelling a task) requires:
 
 ```
 Authorization: Bearer <DASHBOARD_TOKEN>
@@ -34,22 +36,106 @@ Liveness check.
 { "status": "ok" }
 ```
 
-## `GET /api/v1/fleet`
+## Computers
 
-Current status of every desktop in the fleet.
+A *computer* is one agent-controlled machine: a desktop container plus its
+bridge container. They are created and destroyed at runtime — the fleet is
+stored in the database, not in `docker-compose.yml`.
 
-**Response**
+### `GET /api/v1/computers`
 
 ```json
 {
   "ok": true,
   "data": [
-    { "name": "desktop-1", "bridge_host": "bridge-1", "bridge_port": 8000,
-      "novnc_url": "http://localhost:6901/vnc.html", "bridge_ok": true }
+    {
+      "id": 1,
+      "name": "research-01",
+      "slug": "research-01",
+      "novnc_port": 6901,
+      "novnc_url": "http://localhost:6901/vnc.html",
+      "bridge_host": "deskswarm-dyn-bridge-research-01",
+      "bridge_port": 8000,
+      "bridge_ok": true,
+      "desktop_state": "running",
+      "bridge_state": "running",
+      "created_at": "2026-08-05T04:20:51+00:00"
+    }
   ],
   "error": null
 }
 ```
+
+### `POST /api/v1/computers`
+
+Boots a new machine. The noVNC port is assigned automatically from the first
+free port at or above `DESKSWARM_NOVNC_PORT_BASE`.
+
+**Body**: `{ "name": "research-01" }` — `201 Created`.
+
+The very first call also builds the bridge image, which takes a minute;
+subsequent calls return in about a second.
+
+**Errors**: `400` missing name, `409` name already taken, `500` Docker refused
+to start the containers.
+
+### `PATCH /api/v1/computers/<id>`
+
+Renames a computer. **Body**: `{ "name": "new-name" }`.
+
+Only the display name changes — the containers keep their original slug, so
+in-flight tasks are unaffected. Existing task history is relabelled to match.
+
+**Errors**: `404` unknown id, `400` missing name, `409` name already taken.
+
+### `DELETE /api/v1/computers/<id>`
+
+Destroys both of the machine's containers and removes it from the fleet.
+Task history for that machine is kept.
+
+```json
+{ "ok": true, "data": { "id": 3, "removed": true }, "error": null }
+```
+
+### `POST /api/v1/computers/<id>/exec`
+
+Runs a shell command inside the desktop container as **root** — this is what
+the dashboard's terminal uses, and how you provision a machine with extra
+software.
+
+**Body**: `{ "command": "apt-get install -y xdotool" }`
+
+```json
+{ "ok": true, "data": { "ok": true, "exit_code": 0, "output": "..." }, "error": null }
+```
+
+Each call is a separate `docker exec`, so shell state (including `cd`) does
+not carry over between commands.
+
+### `GET /api/v1/computers/<id>/inventory`
+
+What's installed on the machine.
+
+```json
+{
+  "ok": true,
+  "data": {
+    "os": "Debian GNU/Linux 12 (bookworm)",
+    "kernel": "6.1.0-23-amd64",
+    "runtimes": [{ "name": "python3", "version": "Python 3.13.14" }],
+    "apps": ["firefox", "thunar", "xfce4-terminal", "curl", "ffmpeg"],
+    "package_count": 494,
+    "python_packages": ["pip==26.1.2"],
+    "disk": "overlay 106G 50G 57G 47% /",
+    "memory": "11Gi total, 1.2Gi used, 10Gi available"
+  },
+  "error": null
+}
+```
+
+## `GET /api/v1/fleet`
+
+Alias of `GET /api/v1/computers`, kept for convenience.
 
 ## `GET /api/v1/tasks`
 
@@ -109,8 +195,8 @@ Dispatch a natural-language task to one desktop, or the whole fleet in parallel.
 { "desktop": "desktop-1", "description": "Open a browser and search for today's news." }
 ```
 
-`desktop` is either a fleet member name (see `GET /api/v1/fleet`) or `"all"`
-to run the same task on every desktop concurrently.
+`desktop` is either a computer's name (see `GET /api/v1/computers`) or
+`"all"` to run the same task on every computer concurrently.
 
 **Response** — `201 Created`
 
@@ -125,7 +211,7 @@ Tasks run asynchronously in a background thread; poll `GET /api/v1/tasks` (or
 
 | status | condition |
 |---|---|
-| 400 | missing `description`, or unknown `desktop` name |
+| 400 | missing `description`, unknown `desktop` name, or the fleet is empty |
 | 401 | missing/invalid `Authorization` header when `DASHBOARD_TOKEN` is set |
 
 ## `POST /api/v1/tasks/<id>/cancel`
@@ -188,10 +274,13 @@ oldest first — this is what powers the dashboard's chart.
 
 ## HTML partials (used internally by the dashboard, not a stable API)
 
-- `GET /partials/fleet` — fleet status cards
+- `GET /partials/fleet` — fleet cards with their per-machine controls
 - `GET /partials/tasks` — task history table
-- `GET /partials/analytics` — stat tiles + chart + per-desktop breakdown
-- `GET /partials/live` — live-view desktop grid
+- `GET /partials/analytics` — stat tiles + chart + per-machine breakdown
+- `GET /partials/computers/<id>/inventory` — rendered software inventory
+
+The dashboard also accepts deep links: `/?open=terminal&computer=<id>` and
+`/?open=software&computer=<id>` open straight into that machine's modal.
 
 These are HTMX-polled fragments, not intended for external consumers — use
 the `/api/v1/*` JSON endpoints instead if you're integrating deskswarm with
