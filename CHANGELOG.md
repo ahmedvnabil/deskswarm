@@ -20,6 +20,9 @@
   its `alt` text over the machine's name.
 
 ### Added
+- Guards for the failures that accumulate quietly: a daily cost cap, memory
+  admission control, disk thresholds with a safe space reclaim, and a breaker
+  that pauses dispatch after repeated failures.
 - Reserve a machine for yourself; fleet-wide dispatch and schedules skip it.
 - Per-machine restart, so a machine whose containers died can be recovered in
   place instead of deleted and recreated.
