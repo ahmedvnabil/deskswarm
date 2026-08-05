@@ -1,0 +1,42 @@
+<div class="mb-3 flex items-center gap-2 text-xs">
+  <span class="text-neutral-500">~/</span>
+  <span class="mono text-neutral-300">{{ path or '' }}</span>
+  {% if path %}
+  <button onclick="browseFiles({{ comp.id }}, '{{ parent|e }}')"
+    class="ml-auto bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded">up</button>
+  {% endif %}
+</div>
+
+<label class="block mb-3 border-2 border-dashed border-neutral-700 hover:border-amber-500/60 rounded-lg
+              p-4 text-center cursor-pointer text-xs text-neutral-500"
+       ondragover="event.preventDefault(); this.classList.add('border-amber-500')"
+       ondragleave="this.classList.remove('border-amber-500')"
+       ondrop="event.preventDefault(); this.classList.remove('border-amber-500');
+               uploadFiles({{ comp.id }}, '{{ path|e }}', event.dataTransfer.files)">
+  <input type="file" multiple class="hidden"
+         onchange="uploadFiles({{ comp.id }}, '{{ path|e }}', this.files)">
+  drop files here, or click to choose — up to {{ max_mb }} MB each
+</label>
+
+{% if error %}
+<div class="text-red-400 text-xs mb-2">{{ error }}</div>
+{% endif %}
+
+<div class="border border-neutral-800 rounded-lg divide-y divide-neutral-900 max-h-80 overflow-y-auto">
+  {% for e in entries %}
+  <div class="flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-neutral-800/40">
+    {% if e.type == 'dir' %}
+    <button onclick="browseFiles({{ comp.id }}, '{{ (path ~ '/' ~ e.name) if path else e.name }}')"
+      class="text-amber-400 hover:underline text-left flex-1 truncate">{{ e.name }}/</button>
+    <span class="text-neutral-700">folder</span>
+    {% else %}
+    <span class="flex-1 truncate">{{ e.name }}</span>
+    <span class="mono text-neutral-600">{{ '%.1f'|format(e.size / 1024) }} KB</span>
+    {% endif %}
+    <a href="/api/v1/computers/{{ comp.id }}/files/download?path={{ ((path ~ '/' ~ e.name) if path else e.name)|urlencode }}"
+      class="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded shrink-0">get</a>
+  </div>
+  {% else %}
+  <div class="px-3 py-6 text-center text-neutral-600 text-xs">empty</div>
+  {% endfor %}
+</div>

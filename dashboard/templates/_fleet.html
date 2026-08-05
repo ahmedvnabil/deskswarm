@@ -82,6 +82,9 @@
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">shell</button>
       <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">apps</button>
+      <button onclick="event.stopPropagation(); openFiles({{ c.id }}, '{{ c.name|e }}')"
+        title="put files on this machine, or take them off"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">files</button>
       <button onclick="event.stopPropagation(); snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">snap</button>
       <button onclick="event.stopPropagation(); renameComputer({{ c.id }}, '{{ c.name|e }}')"

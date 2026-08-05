@@ -326,6 +326,35 @@
     htmx.trigger('#guards','refresh');
   }
 
+  // ------------------------------------------------------------- files
+  function openFiles(id, name){
+    openModal('Files — ' + name);
+    browseFiles(id, '');
+  }
+
+  async function browseFiles(id, path){
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
+    const r = await fetch(`/partials/computers/${id}/files?path=` + encodeURIComponent(path || ''));
+    body.innerHTML = await r.text();
+    body.dataset.filesId = id;
+    body.dataset.filesPath = path || '';
+  }
+
+  async function uploadFiles(id, path, files){
+    if(!files || !files.length) return;
+    const body = document.getElementById('modal-body');
+    for(const f of files){
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('path', path || 'Desktop');
+      const j = await (await fetch(`/api/v1/computers/${id}/files`,
+                                   {method:'POST', body: fd})).json();
+      if(!j.ok){ alert(`${f.name}: ${j.error}`); }
+    }
+    browseFiles(id, path);
+  }
+
   async function toggleReserved(id, on){
     const r = await fetch(`/api/v1/computers/${id}`, {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
@@ -339,8 +368,8 @@
 
   async function restartComputer(id, name){
     if(!confirm(`Recreate the containers for "${name}"?\n\n` +
-                'It keeps its name, port and snapshot. Anything unsaved on its ' +
-                'desktop is lost.')) return;
+                'It keeps its name, port, snapshot and home directory — open ' +
+                'windows are lost, saved files are not.')) return;
     const r = await fetch(`/api/v1/computers/${id}/restart`, {method: 'POST'});
     const j = await r.json();
     if(!j.ok) alert(j.error || 'restart failed');

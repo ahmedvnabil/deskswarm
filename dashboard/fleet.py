@@ -10,9 +10,12 @@ Both are created at runtime through the Docker API (the dashboard mounts
 users add and remove machines from the UI.
 """
 
+import io
 import os
 import re
 import secrets
+import tarfile
+import time
 from urllib.parse import quote
 from pathlib import Path
 
@@ -27,6 +30,13 @@ PUBLIC_HOST = os.environ.get("DESKSWARM_PUBLIC_HOST", "localhost")
 NOVNC_PORT_BASE = int(os.environ.get("DESKSWARM_NOVNC_PORT_BASE", "6901"))
 # Proxmox LXC and some nested-Docker hosts can't apply AppArmor profiles.
 DISABLE_APPARMOR = os.environ.get("DESKSWARM_DISABLE_APPARMOR", "").lower() in ("1", "true", "yes")
+
+# Give every machine a named volume for its home directory. Without one a
+# restart — or a rebuild onto a newer image — silently throws away whatever
+# was on the desktop, which makes a machine something you look at rather than
+# something you work in.
+PERSIST_HOME = os.environ.get("DESKSWARM_PERSIST_HOME", "1").lower() in ("1", "true", "yes")
+HOME_PATH = "/home/cua"
 
 _client = None
 
@@ -49,6 +59,10 @@ def desktop_container_name(slug: str) -> str:
 
 def bridge_container_name(slug: str) -> str:
     return f"{CONTAINER_PREFIX}-bridge-{slug}"
+
+
+def home_volume_name(slug: str) -> str:
+    return f"{CONTAINER_PREFIX}-home-{slug}"
 
 
 def detect_network() -> str:
@@ -129,6 +143,15 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str,
     if DISABLE_APPARMOR:
         extra["security_opt"] = ["apparmor:unconfined"]
 
+    # Only the desktop gets the home volume; the bridge has no business
+    # holding a reference to the user's files.
+    desktop_extra = dict(extra)
+    if PERSIST_HOME:
+        # Docker seeds a fresh named volume from the image's own /home/cua, so
+        # a new machine still gets its skeleton — Desktop, dotfiles, correct
+        # ownership — and only keeps it from then on.
+        desktop_extra["volumes"] = {home_volume_name(slug): {"bind": HOME_PATH, "mode": "rw"}}
+
     client().containers.run(
         image or DESKTOP_IMAGE,
         name=desktop_container_name(slug),
@@ -138,7 +161,7 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str,
         network=network,
         restart_policy={"Name": "unless-stopped"},
         labels={"deskswarm.role": "desktop", "deskswarm.slug": slug},
-        **extra,
+        **desktop_extra,
     )
     client().containers.run(
         BRIDGE_IMAGE,
@@ -173,13 +196,36 @@ def remove_image(image: str) -> None:
         pass
 
 
-def destroy_computer(slug: str) -> None:
+def destroy_computer(slug: str, keep_home: bool = False) -> None:
+    """Remove a machine. `keep_home` spares the home volume, which is what a
+    restart needs — the containers go, the work stays."""
     for name in (bridge_container_name(slug), desktop_container_name(slug)):
         try:
-            c = client().containers.get(name)
-            c.remove(force=True)
+            client().containers.get(name).remove(force=True)
         except docker.errors.NotFound:
             pass
+    if keep_home or not PERSIST_HOME:
+        return
+    try:
+        client().volumes.get(home_volume_name(slug)).remove(force=True)
+    except docker.errors.NotFound:
+        pass
+
+
+def home_size_mb(slug: str) -> float | None:
+    """How much the machine's home volume holds, so the UI can say."""
+    if not PERSIST_HOME:
+        return None
+    try:
+        info = client().df()
+    except Exception:  # noqa: BLE001
+        return None
+    want = home_volume_name(slug)
+    for v in info.get("Volumes") or []:
+        if v.get("Name") == want:
+            size = (v.get("UsageData") or {}).get("Size", -1)
+            return round(size / 1e6, 1) if size and size >= 0 else None
+    return None
 
 
 def container_state(slug: str) -> dict:
@@ -288,3 +334,94 @@ def get_inventory(slug: str) -> dict:
 
 def random_vnc_password() -> str:
     return secrets.token_hex(8)
+
+
+# ------------------------------------------------------------------ files
+
+class PathOutsideHome(ValueError):
+    """Refuse to read or write outside the machine's home directory."""
+
+
+def safe_home_path(rel: str = "") -> str:
+    """Resolve a user-supplied path inside /home/cua, or refuse.
+
+    Paths arrive from the browser, so '../../etc/shadow' has to bounce here
+    rather than at the Docker API, which would happily serve it.
+    """
+    target = os.path.normpath(os.path.join(HOME_PATH, (rel or "").lstrip("/")))
+    if target != HOME_PATH and not target.startswith(HOME_PATH + "/"):
+        raise PathOutsideHome(f"'{rel}' is outside {HOME_PATH}")
+    return target
+
+
+LIST_SCRIPT = r"""
+cd "$1" 2>/dev/null || { echo "__MISSING__"; exit 0; }
+for f in .* *; do
+  [ "$f" = "." ] && continue
+  [ "$f" = ".." ] && continue
+  [ -e "$f" ] || continue
+  if [ -d "$f" ]; then t=dir; sz=0; else t=file; sz=$(stat -c %s "$f" 2>/dev/null || echo 0); fi
+  printf '%s|%s|%s
+' "$t" "$sz" "$f"
+done
+"""
+
+
+def list_home(slug: str, rel: str = "") -> list[dict]:
+    target = safe_home_path(rel)
+    c = client().containers.get(desktop_container_name(slug))
+    res = c.exec_run(["bash", "-c", LIST_SCRIPT, "--", target], demux=False)
+    out = (res.output or b"").decode("utf-8", errors="replace")
+    if "__MISSING__" in out:
+        raise FileNotFoundError(rel or HOME_PATH)
+    entries = []
+    for line in out.splitlines():
+        parts = line.split("|", 2)
+        if len(parts) != 3:
+            continue
+        kind, size, name = parts
+        entries.append({"name": name, "type": kind, "size": int(size or 0)})
+    entries.sort(key=lambda e: (e["type"] != "dir", e["name"].lower()))
+    return entries
+
+
+def upload_to_home(slug: str, rel_dir: str, filename: str, data: bytes) -> str:
+    """Drop one file into the machine's home. Owned by `cua`, or the desktop
+    session could not open what you just handed it."""
+    if "/" in filename or filename in ("", ".", ".."):
+        raise PathOutsideHome(f"bad filename '{filename}'")
+    target_dir = safe_home_path(rel_dir)
+
+    buf = io.BytesIO()
+    with tarfile.open(fileobj=buf, mode="w") as tar:
+        info = tarfile.TarInfo(name=filename)
+        info.size = len(data)
+        info.mtime = int(time.time())
+        info.mode = 0o644
+        info.uid = info.gid = 1000          # the desktop runs as cua (1000)
+        info.uname = info.gname = "cua"
+        tar.addfile(info, io.BytesIO(data))
+    buf.seek(0)
+
+    c = client().containers.get(desktop_container_name(slug))
+    if not c.put_archive(target_dir, buf.getvalue()):
+        raise RuntimeError("docker refused the upload")
+    return os.path.join(target_dir, filename)
+
+
+def download_from_home(slug: str, rel: str) -> tuple[bytes, str, bool]:
+    """Return (bytes, download name, is_tar). Directories come back as a tar,
+    single files as themselves."""
+    target = safe_home_path(rel)
+    c = client().containers.get(desktop_container_name(slug))
+    stream, stat = c.get_archive(target)
+    raw = b"".join(stream)
+
+    with tarfile.open(fileobj=io.BytesIO(raw)) as tar:
+        members = [m for m in tar.getmembers() if m.isfile()]
+        base = os.path.basename(target) or "home"
+        # A single file is what people expect back as a file, not a tarball.
+        if len(members) == 1 and members[0].name == base:
+            fh = tar.extractfile(members[0])
+            return (fh.read() if fh else b""), base, False
+    return raw, f"{base}.tar", True
