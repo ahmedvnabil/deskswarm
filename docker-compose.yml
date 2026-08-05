@@ -57,6 +57,25 @@ services:
       - desktop-3
     restart: unless-stopped
 
+  desktop-4:
+    image: trycua/xfce-cua:latest
+    environment:
+      VNC_PW: ${VNC_PASSWORD:-cua}
+    ports:
+      - "${DESKTOP_4_NOVNC_PORT:-6904}:6901"
+    restart: unless-stopped
+
+  bridge-4:
+    build: ./bridge
+    environment:
+      VNC_HOST: desktop-4
+      VNC_PORT: 5901
+      VNC_PASSWORD: ${VNC_PASSWORD:-cua}
+      BRIDGE_PORT: 8000
+    depends_on:
+      - desktop-4
+    restart: unless-stopped
+
   dashboard:
     build: ./dashboard
     environment:
@@ -74,6 +93,7 @@ services:
       - bridge-1
       - bridge-2
       - bridge-3
+      - bridge-4
     restart: unless-stopped
 
 volumes:

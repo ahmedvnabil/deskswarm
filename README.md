@@ -92,7 +92,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7861`. You should see 3 desktops (green = healthy),
+Open `http://localhost:7861`. You should see 4 desktops (green = healthy),
 a task box, an analytics panel, and an empty task log. Send a task and watch
 its status go `pending → running (screenshot) → completed` live, or click
 into the Live View section to embed a desktop's screen right on the page.
@@ -127,7 +127,7 @@ package for what's natively supported.
 
 ## Scaling the fleet
 
-The default `docker-compose.yml` ships 3 desktop+bridge pairs. To add more:
+The default `docker-compose.yml` ships 4 desktop+bridge pairs. To add more:
 
 1. Duplicate a `desktop-N` / `bridge-N` block in `docker-compose.yml`,
    incrementing the number and picking a free host port for
