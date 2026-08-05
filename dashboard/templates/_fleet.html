@@ -31,8 +31,12 @@
       {% else %}
       <div class="absolute inset-0 flex items-center justify-center text-center">
         <div>
-          <div class="text-red-400 text-xs font-semibold">bridge down</div>
+          <div class="text-red-400 text-xs font-semibold">
+            {{ 'containers missing' if c.desktop_state == 'missing' else 'bridge down' }}
+          </div>
           <div class="text-[10px] text-neutral-600 mt-0.5">{{ c.desktop_state }}/{{ c.bridge_state }}</div>
+          <button onclick="event.stopPropagation(); restartComputer({{ c.id }}, '{{ c.name|e }}')"
+            class="mt-2 bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-1 rounded">restart</button>
         </div>
       </div>
       {% endif %}

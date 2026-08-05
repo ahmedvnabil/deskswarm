@@ -306,6 +306,16 @@
   }
   refreshSnapshots();
 
+  async function restartComputer(id, name){
+    if(!confirm(`Recreate the containers for "${name}"?\n\n` +
+                'It keeps its name, port and snapshot. Anything unsaved on its ' +
+                'desktop is lost.')) return;
+    const r = await fetch(`/api/v1/computers/${id}/restart`, {method: 'POST'});
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'restart failed');
+    htmx.trigger('#fleet-status','refresh');
+  }
+
   async function snapshotComputer(id, name){
     const snap = prompt(
       `Save "${name}" as a reusable snapshot.\n\n` +

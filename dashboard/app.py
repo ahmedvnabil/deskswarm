@@ -610,6 +610,28 @@ def api_computers_rename(comp_id: int):
     return jsonify({"ok": True, "data": {"id": comp_id, "name": new_name}, "error": None})
 
 
+@app.route("/api/v1/computers/<int:comp_id>/restart", methods=["POST"])
+@require_token
+def api_computer_restart(comp_id: int):
+    """Recreate a machine's containers in place.
+
+    A machine can end up with its containers gone or wedged — the host
+    rebooted, someone ran `docker rm`, the bridge died. Before this the only
+    cure was delete-and-recreate, which lost the machine's name and port.
+    """
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    try:
+        fleet.destroy_computer(comp["slug"])
+        fleet.create_computer(comp["slug"], comp["novnc_port"],
+                              comp["vnc_password"], image=comp["image"])
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None,
+                        "error": f"failed to restart: {exc}"}), 500
+    return jsonify({"ok": True, "data": {"id": comp_id, "restarted": True}, "error": None})
+
+
 @app.route("/api/v1/computers/<int:comp_id>", methods=["DELETE"])
 @require_token
 def api_computers_delete(comp_id: int):
