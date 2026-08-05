@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        # The dashboard's own runtime deps, minus the heavy cua SDKs — the
+        # tests stub Docker and never start an agent.
+        run: pip install flask gunicorn docker requests pytest
+      - run: pytest tests -q
+
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the dashboard image
+        run: docker build -t deskswarm-dashboard:ci dashboard
+      - name: Build the bridge image
+        run: docker build -t deskswarm-bridge:ci bridge
+      - name: Compose config is valid
+        run: |
+          cp .env.example .env
+          docker compose config >/dev/null

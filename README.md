@@ -3,6 +3,7 @@
 [![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Docker Compose](https://img.shields.io/badge/deploy-docker%20compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
 [![Built on cua](https://img.shields.io/badge/built%20on-cua-orange)](https://github.com/trycua/cua)
+[![CI](https://github.com/ahmedvnabil/deskswarm/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmedvnabil/deskswarm/actions/workflows/ci.yml)
 [![Upstream bug filed](https://img.shields.io/badge/upstream%20bug-trycua%2Fcua%20%232869-red)](https://github.com/trycua/cua/issues/2869)
 
 **Self-hosted fleet of AI-controlled desktops, with a dashboard to dispatch
@@ -206,19 +207,25 @@ full writeup in [`docs/UPSTREAM_CUA_BUG.md`](docs/UPSTREAM_CUA_BUG.md).
 
 ## Security
 
-- No auth by default on read endpoints; set `DASHBOARD_TOKEN` to require a
-  bearer token on task creation.
-- No TLS, no rate limiting. Don't expose this directly to the internet —
-  put it behind a reverse proxy on a trusted network or VPN.
-- Task descriptions are executed by an AI agent with real desktop control
-  (mouse, keyboard, any installed app). Don't give it tasks involving
-  credentials or payment details, and don't expose the dashboard to anyone
-  you wouldn't trust to run arbitrary commands on a sandboxed machine.
-- **The dashboard mounts the Docker socket** so it can create and destroy
-  machines. That is equivalent to root on the host: anyone who can reach the
-  dashboard can start containers on it. Set `DASHBOARD_TOKEN` and keep it on
-  a trusted network. The per-machine terminal runs as root *inside a desktop
-  container* — that part is sandboxed, but the socket mount is not.
+deskswarm gives an agent a real desktop and gives you a root shell on it from
+a web page, so read [`SECURITY.md`](SECURITY.md) before exposing it. The short
+version:
+
+- **Set `DASHBOARD_TOKEN`** — without it every mutating endpoint is open to
+  anyone who can reach the port.
+- **Keep it off the public internet.** No TLS, no rate limiting.
+- **The dashboard mounts the Docker socket**, which it needs in order to create
+  machines. That is root on the host — treat the dashboard as a privileged
+  admin surface, not an app you share a link to.
+- Cross-site state-changing requests are rejected (this was an exploitable
+  path to root command execution before it was fixed; see `SECURITY.md`).
+- Don't put secrets in task descriptions — they are stored in history and sent
+  to your model provider.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). `pytest tests -q` runs without
+Docker, an agent, or a desktop.
 
 ## Architecture notes
 

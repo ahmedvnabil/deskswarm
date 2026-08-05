@@ -12,9 +12,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # runtime but are NOT declared as install dependencies upstream (as of
 # cua-computer-server 0.3.42). See docs/UPSTREAM_CUA_BUG.md.
 RUN pip install --no-cache-dir \
-    cua-computer-server \
-    twisted \
-    vncdotool
+    'cua-computer-server==0.3.*' \
+    'twisted==26.*' \
+    'vncdotool==1.3.*'
 
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

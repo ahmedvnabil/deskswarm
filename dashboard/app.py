@@ -11,8 +11,10 @@ import sys
 import threading
 import time
 from datetime import datetime, timedelta, timezone
+from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from pathlib import Path
+from urllib.parse import urlparse
 
 from flask import Flask, Response, g, jsonify, render_template, request
 
@@ -32,6 +34,45 @@ MAX_BULK_CREATE = int(os.environ.get("DESKSWARM_MAX_BULK_CREATE", "25"))
 PAGE_SIZE = int(os.environ.get("DESKSWARM_PAGE_SIZE", "25"))
 
 app = Flask(__name__)
+
+# Picking the next free port and starting the container is a read-then-write:
+# two concurrent creates would otherwise choose the same port and the second
+# container would fail to bind.
+_create_lock = threading.Lock()
+
+# A task costs a subprocess plus an agent session. Without a ceiling, "run on
+# the whole fleet" across a large fleet would start them all at once.
+MAX_CONCURRENT_TASKS = int(os.environ.get("DESKSWARM_MAX_CONCURRENT_TASKS", "8"))
+_task_slots = threading.BoundedSemaphore(MAX_CONCURRENT_TASKS)
+
+
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
+@app.before_request
+def block_cross_site():
+    """Reject state-changing requests that a *browser* sends from another site.
+
+    Without this, any page the user visits could auto-submit a plain HTML form
+    at this dashboard. Form posts are "simple requests", so they are sent with
+    no CORS preflight to stop them — and POST /computers/<id>/exec runs a shell
+    command as root inside a machine. That is remote code execution triggered
+    by nothing more than visiting a web page.
+
+    Browsers always attach Origin to a cross-site state-changing request, so
+    rejecting a *present but foreign* Origin closes the hole. Non-browser
+    clients (curl, n8n, cron) send no Origin at all and keep working; they are
+    not a CSRF vector because no one else controls them.
+    """
+    if request.method in SAFE_METHODS:
+        return None
+    source = request.headers.get("Origin") or request.headers.get("Referer")
+    if not source:
+        return None
+    if urlparse(source).netloc != request.host:
+        return jsonify({"ok": False, "data": None,
+                        "error": "cross-site request blocked"}), 403
+    return None
 
 
 def now_iso():
@@ -191,13 +232,23 @@ def computer_view(comp: dict, with_state: bool = True) -> dict:
 
 def check_bridge(view: dict) -> bool:
     try:
-        out = subprocess.run(
-            ["curl", "-sS", "-m", "3", f"http://{view['bridge_host']}:{view['bridge_port']}/status"],
-            capture_output=True, text=True, timeout=5,
-        )
-        return out.returncode == 0 and '"status":"ok"' in out.stdout
+        r = requests.get(f"http://{view['bridge_host']}:{view['bridge_port']}/status", timeout=3)
+        return r.status_code == 200 and r.json().get("status") == "ok"
     except Exception:  # noqa: BLE001
         return False
+
+
+def computer_views(comps: list[dict]) -> list[dict]:
+    """Build the view for every machine at once.
+
+    Each machine costs two Docker inspects plus a bridge probe. Done serially
+    that is a few hundred milliseconds per machine, so a wall of 24 would take
+    longer to render than its own 5s refresh interval. Order is preserved.
+    """
+    if not comps:
+        return []
+    with ThreadPoolExecutor(max_workers=min(16, len(comps))) as pool:
+        return list(pool.map(computer_view, comps))
 
 
 # -------------------------------------------------------------------- tasks
@@ -233,6 +284,16 @@ def get_task_row(task_id: int) -> dict | None:
 
 
 def run_task_worker(task_id: int, bridge_host: str, bridge_port: int, description: str):
+    # Queue behind the slot limit; the row stays PENDING and visible until a
+    # slot frees up, so a fleet-wide dispatch drains instead of stampeding.
+    with _task_slots:
+        _run_task_worker(task_id, bridge_host, bridge_port, description)
+
+
+def _run_task_worker(task_id: int, bridge_host: str, bridge_port: int, description: str):
+    current = get_task_row(task_id)
+    if current and current.get("status") == "CANCELLED":
+        return  # cancelled while it was still queued
     update_task_row(task_id, status="RUNNING", started_at=now_iso(), current_action="starting")
     try:
         proc = subprocess.Popen(
@@ -359,11 +420,9 @@ def active_task_by_computer() -> dict[str, dict]:
 @app.route("/partials/fleet")
 def partial_fleet():
     busy = active_task_by_computer()
-    computers = []
-    for c in list_computers():
-        view = computer_view(c)
+    computers = computer_views(list_computers())
+    for view in computers:
         view["active_task"] = busy.get(view["name"])
-        computers.append(view)
     return render_template("_fleet.html", computers=computers,
                            shot_token=int(time.time() // SHOT_TTL))
 
@@ -424,7 +483,7 @@ def partial_analytics():
 
 @app.route("/api/v1/computers", methods=["GET"])
 def api_computers_list():
-    return jsonify({"ok": True, "data": [computer_view(c) for c in list_computers()], "error": None})
+    return jsonify({"ok": True, "data": computer_views(list_computers()), "error": None})
 
 
 RANGE_RE = re.compile(r"\{(\d+)\.\.(\d+)\}")
@@ -465,10 +524,11 @@ def create_one_computer(conn, name: str, image: str | None) -> dict:
     if clash:
         raise ValueError(f"'{name}' already exists")
 
-    reserved = {r["novnc_port"] for r in conn.execute("SELECT novnc_port FROM computers")}
-    port = fleet.next_novnc_port(reserved)
-    password = fleet.random_vnc_password()
-    fleet.create_computer(slug, port, password, image=image)
+    with _create_lock:
+        reserved = {r["novnc_port"] for r in conn.execute("SELECT novnc_port FROM computers")}
+        port = fleet.next_novnc_port(reserved)
+        password = fleet.random_vnc_password()
+        fleet.create_computer(slug, port, password, image=image)
 
     conn.execute(
         "INSERT INTO computers (name, slug, novnc_port, vnc_password, image, created_at) "
@@ -483,7 +543,7 @@ def create_one_computer(conn, name: str, image: str | None) -> dict:
 @app.route("/api/v1/computers", methods=["POST"])
 @require_token
 def api_computers_create():
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     name = (payload.get("name") or "").strip()
     snapshot_name = (payload.get("snapshot") or "").strip()
     if not name:
@@ -531,7 +591,7 @@ def api_computers_rename(comp_id: int):
     comp = get_computer(comp_id)
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     new_name = (payload.get("name") or "").strip()
     if not new_name:
         return jsonify({"ok": False, "data": None, "error": "name is required"}), 400
@@ -598,7 +658,7 @@ def api_computers_exec(comp_id: int):
     comp = get_computer(comp_id)
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     command = (payload.get("command") or "").strip()
     if not command:
         return jsonify({"ok": False, "data": None, "error": "command is required"}), 400
@@ -611,7 +671,7 @@ def api_computers_exec(comp_id: int):
 
 @app.route("/api/v1/fleet")
 def api_fleet():
-    return jsonify({"ok": True, "data": [computer_view(c) for c in list_computers()], "error": None})
+    return jsonify({"ok": True, "data": computer_views(list_computers()), "error": None})
 
 
 # --------------------------------------------------------------- screenshots
@@ -691,7 +751,7 @@ def api_computer_snapshot(comp_id: int):
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
 
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     name = (payload.get("name") or "").strip()
     if not name:
         return jsonify({"ok": False, "data": None, "error": "name is required"}), 400
@@ -764,7 +824,7 @@ def api_schedules_list():
 @app.route("/api/v1/schedules", methods=["POST"])
 @require_token
 def api_schedules_create():
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     description = (payload.get("description") or "").strip()
     desktop = (payload.get("desktop") or "all").strip()
     kind = (payload.get("kind") or "interval").strip()
@@ -806,7 +866,7 @@ def api_schedules_create():
 @app.route("/api/v1/schedules/<int:sched_id>", methods=["PATCH"])
 @require_token
 def api_schedule_toggle(sched_id: int):
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     conn = connect()
     row = conn.execute("SELECT * FROM schedules WHERE id = ?", (sched_id,)).fetchone()
     if not row:
@@ -944,7 +1004,7 @@ def dispatch_task(target: str, description: str) -> list[int]:
 @app.route("/api/v1/tasks", methods=["POST"])
 @require_token
 def api_tasks_create():
-    payload = request.get_json(silent=True) or request.form
+    payload = request.get_json(silent=True) or {}
     description = (payload.get("description") or "").strip()
     target = payload.get("desktop") or "all"
 
