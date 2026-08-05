@@ -48,6 +48,36 @@ no extra setting.
 There's a `Makefile` if you prefer: `make up`, `make logs`, `make check`,
 `make backup`, `make doctor`.
 
+### On a Mac, as an app
+
+`./mac/build-app.sh` builds **DeskSwarm.app** next to this README — a normal
+double-clickable Mac app with a Dock icon. It starts your Docker runtime
+(OrbStack or Docker Desktop) if it isn't running, brings the stack up, waits
+for `/health`, then opens the dashboard in its own window with no browser
+chrome and no Terminal. Drag it to the Dock and that's the whole workflow.
+
+It builds the image on first launch and after you edit anything under
+`dashboard/`; otherwise it reattaches to the running container instead of
+restarting it. If port 7861 is taken by something else it moves to the next
+free one. Machines still run as Linux containers under your Docker runtime —
+the app is the control panel, not the swarm.
+
+Two `.command` files sit alongside it: **Start DeskSwarm** does the same thing
+in a visible Terminal that follows the log (use it when a launch fails), and
+**Stop DeskSwarm** runs `docker compose down`. Launch problems are logged to
+`~/Library/Logs/DeskSwarm/launch.log`.
+
+The bundle hardcodes this checkout's path, so rerun `./mac/build-app.sh` after
+moving or recloning the project.
+
+**Keep the project out of `~/Downloads`, `~/Desktop` and `~/Documents`.** macOS
+gives an app launched from Finder no read access to those folders, and the
+failure is silent: `open` reports success and nothing runs — no window, no
+error, no log line. `~/Developer` is fine. `build-app.sh` refuses to build in a
+protected folder rather than hand you an app that quietly does nothing. The
+`.command` files work anywhere, since a Terminal passes its own permissions
+down to them.
+
 ### If something doesn't work
 
 | symptom | cause | fix |
