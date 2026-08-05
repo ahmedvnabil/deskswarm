@@ -22,7 +22,7 @@ management + dashboard layer on top.
 </p>
 
 <p align="center">
-  <sub>Fleet status, analytics, live view, and a task log with cancel/retry — all in one page, all live-updating.</sub>
+  <sub>Add machines by name, shell into any of them, watch what each agent is doing, and schedule repeat work — one page, live-updating.</sub>
 </p>
 
 ## Features
@@ -57,7 +57,10 @@ management + dashboard layer on top.
 - **Live progress, not just a final answer** — while a task runs, the log
   shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
   ...), updated after every turn.
-- **Live monitoring** — embed any machine's live noVNC screen inline.
+- **Live monitoring** — embed any machine's live noVNC screen inline. Each
+  machine has its own VNC password and the dashboard connects for you, so
+  "screen" is one click (the password is shown in the machine's apps panel
+  if you'd rather open noVNC directly).
 - **Analytics & reports** — success rate, cost, average duration, a per-day
   chart, a per-machine breakdown, and CSV export of the full history.
 

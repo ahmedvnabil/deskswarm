@@ -114,6 +114,11 @@ Runs a shell command inside the desktop container as **root** — this is what
 the dashboard's terminal uses, and how you provision a machine with extra
 software.
 
+Because this runs as root while the desktop session runs as `cua`, any GUI
+app you launch here (rather than install) can leave root-owned files under
+`/home/cua` that then break that app for the desktop user. After provisioning,
+finish with `chown -R cua:cua /home/cua`.
+
 **Body**: `{ "command": "apt-get install -y xdotool" }`
 
 ```json
