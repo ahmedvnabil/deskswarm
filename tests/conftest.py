@@ -1,5 +1,7 @@
+import io
 import os
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
 
@@ -18,9 +20,11 @@ def client(monkeypatch):
     """
     tmp = tempfile.TemporaryDirectory()
     os.environ["DESKSWARM_DB_PATH"] = str(Path(tmp.name) / "test.db")
+    os.environ["DESKSWARM_BACKUP_DIR"] = str(Path(tmp.name) / "backups")
     os.environ.pop("DASHBOARD_TOKEN", None)
+    os.environ["DESKSWARM_DISABLE_SCHEDULER"] = "1"
 
-    for mod in ("app", "fleet"):
+    for mod in ("app", "audit", "backups", "db", "fleet", "shares"):
         sys.modules.pop(mod, None)
 
     import fleet
@@ -62,6 +66,42 @@ def client(monkeypatch):
                         lambda slug, text: (clipboards.__setitem__(slug, text),
                                             pasted.append((slug, text))))
 
+    # A stand-in home directory, kept as {path: bytes}. Backup tars it, restore
+    # replaces it — so the streaming, the gzip and the tar sanitising all run
+    # for real and only Docker is faked.
+    homes: dict[str, dict[str, bytes]] = {}
+
+    def home_archive_stream(slug):
+        buf = io.BytesIO()
+        with tarfile.open(fileobj=buf, mode="w") as tar:
+            for name, data in homes.get(slug, {}).items():
+                info = tarfile.TarInfo(f"cua/{name}")
+                info.size = len(data)
+                tar.addfile(info, io.BytesIO(data))
+        return iter([buf.getvalue()])
+
+    def restore_home(slug, tar_path, wipe=True):
+        if wipe:
+            homes[slug] = {}
+        with tarfile.open(tar_path) as tar:
+            for m in tar.getmembers():
+                # put_archive unpacks into /home, so members arrive as `cua/x`.
+                key = m.name.removeprefix("cua/")
+                if m.issym() or m.islnk():
+                    # Recorded, not skipped: a symlink that escapes the home
+                    # directory is every bit as dangerous as a '..' path, and
+                    # dropping it here would make the test that checks for it
+                    # pass no matter what the code does.
+                    homes.setdefault(slug, {})[key] = f"->{m.linkname}".encode()
+                elif m.isfile():
+                    fh = tar.extractfile(m)
+                    homes.setdefault(slug, {})[key] = fh.read() if fh else b""
+
+    monkeypatch.setattr(fleet, "home_archive_stream", home_archive_stream)
+    monkeypatch.setattr(fleet, "restore_home", restore_home)
+    monkeypatch.setattr(fleet, "is_running",
+                        lambda slug: states.get(slug, "running") == "running")
+
     import app as app_module
 
     monkeypatch.setattr(app_module, "check_bridge", lambda view: True)
@@ -82,5 +122,6 @@ def client(monkeypatch):
     c.states = states
     c.clipboards = clipboards
     c.pasted = pasted
+    c.homes = homes
     yield c
     tmp.cleanup()

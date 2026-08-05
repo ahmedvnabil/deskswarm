@@ -111,6 +111,12 @@
         title="{{ 'let agents use this machine again' if c.reserved else 'reserve for yourself — agents will skip it' }}"
         class="{{ 'bg-sky-600/80 hover:bg-sky-600' if c.reserved else 'bg-neutral-900/90 hover:bg-neutral-800' }} text-[10px] px-2 py-1 rounded">
         {{ 'unreserve' if c.reserved else 'reserve' }}</button>
+      <button onclick="event.stopPropagation(); openBackups({{ c.id }}, '{{ c.name|e }}')"
+        title="back up this machine's home, or put a backup back"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">save</button>
+      <button onclick="event.stopPropagation(); openShare({{ c.id }}, '{{ c.name|e }}')"
+        title="give someone a link to this machine only"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">share</button>
       <button onclick="event.stopPropagation(); {{ 'wakeComputer' if c.sleeping else 'sleepComputer' }}({{ c.id }}, '{{ c.name|e }}')"
         title="{{ 'start it back up' if c.sleeping else 'stop it and free its memory — files are kept, open windows are not' }}"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">

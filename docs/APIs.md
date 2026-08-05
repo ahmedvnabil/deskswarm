@@ -243,6 +243,130 @@ machine per window no matter how often the page re-renders.
 **Errors**: `404` unknown machine, `503` the screen could not be captured
 (bridge down or mid-restart).
 
+## Backups
+
+A backup is one machine's whole home directory, gzipped, on the dashboard's
+data volume. It is not a snapshot: a **snapshot** captures installed software
+(the image), a **backup** captures your files (the volume).
+
+### `GET /api/v1/computers/<id>/backups`
+
+```json
+{ "ok": true, "data": [
+  { "name": "20260805T181233Z.tar.gz", "machine": "work-1",
+    "bytes": 41288342, "created_at": "2026-08-05T18:12:33+00:00" }], "error": null }
+```
+
+### `POST /api/v1/computers/<id>/backups`
+
+Writes a new one — `201 Created`. Works on a sleeping machine without waking
+it. Oldest are pruned past `DESKSWARM_BACKUP_KEEP`.
+
+**Errors**: `404` unknown machine, `507` disk below `DESKSWARM_MIN_FREE_DISK_GB`.
+
+### `GET /api/v1/computers/<id>/backups/<name>`
+
+Downloads it. Streamed, so a large one doesn't sit in memory.
+
+### `DELETE /api/v1/computers/<id>/backups/<name>`
+
+### `POST /api/v1/computers/<id>/restore`
+
+**Body**: `{ "backup": "20260805T181233Z.tar.gz", "from": "<other machine>" }`
+
+`from` restores another machine's backup onto this one — how you clone a
+machine's data, or move it to a new host.
+
+Restoring **replaces** the home directory: anything not in the backup is
+removed, so "restore" doesn't quietly mean "merge". The machine is stopped for
+the duration and started again afterwards if it was running — open windows are
+lost, files are not.
+
+```json
+{ "ok": true, "data": { "machine": "work-1", "entries": 4213, "restarted": true }, "error": null }
+```
+
+### `POST /api/v1/computers/<id>/restore/upload`
+
+Same, from a `multipart/form-data` file you supply — this is how a machine is
+rebuilt on a different host. The archive is treated as untrusted: members
+whose paths climb out of the home directory, and symlinks pointing outside it,
+are dropped rather than unpacked, and everything restored is owned by the
+desktop user.
+
+**Errors**: `400` missing or unreadable file.
+
+### Daily backups
+
+Set `DESKSWARM_BACKUP_DAILY_AT=HH:MM` (UTC) to back up every machine once a
+day. With several gunicorn workers only one fires it.
+
+## Shares
+
+A share is a link to exactly one machine, with an expiry and a revoke —
+instead of handing someone the dashboard, which is every machine plus a root
+shell on each.
+
+### `POST /api/v1/computers/<id>/shares`
+
+**Body**: `{ "label": "sara", "mode": "watch", "hours": 24 }` — `201 Created`.
+
+```json
+{ "ok": true, "data": {
+  "id": 2, "label": "sara", "mode": "watch", "status": "live",
+  "url": "http://dashboard:7861/s/UEhQ…", "expires_at": "2026-08-06T18:00:00+00:00",
+  "uses": 0 }, "error": null }
+```
+
+| mode | what the guest gets | what revoking does |
+|---|---|---|
+| `watch` | the screen, served through the link, refreshed every few seconds | stops it completely and at once |
+| `control` | the machine's own noVNC embedded — keyboard and mouse | closes the page, but their browser was already given the machine's screen password |
+
+For `control`, the honest remedy is
+`POST /api/v1/computers/<id>/rotate-password`, which gives the machine a new
+screen password, restarts it, and revokes every control share on it. Any saved
+noVNC URL stops working.
+
+**Errors**: `400` unknown mode, or `hours` outside 1…`DESKSWARM_SHARE_MAX_HOURS`.
+
+### `GET /api/v1/shares` · `DELETE /api/v1/shares/<id>`
+
+List (with `status`: `live` / `expired` / `revoked`, use count and last use)
+and revoke. Revoking a `control` share returns a `note` saying what it can't
+retract.
+
+### `GET /s/<token>` · `GET /s/<token>/screen.png`
+
+The guest's page and, for `watch`, its screen. No authentication beyond the
+token; nothing else in the fleet is reachable from it. A revoked, expired or
+invented token gets the same `404` — which of the three it is would tell a
+stranger whether to keep guessing.
+
+## Audit
+
+### `GET /api/v1/audit`
+
+Every state-changing request, newest first, `DESKSWARM_PAGE_SIZE` per page.
+Filter with `?target=<machine>` / `?actor=share:` / `?page=`.
+
+```json
+{ "ok": true, "data": [
+  { "id": 91, "at": "2026-08-05T18:14:02+00:00", "actor": "share:sara",
+    "source_ip": "10.0.0.9", "action": "GET /s/<token> (watch)",
+    "target": "reception", "detail": "opened the share page",
+    "status": 200, "ok": 1 }], "meta": { "pages": 4 }, "error": null }
+```
+
+Reads aren't recorded — polling would drown everything else — except a guest
+opening a share, which is the read that matters. Contents aren't either: the
+shell command is kept because that is the point of the log, but clipboard text
+and file bodies are only ever counted.
+
+Entries older than `DESKSWARM_AUDIT_RETENTION_DAYS` are dropped daily.
+
+### `GET /api/v1/audit/export.csv`
+
 ## `GET /api/v1/fleet`
 
 Alias of `GET /api/v1/computers`, kept for convenience.

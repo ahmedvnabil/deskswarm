@@ -8,6 +8,8 @@ import signal
 import sqlite3
 import subprocess
 import sys
+import tarfile
+import tempfile
 import threading
 import time
 from datetime import datetime, timedelta, timezone
@@ -16,12 +18,17 @@ from functools import wraps
 from pathlib import Path
 from urllib.parse import urlparse
 
-from flask import Flask, Response, g, jsonify, render_template, request
+from flask import (Flask, Response, abort, g, has_request_context, jsonify,
+                   render_template, request)
 
 import requests
 
+import audit
+import backups
+import db
 import fleet
 import guards
+import shares
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("DESKSWARM_DB_PATH", str(BASE_DIR / "data" / "fleet.db")))
@@ -76,6 +83,36 @@ def block_cross_site():
     return None
 
 
+@app.after_request
+def write_audit(response):
+    """Record every state-changing request, once, in one place.
+
+    Deliberately a hook rather than a call inside each handler: a log you have
+    to remember to write is a log with holes, and the holes land in whichever
+    endpoint was added last — usually the interesting one.
+
+    Handlers add context by setting `g.audit_target` / `g.audit_detail`. What
+    they must not put there is content: the shell command is recorded because
+    that is the whole point, but clipboard text and file bodies are only ever
+    counted.
+    """
+    try:
+        if audit.should_record(request.method, request.path):
+            audit.record(
+                f"{request.method} {request.path}",
+                actor=getattr(g, "actor", "dashboard"),
+                source_ip=request.headers.get("X-Forwarded-For",
+                                              request.remote_addr or "").split(",")[0].strip(),
+                target=getattr(g, "audit_target", None),
+                detail=getattr(g, "audit_detail", None),
+                status=response.status_code,
+                ok=response.status_code < 400,
+            )
+    except Exception:  # noqa: BLE001
+        pass          # an audit failure must never break the request itself
+    return response
+
+
 def now_iso():
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -101,15 +138,14 @@ def get_db():
 
 @app.teardown_appcontext
 def close_db(exception=None):
-    db = g.pop("db", None)
-    if db is not None:
-        db.close()
+    conn = g.pop("db", None)      # not `db` — that is the module now
+    if conn is not None:
+        conn.close()
 
 
-def connect():
-    conn = sqlite3.connect(DB_PATH, timeout=10)
-    conn.row_factory = sqlite3.Row
-    return conn
+# One definition, shared with the feature modules, which need connections of
+# their own outside a request context.
+connect = db.connect
 
 
 def init_db():
@@ -187,6 +223,11 @@ def init_db():
         # Machines the idle sweeper must leave alone whatever the timeout says.
         conn.execute("ALTER TABLE computers ADD COLUMN no_suspend INTEGER NOT NULL DEFAULT 0")
 
+    audit.init(conn)
+    shares.init(conn)
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)")
+
     existing = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
     for col, decl in (("current_action", "TEXT"), ("pid", "INTEGER"), ("started_at", "TEXT")):
         if col not in existing:
@@ -208,7 +249,13 @@ def get_computer(comp_id: int) -> dict | None:
     conn = connect()
     row = conn.execute("SELECT * FROM computers WHERE id = ?", (comp_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    if not row:
+        return None
+    # Nearly every per-machine handler starts here, so naming the machine for
+    # the audit log once means no handler has to remember to do it.
+    if has_request_context():
+        g.audit_target = row["name"]
+    return dict(row)
 
 
 def get_computer_by_name(name: str) -> dict | None:
@@ -614,6 +661,14 @@ def api_computers_create():
         code = 409 if errors and "already exists" in errors[0]["error"] else 500
         return jsonify({"ok": False, "data": {"errors": errors}, "error": msg}), code
 
+    # Creation is the one mutation with no machine to look up beforehand, so
+    # the audit target has to be named here rather than by get_computer.
+    g.audit_target = names[0] if len(names) == 1 else None
+    g.audit_detail = (f"created {len(created)}" +
+                      (f", {len(errors)} failed" if errors else "") +
+                      (f" ({', '.join(c['name'] for c in created[:8])})"
+                       if len(names) > 1 else ""))
+
     # Single-name requests keep returning the bare object they always did.
     data = created[0] if len(names) == 1 else {"created": created, "errors": errors}
     return jsonify({"ok": True, "data": data, "error": None}), 201
@@ -808,6 +863,9 @@ def api_clipboard_set(comp_id: int):
     # "paste" also presses Ctrl+V, which is what makes Arabic typing work at
     # all — see fleet.paste_text.
     press = str(payload.get("paste", "")).lower() in ("1", "true", "yes")
+    # Size and intent, not the text — an audit trail that archives everything
+    # anyone pasted is its own kind of problem.
+    g.audit_detail = f"{len(text.encode('utf-8'))} bytes, paste={press}"
     try:
         (fleet.paste_text if press else fleet.set_clipboard)(comp["slug"], text)
     except fleet.ClipboardUnavailable as exc:
@@ -871,6 +929,7 @@ def api_computers_exec(comp_id: int):
     command = (payload.get("command") or "").strip()
     if not command:
         return jsonify({"ok": False, "data": None, "error": "command is required"}), 400
+    g.audit_detail = command[:500]
     try:
         result = fleet.exec_in_desktop(comp["slug"], command)
     except Exception as exc:  # noqa: BLE001
@@ -1284,9 +1343,64 @@ def idle_tick() -> None:
     conn.close()
 
 
+def claim_daily(key: str, at_time: str) -> bool:
+    """True at most once per UTC day, for whichever worker gets there first.
+
+    Same conditional-UPDATE trick the task scheduler uses: several gunicorn
+    workers run this loop, and a fleet backup that fires once per worker would
+    be three times the disk and three times the wall clock.
+    """
+    try:
+        hh, mm = [int(x) for x in at_time.split(":", 1)]
+    except (ValueError, AttributeError):
+        return False
+    now = datetime.now(timezone.utc)
+    if (now.hour, now.minute) < (hh, mm):
+        return False
+    today = now.date().isoformat()
+
+    conn = connect()
+    try:
+        row = conn.execute("SELECT value FROM meta WHERE key = ?", (key,)).fetchone()
+        if row and row["value"] >= today:
+            return False
+        if row:
+            claimed = conn.execute(
+                "UPDATE meta SET value = ? WHERE key = ? AND value = ?",
+                (today, key, row["value"]))
+        else:
+            claimed = conn.execute(
+                "INSERT OR IGNORE INTO meta (key, value) VALUES (?, ?)", (key, today))
+        conn.commit()
+        return claimed.rowcount == 1
+    finally:
+        conn.close()
+
+
+def maintenance_tick() -> None:
+    """Daily housekeeping: back the fleet up, then trim what has aged out."""
+    if backups.DAILY_AT and claim_daily("backup_daily", backups.DAILY_AT):
+        for comp in list_computers():
+            try:
+                meta = backups.create(comp["slug"])
+                audit.record("backup (scheduled)", target=comp["name"],
+                             detail=f"{meta['name']} ({meta['bytes']} bytes)")
+            except Exception as exc:  # noqa: BLE001
+                audit.record("backup (scheduled)", target=comp["name"],
+                             detail=str(exc)[:300], ok=False)
+
+    if claim_daily("housekeeping", "03:00"):
+        conn = connect()
+        try:
+            audit.prune(conn)
+            shares.purge_expired(conn)
+        finally:
+            conn.close()
+
+
 def scheduler_loop() -> None:
     while True:
-        for tick in (scheduler_tick, idle_tick):
+        for tick in (scheduler_tick, idle_tick, maintenance_tick):
             try:
                 tick()
             except Exception:  # noqa: BLE001
@@ -1331,6 +1445,337 @@ def api_prune():
         "disk_free_gb_before": before,
         "disk_free_gb_after": guards.disk_free_gb(),
     }})
+
+
+# ----------------------------------------------------------------- backups
+
+def _backup_or_404(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return None, (jsonify({"ok": False, "data": None, "error": "not found"}), 404)
+    return comp, None
+
+
+@app.route("/api/v1/computers/<int:comp_id>/backups", methods=["GET"])
+def api_backups_list(comp_id: int):
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    return jsonify({"ok": True, "data": backups.listing(comp["slug"]), "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/backups", methods=["POST"])
+@require_token
+def api_backup_create(comp_id: int):
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    ok, msg = guards.check_disk()
+    if not ok:
+        return jsonify({"ok": False, "data": None, "error": msg}), 507
+    try:
+        meta = backups.create(comp["slug"])
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"backup failed: {exc}"}), 500
+    g.audit_detail = f"{meta['name']} ({meta['bytes']} bytes)"
+    return jsonify({"ok": True, "data": meta, "error": None}), 201
+
+
+@app.route("/api/v1/computers/<int:comp_id>/backups/<name>", methods=["GET"])
+def api_backup_download(comp_id: int, name: str):
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    try:
+        path = backups.backup_path(comp["slug"], name)
+    except backups.BadBackupName as exc:
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
+    if not path.is_file():
+        return jsonify({"ok": False, "data": None, "error": "no such backup"}), 404
+    return Response(
+        _stream_file(path), mimetype="application/gzip",
+        headers={"Content-Disposition": f'attachment; filename="{comp["slug"]}-{name}"',
+                 "Content-Length": str(path.stat().st_size)})
+
+
+def _stream_file(path, chunk: int = 1024 * 1024):
+    with open(path, "rb") as fh:
+        while True:
+            block = fh.read(chunk)
+            if not block:
+                return
+            yield block
+
+
+@app.route("/api/v1/computers/<int:comp_id>/backups/<name>", methods=["DELETE"])
+@require_token
+def api_backup_delete(comp_id: int, name: str):
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    try:
+        removed = backups.remove(comp["slug"], name)
+    except backups.BadBackupName as exc:
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
+    if not removed:
+        return jsonify({"ok": False, "data": None, "error": "no such backup"}), 404
+    g.audit_detail = name
+    return jsonify({"ok": True, "data": {"removed": name}, "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/restore", methods=["POST"])
+@require_token
+def api_backup_restore(comp_id: int):
+    """Put a backup back. The machine is stopped for the duration and
+    restarted afterwards if it was running."""
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("backup") or "").strip()
+    source_slug = (payload.get("from") or comp["slug"]).strip()
+    if not name:
+        return jsonify({"ok": False, "data": None, "error": "backup is required"}), 400
+    try:
+        path = backups.backup_path(source_slug, name)
+    except backups.BadBackupName as exc:
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
+    if not path.is_file():
+        return jsonify({"ok": False, "data": None, "error": "no such backup"}), 404
+
+    g.audit_detail = f"from {source_slug}/{name}"
+    try:
+        result = backups.restore(comp["slug"], path)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"restore failed: {exc}"}), 500
+    return jsonify({"ok": True, "data": result, "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/restore/upload", methods=["POST"])
+@require_token
+def api_backup_restore_upload(comp_id: int):
+    """Restore from a file the user hands us, rather than one we made.
+
+    This is how a machine is rebuilt on a different host — and why
+    `backups.sanitise` refuses members that climb out of the home directory:
+    from here the archive is entirely untrusted input.
+    """
+    comp, err = _backup_or_404(comp_id)
+    if err:
+        return err
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"ok": False, "data": None, "error": "file is required"}), 400
+
+    tmp = Path(tempfile.gettempdir()) / f"deskswarm-restore-{comp['slug']}-{os.getpid()}.tar.gz"
+    g.audit_detail = f"uploaded {upload.filename}"
+    try:
+        upload.save(tmp)
+        result = backups.restore(comp["slug"], tmp)
+    except tarfile.TarError:
+        return jsonify({"ok": False, "data": None,
+                        "error": "that file is not a readable .tar.gz backup"}), 400
+    except OSError as exc:
+        return jsonify({"ok": False, "data": None, "error": f"restore failed: {exc}"}), 500
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"restore failed: {exc}"}), 500
+    finally:
+        tmp.unlink(missing_ok=True)
+    return jsonify({"ok": True, "data": result, "error": None})
+
+
+@app.route("/partials/computers/<int:comp_id>/backups")
+def partial_backups(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return "<div class='text-red-400 text-sm'>not found</div>", 404
+    return render_template("_backups.html", comp=comp,
+                           rows=backups.listing(comp["slug"]),
+                           keep=backups.KEEP_PER_MACHINE,
+                           daily_at=backups.DAILY_AT)
+
+
+# ------------------------------------------------------------------ shares
+
+def share_base_url() -> str:
+    return request.host_url.rstrip("/")
+
+
+def share_view(row: dict, comp_name: str | None = None) -> dict:
+    out = dict(row)
+    out.pop("token_hash", None)
+    out["status"] = shares.status(row)
+    out["url"] = f"{share_base_url()}/s/{row['token']}"
+    if comp_name:
+        out["computer"] = comp_name
+    return out
+
+
+@app.route("/api/v1/shares", methods=["GET"])
+def api_shares_list():
+    conn = connect()
+    names = {c["id"]: c["name"] for c in list_computers()}
+    rows = [share_view(r, names.get(r["computer_id"])) for r in shares.listing(conn)]
+    conn.close()
+    return jsonify({"ok": True, "data": rows, "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/shares", methods=["POST"])
+@require_token
+def api_share_create(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    conn = connect()
+    try:
+        row = shares.create(conn, comp_id,
+                            label=payload.get("label", ""),
+                            mode=(payload.get("mode") or "watch").strip(),
+                            hours=payload.get("hours"))
+    except ValueError as exc:
+        conn.close()
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
+    conn.close()
+    g.audit_detail = f"{row['mode']} share '{row['label']}' until {row['expires_at']}"
+    return jsonify({"ok": True, "data": share_view(row, comp["name"]), "error": None}), 201
+
+
+@app.route("/api/v1/shares/<int:share_id>", methods=["DELETE"])
+@require_token
+def api_share_revoke(share_id: int):
+    conn = connect()
+    row = conn.execute("SELECT * FROM shares WHERE id = ?", (share_id,)).fetchone()
+    if not row:
+        conn.close()
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    revoked = shares.revoke(conn, share_id)
+    conn.close()
+    g.audit_detail = f"share '{row['label']}' ({row['mode']})"
+    return jsonify({"ok": True, "error": None, "data": {
+        "id": share_id, "revoked": revoked,
+        # Being straight about what revoking a control share does and doesn't
+        # do matters more than sounding reassuring.
+        "note": ("the guest's browser already holds this machine's screen "
+                 "password — rotate it to retract access completely")
+        if row["mode"] == "control" else None,
+    }})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/rotate-password", methods=["POST"])
+@require_token
+def api_rotate_password(comp_id: int):
+    """Give the machine a new screen password and restart it.
+
+    This is the hard revoke behind a control share: anyone holding the old
+    noVNC URL is out, including a guest who saved it.
+    """
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    password = fleet.random_vnc_password()
+    try:
+        fleet.destroy_computer(comp["slug"], keep_home=True)
+        fleet.create_computer(comp["slug"], comp["novnc_port"], password, image=comp["image"])
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None,
+                        "error": f"failed to rotate: {exc}"}), 500
+    conn = connect()
+    conn.execute("UPDATE computers SET vnc_password = ? WHERE id = ?", (password, comp_id))
+    conn.execute("UPDATE shares SET revoked = 1 WHERE computer_id = ? AND mode = 'control'",
+                 (comp_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "data": {"id": comp_id, "rotated": True}, "error": None})
+
+
+def current_share():
+    """The live share behind this request, or None."""
+    token = request.view_args.get("token") if request.view_args else None
+    conn = connect()
+    row = shares.resolve(conn, token or "")
+    if row:
+        shares.note_use(conn, row["id"], request.remote_addr)
+        g.actor = f"share:{row['label']}"
+    conn.close()
+    return row
+
+
+@app.route("/s/<token>")
+def share_page(token: str):
+    """The page a guest sees. One machine, nothing else, no dashboard."""
+    row = current_share()
+    if not row:
+        return render_template("share_gone.html"), 404
+    comp = get_computer(row["computer_id"])
+    if not comp:
+        return render_template("share_gone.html"), 404
+    view = computer_view(comp)
+    audit.record(f"GET /s/<token> ({row['mode']})", actor=f"share:{row['label']}",
+                 source_ip=request.remote_addr, target=comp["name"],
+                 detail="opened the share page", status=200)
+    return render_template("share.html", comp=comp, view=view, share=row, token=token)
+
+
+@app.route("/s/<token>/screen.png")
+def share_screen(token: str):
+    """The screen, served through the share rather than the machine's port —
+    which is what makes a `watch` share fully revocable."""
+    row = current_share()
+    if not row:
+        abort(404)
+    comp = get_computer(row["computer_id"])
+    if not comp:
+        abort(404)
+    if not fleet.is_running(comp["slug"]):
+        abort(503)
+    png = bridge_screenshot(computer_view(comp, with_state=False))
+    if png is None:
+        abort(503)
+    return Response(png, mimetype="image/png",
+                    headers={"Cache-Control": f"max-age={int(SHOT_TTL)}"})
+
+
+# ------------------------------------------------------------------- audit
+
+@app.route("/api/v1/audit")
+def api_audit():
+    conn = connect()
+    rows, pages = audit.recent(conn, limit=PAGE_SIZE,
+                               page=int(request.args.get("page", 1) or 1),
+                               target=request.args.get("target") or None,
+                               actor=request.args.get("actor") or None)
+    conn.close()
+    return jsonify({"ok": True, "data": rows, "error": None, "meta": {"pages": pages}})
+
+
+@app.route("/api/v1/audit/export.csv")
+def api_audit_export():
+    conn = connect()
+    rows = conn.execute("SELECT * FROM audit ORDER BY id DESC").fetchall()
+    conn.close()
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(["id", "at", "actor", "source_ip", "action", "target", "detail",
+                "status", "ok"])
+    for r in rows:
+        w.writerow([r["id"], r["at"], r["actor"], r["source_ip"], r["action"],
+                    r["target"], r["detail"], r["status"], r["ok"]])
+    return Response(buf.getvalue(), mimetype="text/csv",
+                    headers={"Content-Disposition": "attachment; filename=audit.csv"})
+
+
+@app.route("/partials/audit")
+def partial_audit():
+    conn = connect()
+    rows, pages = audit.recent(conn, limit=PAGE_SIZE,
+                               page=int(request.args.get("page", 1) or 1),
+                               target=request.args.get("target") or None)
+    names = [c["name"] for c in list_computers()]
+    conn.close()
+    return render_template("_audit.html", rows=rows, pages=pages,
+                           page=int(request.args.get("page", 1) or 1),
+                           target=request.args.get("target", ""), names=names)
 
 
 @app.route("/api/v1/analytics")
@@ -1485,7 +1930,11 @@ def api_task_retry(task_id: int):
 
 
 init_db()
-threading.Thread(target=scheduler_loop, daemon=True).start()
+# Each import of this module starts the loop; tests import it many times, and
+# a background thread still writing to a database whose directory is being
+# torn down fails in whichever test happens to be running. Off under test.
+if not os.environ.get("DESKSWARM_DISABLE_SCHEDULER"):
+    threading.Thread(target=scheduler_loop, daemon=True).start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "7000")))

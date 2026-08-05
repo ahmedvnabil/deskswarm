@@ -344,6 +344,64 @@ VNC_WATCHERS_SCRIPT = (
 )
 
 
+def is_running(slug: str) -> bool:
+    try:
+        return client().containers.get(desktop_container_name(slug)).status == "running"
+    except docker.errors.NotFound:
+        return False
+
+
+# ------------------------------------------------------- backup / restore
+
+def home_archive_stream(slug: str):
+    """Chunks of a tar of the machine's whole home directory.
+
+    Docker serves a stopped container's filesystem as happily as a running
+    one, so backing up the fleet doesn't mean waking all of it first. Members
+    come out prefixed `cua/`, which is why restore unpacks into /home.
+    """
+    c = client().containers.get(desktop_container_name(slug))
+    stream, _ = c.get_archive(HOME_PATH)
+    return stream
+
+
+def restore_home(slug: str, tar_path, wipe: bool = True) -> None:
+    """Replace the machine's home volume from a tar on disk.
+
+    Done through a short-lived helper container rather than the desktop
+    itself, for two reasons: the desktop is stopped during a restore and so
+    can't be told to clear anything, and the helper can mount the volume at
+    the same path without a live session reading it underneath us.
+
+    The helper runs the bridge image — already built and local, so this pulls
+    nothing and works on a host with no internet.
+    """
+    ensure_bridge_image()
+    helper = client().containers.run(
+        BRIDGE_IMAGE,
+        name=f"{CONTAINER_PREFIX}-restore-{slug}",
+        entrypoint=["sleep", "600"],
+        detach=True,
+        volumes={home_volume_name(slug): {"bind": HOME_PATH, "mode": "rw"}},
+        labels={"deskswarm.role": "restore", "deskswarm.slug": slug},
+    )
+    try:
+        if wipe:
+            # Anything the backup doesn't contain should not survive it —
+            # otherwise "restore" quietly means "merge", and the machine ends
+            # up in a state that never existed.
+            helper.exec_run(["find", HOME_PATH, "-mindepth", "1", "-delete"])
+        with open(tar_path, "rb") as fh:
+            if not helper.put_archive(os.path.dirname(HOME_PATH), fh):
+                raise RuntimeError("docker refused the restore archive")
+        helper.exec_run(["chown", "-R", "1000:1000", HOME_PATH])
+    finally:
+        try:
+            helper.remove(force=True)
+        except docker.errors.APIError:
+            pass
+
+
 def awake_machine_count() -> int | None:
     """How many machines are actually running.
 

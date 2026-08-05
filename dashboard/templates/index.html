@@ -119,6 +119,25 @@
       </div>
     </section>
 
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Shared links</h2>
+        <span class="text-xs text-neutral-600">one machine each · revocable</span>
+      </div>
+      <div id="shares"><div class="text-neutral-600 text-sm">loading...</div></div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Audit log</h2>
+        <span class="text-xs text-neutral-600">every change, and every guest</span>
+      </div>
+      <div id="audit" hx-get="/partials/audit" hx-trigger="load, every 15s, refresh"
+           hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
   </main>
 
   <!-- -------------------------------------------------------- broadcast -->
@@ -383,6 +402,219 @@
     if(!j.ok) alert(j.error || 'failed');
     htmx.trigger('#fleet-status','refresh');
     syncPicks();
+  }
+
+  // ------------------------------------------------------------- backups
+  async function openBackups(id, name){
+    openModal('Backups — ' + name);
+    await refreshBackups(id);
+  }
+
+  async function refreshBackups(id){
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
+    body.innerHTML = await (await fetch(`/partials/computers/${id}/backups`)).text();
+    body.dataset.backupId = id;
+  }
+
+  function backupNote(msg, bad){
+    const n = document.getElementById('backup-note');
+    if(n){ n.textContent = msg; n.className = 'text-xs mb-2 ' + (bad ? 'text-red-400' : 'text-emerald-400'); }
+  }
+
+  async function makeBackup(id){
+    backupNote('backing up — this streams the whole home directory…');
+    const j = await (await fetch(`/api/v1/computers/${id}/backups`, {method:'POST'})).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    await refreshBackups(id);
+    backupNote(`saved ${j.data.name} — ${(j.data.bytes/1048576).toFixed(1)} MB in ${j.data.seconds}s`);
+  }
+
+  async function deleteBackup(id, name){
+    if(!confirm(`Delete backup ${name}?`)) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/backups/${name}`,
+                                 {method:'DELETE'})).json();
+    await refreshBackups(id);
+    if(!j.ok) backupNote(j.error, true);
+  }
+
+  async function restoreBackup(id, name){
+    if(!confirm(`Restore ${name}?\n\n` +
+                'This REPLACES the machine\'s home directory — anything not in the ' +
+                'backup is removed. The machine is stopped while it happens, so open ' +
+                'windows are lost, and started again afterwards.')) return;
+    backupNote('restoring — the machine is stopped for this…');
+    const j = await (await fetch(`/api/v1/computers/${id}/restore`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({backup: name})
+    })).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    backupNote(`restored ${j.data.entries} entries` +
+               (j.data.restarted ? ' — machine restarted' : ''));
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  async function restoreFromFile(id, file){
+    if(!file) return;
+    if(!confirm(`Restore "${file.name}" onto this machine?\n\n` +
+                'This REPLACES its home directory. Only use a file that came from ' +
+                'a deskswarm backup.')) return;
+    backupNote('uploading…');
+    const fd = new FormData();
+    fd.append('file', file);
+    const j = await (await fetch(`/api/v1/computers/${id}/restore/upload`,
+                                 {method:'POST', body: fd})).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    backupNote(`restored ${j.data.entries} entries from ${file.name}`);
+    await refreshBackups(id);
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  // -------------------------------------------------------------- shares
+  async function openShare(id, name){
+    openModal('Share — ' + name);
+    const body = document.getElementById('modal-body');
+    body.innerHTML = `
+      <div class="grid sm:grid-cols-4 gap-2 items-end">
+        <label class="text-xs text-neutral-500 sm:col-span-2">who is it for
+          <input id="share-label" placeholder="e.g. Sara, or client-review"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+        </label>
+        <label class="text-xs text-neutral-500">they can
+          <select id="share-mode"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+            <option value="watch">watch only</option>
+            <option value="control">watch and control</option>
+          </select>
+        </label>
+        <label class="text-xs text-neutral-500">for
+          <select id="share-hours"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+            <option value="1">1 hour</option>
+            <option value="24" selected>24 hours</option>
+            <option value="168">7 days</option>
+            <option value="720">30 days</option>
+          </select>
+        </label>
+      </div>
+      <button onclick="createShare(${id})"
+        class="mt-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-xs px-3 py-1.5 rounded">
+        create link</button>
+      <div id="share-out" class="mt-3"></div>
+      <div class="text-[11px] text-neutral-500 mt-4 leading-relaxed border-t border-neutral-800 pt-3">
+        <strong class="text-neutral-300">watch</strong> serves the screen through the
+        link itself, so revoking it is complete and immediate.
+        <strong class="text-neutral-300">control</strong> hands the guest's browser this
+        machine's screen password — revoking closes the page, but cannot take back a
+        URL they already saved. Rotate the machine's password to retract it for good.
+        <button onclick="rotatePassword(${id})"
+          class="ml-1 underline hover:text-amber-400">rotate now</button>
+      </div>`;
+  }
+
+  async function createShare(id){
+    const out = document.getElementById('share-out');
+    out.innerHTML = '<div class="text-xs text-neutral-500">creating…</div>';
+    const j = await (await fetch(`/api/v1/computers/${id}/shares`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        label: document.getElementById('share-label').value,
+        mode: document.getElementById('share-mode').value,
+        hours: Number(document.getElementById('share-hours').value)
+      })
+    })).json();
+    if(!j.ok){ out.innerHTML = ''; out.textContent = j.error; out.className = 'mt-3 text-xs text-red-400'; return; }
+    out.className = 'mt-3';
+    out.innerHTML = `
+      <div class="text-xs text-neutral-500 mb-1">send this link — it works until ${j.data.expires_at} UTC</div>
+      <div class="flex gap-2">
+        <input readonly class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-xs mono">
+        <button class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 rounded">copy</button>
+      </div>`;
+    const input = out.querySelector('input');
+    input.value = j.data.url;
+    out.querySelector('button').onclick = () => {
+      input.select(); navigator.clipboard?.writeText(input.value);
+    };
+    refreshShares();
+  }
+
+  async function refreshShares(){
+    const box = document.getElementById('shares');
+    if(!box) return;
+    const j = await (await fetch('/api/v1/shares')).json();
+    if(!j.ok) return;
+    if(!j.data.length){
+      box.innerHTML = '<div class="border border-dashed border-neutral-800 rounded-lg p-6 ' +
+        'text-center text-neutral-600 text-xs">No links yet — use <strong>share</strong> ' +
+        'on a machine to give someone access to just that one.</div>';
+      return;
+    }
+    const rows = j.data.map(s => `
+      <tr class="hover:bg-neutral-800/40">
+        <td class="py-1.5 pr-3">${esc(s.label)}</td>
+        <td class="py-1.5 pr-3">${esc(s.computer || '')}</td>
+        <td class="py-1.5 pr-3">${s.mode === 'control'
+          ? '<span class="text-amber-300">control</span>'
+          : '<span class="text-sky-300">watch</span>'}</td>
+        <td class="py-1.5 pr-3 mono text-neutral-500">${esc(s.expires_at.replace('T',' '))}</td>
+        <td class="py-1.5 pr-3 mono text-neutral-500">${s.uses}${
+          s.last_used_at ? ' · ' + esc(s.last_used_at.slice(5,16).replace('T',' ')) : ''}</td>
+        <td class="py-1.5 pr-3">${
+          s.status === 'live' ? '<span class="text-emerald-400">live</span>'
+          : '<span class="text-neutral-600">' + s.status + '</span>'}</td>
+        <td class="py-1.5 text-right">${s.status === 'live'
+          ? `<button onclick="revokeShare(${s.id})" class="bg-neutral-800 hover:bg-red-600 text-[11px] px-2 py-0.5 rounded">revoke</button>`
+          : ''}</td>
+      </tr>`).join('');
+    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-xs">
+      <thead class="text-neutral-500 border-b border-neutral-800"><tr class="text-left">
+        <th class="py-1.5 pr-3 font-medium">for</th>
+        <th class="py-1.5 pr-3 font-medium">machine</th>
+        <th class="py-1.5 pr-3 font-medium">can</th>
+        <th class="py-1.5 pr-3 font-medium">until (UTC)</th>
+        <th class="py-1.5 pr-3 font-medium">opened</th>
+        <th class="py-1.5 pr-3 font-medium">state</th>
+        <th></th></tr></thead>
+      <tbody class="divide-y divide-neutral-900">${rows}</tbody></table></div>`;
+  }
+
+  function esc(s){
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : s;
+    return d.innerHTML;
+  }
+
+  async function revokeShare(id){
+    if(!confirm('Revoke this link?')) return;
+    const j = await (await fetch(`/api/v1/shares/${id}`, {method:'DELETE'})).json();
+    if(j.ok && j.data.note) alert('Revoked.\n\n' + j.data.note + '.');
+    refreshShares();
+  }
+
+  async function rotatePassword(id){
+    if(!confirm('Give this machine a new screen password?\n\n' +
+                'Every saved noVNC link for it stops working, including any a guest ' +
+                'kept. The machine restarts — open windows are lost, files are not.')) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/rotate-password`, {method:'POST'})).json();
+    alert(j.ok ? 'Done — old links are dead.' : (j.error || 'failed'));
+    refreshShares();
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  refreshShares();
+  setInterval(refreshShares, 30000);
+
+  // --------------------------------------------------------------- audit
+  function filterAudit(target){
+    htmx.ajax('GET', '/partials/audit?target=' + encodeURIComponent(target || ''),
+              {target:'#audit', swap:'innerHTML'});
+  }
+  function pageAudit(page){
+    const sel = document.querySelector('#audit select');
+    htmx.ajax('GET', `/partials/audit?page=${page}&target=` +
+              encodeURIComponent(sel ? sel.value : ''),
+              {target:'#audit', swap:'innerHTML'});
   }
 
   // --------------------------------------------------------- sleep / wake

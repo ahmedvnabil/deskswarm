@@ -9,6 +9,10 @@
   [`SECURITY.md`](SECURITY.md).
 
 ### Fixed
+- The bridge could not survive a stop and start: Xvfb leaves `/tmp/.X99-lock`
+  behind when killed, a stopped container keeps its filesystem, and the next
+  start died with "Server is already active for display 99" and crash-looped.
+  Every machine that slept and woke hit this.
 - Tasks orphaned by a dashboard restart stayed `RUNNING` for ever, leaving the
   machine shown as busy and the task unresolved. They are now failed at
   container start, before workers fork.
@@ -37,6 +41,15 @@
 - Per-machine memory, CPU and PID caps, so one machine cannot starve the rest.
   Hosts without the cgroup controllers delegated are detected on the first
   machine started and run uncapped rather than refusing to start anything.
+- Backups: a gzipped archive of a machine's home, on demand or nightly, with
+  restore. Restore replaces rather than merges, stops the machine while it
+  works, and treats an uploaded archive as untrusted — members that escape the
+  home directory are dropped, not unpacked.
+- Share links: one machine, an expiry, a revoke. `watch` serves the screen
+  through the link and is fully revocable; `control` embeds noVNC and hands
+  over the machine's screen password, which rotating the password retracts.
+- An audit log covering every state-changing request and every share view,
+  written by a single `after_request` hook so no endpoint can be missed.
 - Guards for the failures that accumulate quietly: a daily cost cap, memory
   admission control, disk thresholds with a safe space reclaim, and a breaker
   that pauses dispatch after repeated failures.
@@ -61,6 +74,10 @@
   and a bridge probe, which was serial and did not scale.
 - Bridge health probes use `requests` instead of spawning a `curl` per machine
   per refresh.
+- The scheduler thread no longer starts under test
+  (`DESKSWARM_DISABLE_SCHEDULER`); it wrote to a database whose directory the
+  fixture was tearing down, which failed in whichever test happened to be
+  running at the time.
 - Stopped machines are no longer probed or screenshotted. Each one previously
   burned a full HTTP timeout per tile per refresh, which on a wall of sleeping
   machines took longer than the refresh interval itself.

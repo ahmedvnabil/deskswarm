@@ -94,6 +94,25 @@ management + dashboard layer on top.
   count, so one runaway tab or a `while true` in someone's terminal can't
   freeze the fleet. Hosts that can't apply cgroup limits (some nested-Docker
   and LXC setups) are detected and run uncapped rather than failing.
+- **Back up and restore a home directory** — a gzipped archive of everything on
+  a machine, on demand or nightly, with a one-click restore that puts it back.
+  Restoring **replaces** the home rather than merging into it, so a machine
+  can't end up in a state that never existed. Restore also accepts a file you
+  upload, which is how you move a machine to another host — and that archive is
+  treated as hostile: members that climb out of the home directory, or symlink
+  outside it, are dropped rather than unpacked.
+- **Share one machine, not the fleet** — a link to a single machine with an
+  expiry and a revoke. **watch** serves the screen through the link itself, so
+  revoking is complete; **control** embeds the machine's own noVNC and hands the
+  guest keyboard and mouse. The difference is stated plainly in the UI, because
+  revoking a control share can't retract a URL the guest already saved —
+  rotating the machine's screen password can, and the button is right there.
+- **An audit log that doesn't have holes** — every state-changing request, and
+  every time a guest opens a share, with who, what, which machine and the
+  result. Written by one hook rather than by calls inside each handler, so a new
+  endpoint can't quietly go unlogged. Contents are not recorded: the shell
+  command is, because that is the point, but clipboard text and file bodies are
+  only ever counted.
 
 ```
                       ┌───────────────────────────┐
