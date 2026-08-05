@@ -33,6 +33,13 @@
   so a fleet-wide dispatch drains instead of starting everything at once.
 
 ### Changed
+- The bridge image is built in two stages: 1.42 GB -> 762 MB. The toolchain
+  needed to compile evdev was shipping in the runtime image (~680 MB of apt
+  packages including LLVM, gcc and g++) along with playwright's browser driver
+  payload, which the VNC backend never calls.
+- The per-machine memory estimate is 400 MB, not 300. A machine is two
+  containers and the earlier figure counted only the desktop, under-committing
+  the budget by about a third.
 - Fleet views are built in parallel; each machine costs two Docker inspects
   and a bridge probe, which was serial and did not scale.
 - Bridge health probes use `requests` instead of spawning a `curl` per machine

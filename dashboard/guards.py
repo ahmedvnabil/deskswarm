@@ -22,9 +22,12 @@ from datetime import datetime, timedelta, timezone
 # someone mid-run is worse than no limit, so it should be a choice.
 DAILY_COST_LIMIT = float(os.environ.get("DESKSWARM_DAILY_COST_LIMIT", "0"))
 
-# Measured at roughly 185 MB for an idle XFCE desktop plus its bridge; 300
-# leaves room for the machine to actually do something.
-MACHINE_MB = int(os.environ.get("DESKSWARM_MACHINE_MB", "300"))
+# A machine is two containers and both cost real memory. Measured on an idle
+# fleet: the desktop runs 200-235 MB and the bridge another 145-190 MB, so a
+# machine is ~400 MB before it does any work — a browser alone pushes its
+# desktop past 600 MB. An earlier 300 default counted only the desktop and
+# under-committed the budget by about a third.
+MACHINE_MB = int(os.environ.get("DESKSWARM_MACHINE_MB", "400"))
 MIN_FREE_MB = int(os.environ.get("DESKSWARM_MIN_FREE_MB", "512"))
 
 MIN_FREE_DISK_GB = float(os.environ.get("DESKSWARM_MIN_FREE_DISK_GB", "5"))
