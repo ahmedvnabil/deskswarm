@@ -68,7 +68,12 @@ management + dashboard layer on top.
   connects for you (the password is in the machine's apps panel if you'd
   rather open noVNC directly).
 - **Analytics & reports** — success rate, cost, average duration, a per-day
-  chart, a per-machine breakdown, and CSV export of the full history.
+  chart, a per-machine breakdown, and CSV export. Click any row in the task
+  log for the full report: every step the agent took, the untruncated result
+  or error, duration and cost.
+- **Recover a broken machine** — if its containers die or are removed outside
+  the dashboard, the tile offers **restart**, which recreates the pair in
+  place and keeps the machine's name, port and snapshot.
 
 ```
                       ┌───────────────────────────┐
@@ -221,6 +226,21 @@ version:
   path to root command execution before it was fixed; see `SECURITY.md`).
 - Don't put secrets in task descriptions — they are stored in history and sent
   to your model provider.
+
+### Reproducibility
+
+The desktop image is `trycua/xfce-cua:latest`, which upstream publishes only
+as a moving tag, so two installs set up months apart may not get identical
+machines. Pin `DESKSWARM_DESKTOP_IMAGE` to a digest if you need that
+guarantee. Snapshots you take yourself are immutable and are the reliable way
+to freeze a machine's exact software.
+
+### Verified scale
+
+Tested at **12 machines** on one 4-core / 8 GB host: the wall renders in ~25 ms
+and a full round of screenshots takes ~0.5 s, comfortably inside the 6 s
+refresh window. Budget roughly 200 MB of RAM per idle machine. Larger fleets
+should be fine on the same reasoning but have not been measured.
 
 ## Contributing
 

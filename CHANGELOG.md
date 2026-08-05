@@ -20,6 +20,10 @@
   its `alt` text over the machine's name.
 
 ### Added
+- Per-machine restart, so a machine whose containers died can be recovered in
+  place instead of deleted and recreated.
+- Click a row in the task log for the full report — every step the agent took,
+  the untruncated result or error, duration and cost.
 - Test suite and CI. `tests/test_security.py` fails against the pre-fix code.
 - A ceiling on concurrent tasks (`DESKSWARM_MAX_CONCURRENT_TASKS`, default 8)
   so a fleet-wide dispatch drains instead of starting everything at once.
