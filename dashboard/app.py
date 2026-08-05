@@ -21,6 +21,7 @@ from flask import Flask, Response, g, jsonify, render_template, request
 import requests
 
 import fleet
+import guards
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path(os.environ.get("DESKSWARM_DB_PATH", str(BASE_DIR / "data" / "fleet.db")))
@@ -568,6 +569,10 @@ def api_computers_create():
     except ValueError as exc:
         return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
 
+    for ok, msg in (guards.check_memory(len(names)), guards.check_disk()):
+        if not ok:
+            return jsonify({"ok": False, "data": None, "error": msg}), 507
+
     conn = connect()
     created, errors = [], []
     for n in names:
@@ -793,6 +798,10 @@ def api_computer_snapshot(comp_id: int):
     if not name:
         return jsonify({"ok": False, "data": None, "error": "name is required"}), 400
 
+    ok, msg = guards.check_disk()
+    if not ok:
+        return jsonify({"ok": False, "data": None, "error": msg}), 507
+
     conn = connect()
     if conn.execute("SELECT 1 FROM snapshots WHERE name = ?", (name,)).fetchone():
         conn.close()
@@ -971,6 +980,45 @@ def scheduler_loop() -> None:
         time.sleep(20)
 
 
+@app.route("/api/v1/guards")
+def api_guards():
+    conn = connect()
+    data = guards.status(conn)
+    conn.close()
+    return jsonify({"ok": True, "data": data, "error": None})
+
+
+@app.route("/partials/guards")
+def partial_guards():
+    conn = connect()
+    data = guards.status(conn)
+    conn.close()
+    return render_template("_guards.html", g=data)
+
+
+@app.route("/api/v1/maintenance/prune", methods=["POST"])
+@require_token
+def api_prune():
+    """Reclaim the space Docker holds but no longer needs.
+
+    Only build cache and dangling layers — never a tagged image, so a snapshot
+    someone is relying on can't vanish because the disk got tight.
+    """
+    before = guards.disk_free_gb()
+    reclaimed = 0
+    try:
+        reclaimed += (fleet.client().api.prune_builds() or {}).get("SpaceReclaimed", 0)
+        reclaimed += (fleet.client().images.prune(filters={"dangling": True}) or {}).get(
+            "SpaceReclaimed", 0)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"prune failed: {exc}"}), 500
+    return jsonify({"ok": True, "error": None, "data": {
+        "reclaimed_gb": round(reclaimed / 1e9, 2),
+        "disk_free_gb_before": before,
+        "disk_free_gb_after": guards.disk_free_gb(),
+    }})
+
+
 @app.route("/api/v1/analytics")
 def api_analytics():
     return jsonify({"ok": True, "data": build_analytics(), "error": None})
@@ -1018,6 +1066,13 @@ def dispatch_task(target: str, description: str) -> list[int]:
     Shared by the tasks API and the scheduler so both behave identically.
     Raises ValueError for anything the caller should report as a 400.
     """
+    conn = connect()
+    for ok, msg in (guards.check_cost(conn), guards.check_breaker(conn)):
+        if not ok:
+            conn.close()
+            raise ValueError(msg)
+    conn.close()
+
     computers = list_computers()
     if not computers:
         raise ValueError("no computers in the fleet — add one first")

@@ -26,6 +26,12 @@
 
   <main class="max-w-[1800px] mx-auto p-6 pb-24 space-y-8">
 
+    {# Resource and cost guards. These sit at the top because the failures
+       they catch are the quiet kind — a disk filling, a schedule burning
+       money — that nothing else announces. #}
+    <div id="guards" hx-get="/partials/guards" hx-trigger="load, every 15s, refresh"
+         hx-swap="innerHTML" class="-mb-4"></div>
+
     <section>
       <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div class="flex items-center gap-2 text-xs">
@@ -309,6 +315,16 @@
     } catch(_){}
   }
   refreshSnapshots();
+
+  async function pruneSpace(){
+    if(!confirm('Reclaim Docker build cache and dangling layers?\n\n' +
+                'Tagged images — including every snapshot — are left alone.')) return;
+    const j = await (await fetch('/api/v1/maintenance/prune', {method:'POST'})).json();
+    if(!j.ok){ alert(j.error || 'prune failed'); return; }
+    alert(`Reclaimed ${j.data.reclaimed_gb} GB.\n` +
+          `Disk free: ${j.data.disk_free_gb_before} GB -> ${j.data.disk_free_gb_after} GB.`);
+    htmx.trigger('#guards','refresh');
+  }
 
   async function toggleReserved(id, on){
     const r = await fetch(`/api/v1/computers/${id}`, {

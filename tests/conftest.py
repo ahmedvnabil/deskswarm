@@ -42,10 +42,19 @@ def client(monkeypatch):
     import app as app_module
 
     monkeypatch.setattr(app_module, "check_bridge", lambda view: True)
+
+    # Dispatch normally starts a thread that runs an agent in a subprocess.
+    # Left real, those threads outlive the fixture and go looking for a
+    # database that has already been deleted. Tests care that dispatch was
+    # *decided*, not that an agent ran; test_reserved.py reads the rows back.
+    dispatched: list[int] = []
+    monkeypatch.setattr(app_module, "run_task_worker",
+                        lambda tid, host, port, desc: dispatched.append(tid))
     app_module.app.config.update(TESTING=True)
 
     c = app_module.app.test_client()
     c.created = created
     c.module = app_module
+    c.dispatched = dispatched
     yield c
     tmp.cleanup()

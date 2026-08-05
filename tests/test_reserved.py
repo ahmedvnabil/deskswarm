@@ -5,10 +5,7 @@ import pytest
 
 
 @pytest.fixture()
-def fleet(client, monkeypatch):
-    dispatched = []
-    monkeypatch.setattr(client.module, "run_task_worker",
-                        lambda tid, host, port, desc: dispatched.append(tid))
+def fleet(client):
     for n in ("w1", "w2", "mine"):
         client.post("/api/v1/computers", json={"name": n})
     ids = {c["name"]: c["id"] for c in client.get("/api/v1/computers").get_json()["data"]}
