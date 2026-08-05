@@ -1,0 +1,80 @@
+services:
+
+  desktop-1:
+    image: trycua/xfce-cua:latest
+    environment:
+      VNC_PW: ${VNC_PASSWORD:-cua}
+    ports:
+      - "${DESKTOP_1_NOVNC_PORT:-6901}:6901"
+    restart: unless-stopped
+
+  bridge-1:
+    build: ./bridge
+    environment:
+      VNC_HOST: desktop-1
+      VNC_PORT: 5901
+      VNC_PASSWORD: ${VNC_PASSWORD:-cua}
+      BRIDGE_PORT: 8000
+    depends_on:
+      - desktop-1
+    restart: unless-stopped
+
+  desktop-2:
+    image: trycua/xfce-cua:latest
+    environment:
+      VNC_PW: ${VNC_PASSWORD:-cua}
+    ports:
+      - "${DESKTOP_2_NOVNC_PORT:-6902}:6901"
+    restart: unless-stopped
+
+  bridge-2:
+    build: ./bridge
+    environment:
+      VNC_HOST: desktop-2
+      VNC_PORT: 5901
+      VNC_PASSWORD: ${VNC_PASSWORD:-cua}
+      BRIDGE_PORT: 8000
+    depends_on:
+      - desktop-2
+    restart: unless-stopped
+
+  desktop-3:
+    image: trycua/xfce-cua:latest
+    environment:
+      VNC_PW: ${VNC_PASSWORD:-cua}
+    ports:
+      - "${DESKTOP_3_NOVNC_PORT:-6903}:6901"
+    restart: unless-stopped
+
+  bridge-3:
+    build: ./bridge
+    environment:
+      VNC_HOST: desktop-3
+      VNC_PORT: 5901
+      VNC_PASSWORD: ${VNC_PASSWORD:-cua}
+      BRIDGE_PORT: 8000
+    depends_on:
+      - desktop-3
+    restart: unless-stopped
+
+  dashboard:
+    build: ./dashboard
+    environment:
+      PORT: 7000
+      FLEET_JSON: ${FLEET_JSON}
+      DESKSWARM_MODEL: ${DESKSWARM_MODEL}
+      DESKSWARM_API_BASE: ${DESKSWARM_API_BASE:-}
+      DESKSWARM_API_KEY: ${DESKSWARM_API_KEY:-}
+      DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
+    ports:
+      - "${DASHBOARD_PORT:-7861}:7000"
+    volumes:
+      - deskswarm_data:/app/data
+    depends_on:
+      - bridge-1
+      - bridge-2
+      - bridge-3
+    restart: unless-stopped
+
+volumes:
+  deskswarm_data:

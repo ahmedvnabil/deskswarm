@@ -1,0 +1,4 @@
+flask==3.1.*
+gunicorn==26.*
+cua-agent
+cua-computer

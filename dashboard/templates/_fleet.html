@@ -1,0 +1,21 @@
+<div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+  {% for s in statuses %}
+  <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-4 flex items-center justify-between">
+    <div>
+      <div class="flex items-center gap-2">
+        <span class="h-2.5 w-2.5 rounded-full {{ 'bg-emerald-500' if s.bridge_ok else 'bg-red-500' }}"></span>
+        <span class="font-semibold">{{ s.name }}</span>
+      </div>
+      <div class="text-xs text-neutral-500 mt-1 mono">
+        bridge {{ 'OK' if s.bridge_ok else 'DOWN' }}
+      </div>
+    </div>
+    {% if s.novnc_url %}
+    <a href="{{ s.novnc_url }}" target="_blank"
+       class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">
+      watch live
+    </a>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>

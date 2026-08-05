@@ -1,0 +1,48 @@
+<div class="overflow-x-auto border border-neutral-800 rounded-lg">
+<table class="w-full text-xs">
+  <thead class="bg-neutral-900 text-neutral-500">
+    <tr class="text-left">
+      <th class="px-3 py-2 font-medium">#</th>
+      <th class="px-3 py-2 font-medium">desktop</th>
+      <th class="px-3 py-2 font-medium">task</th>
+      <th class="px-3 py-2 font-medium">status</th>
+      <th class="px-3 py-2 font-medium">result / error</th>
+      <th class="px-3 py-2 font-medium">cost</th>
+      <th class="px-3 py-2 font-medium">updated</th>
+    </tr>
+  </thead>
+  <tbody class="divide-y divide-neutral-900">
+    {% for t in tasks %}
+    <tr class="{{ 'bg-neutral-900/40' if loop.index is odd else '' }}">
+      <td class="px-3 py-2 mono text-neutral-500">{{ t.id }}</td>
+      <td class="px-3 py-2 mono">{{ t.desktop }}</td>
+      <td class="px-3 py-2 max-w-xs truncate" title="{{ t.description }}">{{ t.description }}</td>
+      <td class="px-3 py-2">
+        {% if t.status == 'COMPLETED' %}
+          <span class="text-emerald-400 font-semibold">completed</span>
+        {% elif t.status == 'FAILED' %}
+          <span class="text-red-400 font-semibold">failed</span>
+        {% elif t.status == 'RUNNING' %}
+          <span class="text-amber-400 font-semibold animate-pulse">running...</span>
+        {% else %}
+          <span class="text-neutral-500 font-semibold">pending</span>
+        {% endif %}
+      </td>
+      <td class="px-3 py-2 max-w-sm truncate" title="{{ t.result_text or t.error or '' }}">
+        {% if t.status == 'FAILED' %}
+          <span class="text-red-400">{{ t.error }}</span>
+        {% else %}
+          {{ t.result_text or '—' }}
+        {% endif %}
+      </td>
+      <td class="px-3 py-2 mono text-neutral-500">
+        {{ '$%.4f'|format(t.cost_usd) if t.cost_usd else '—' }}
+      </td>
+      <td class="px-3 py-2 mono text-neutral-600">{{ t.updated_at.replace('T',' ') }}</td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" class="px-3 py-6 text-center text-neutral-600">no tasks yet</td></tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
