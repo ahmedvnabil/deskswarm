@@ -112,6 +112,6 @@ curl -X POST http://127.0.0.1:8000/cmd ...
 
 ## Upstream
 
-Not yet filed. If you hit this too, feel free to open the issue at
-[trycua/cua](https://github.com/trycua/cua/issues) and link back here —
-happy to co-sign / provide repro steps.
+Filed as [trycua/cua#2869](https://github.com/trycua/cua/issues/2869). If
+you hit this too, a 👍 or a comment with your own repro helps get it
+prioritized.

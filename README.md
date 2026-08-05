@@ -1,5 +1,10 @@
 # deskswarm
 
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Docker Compose](https://img.shields.io/badge/deploy-docker%20compose-2496ED?logo=docker&logoColor=white)](docker-compose.yml)
+[![Built on cua](https://img.shields.io/badge/built%20on-cua-orange)](https://github.com/trycua/cua)
+[![Upstream bug filed](https://img.shields.io/badge/upstream%20bug-trycua%2Fcua%20%232869-red)](https://github.com/trycua/cua/issues/2869)
+
 **Self-hosted fleet of AI-controlled desktops, with a dashboard to dispatch
 tasks and see what's happening.**
 
@@ -11,6 +16,14 @@ whole fleet in parallel — and watch the results, costs, and history.
 Built on top of [cua](https://github.com/trycua/cua) (Apache-2.0), the
 open-source computer-use SDK. deskswarm is the orchestration + fleet
 management + dashboard layer on top.
+
+<p align="center">
+  <img src="docs/screenshots/dashboard.png" alt="deskswarm dashboard — fleet status, task launcher, task log with cost per run" width="820">
+</p>
+
+<p align="center">
+  <sub>Fleet status, a task launcher, and a live task log/report — all in one page.</sub>
+</p>
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
@@ -24,6 +37,18 @@ management + dashboard layer on top.
 │  desktop-3  │◄────►│  bridge-3   │◄─┘   │             │
 └─────────────┘      └─────────────┘      └─────────────┘
 ```
+
+Each `desktop-N` is a full XFCE session — the agent doesn't just see a
+browser viewport, it sees (and can click, type into, and screenshot) an
+entire Linux desktop:
+
+<p align="center">
+  <img src="docs/screenshots/live-desktop.png" alt="A real desktop controlled by the agent — Firefox open on a Google search" width="700">
+</p>
+
+<p align="center">
+  <sub>What "watch live" actually shows — the agent driving a real Firefox session, not a scripted mock.</sub>
+</p>
 
 ## Why
 
@@ -51,7 +76,7 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost:7000`. You should see 3 desktops (green = healthy),
+Open `http://localhost:7861`. You should see 3 desktops (green = healthy),
 a task box, and an empty task log. Send a task, watch it complete, click
 "watch live" on any desktop to see it work in real time over noVNC.
 
