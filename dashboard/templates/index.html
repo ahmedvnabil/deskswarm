@@ -229,7 +229,14 @@
   // The wall re-renders every 5s; re-apply size, filter, ticks and pictures.
   document.body.addEventListener('htmx:afterSwap', e => {
     if(e.detail.target.id !== 'fleet-status') return;
-    setWallSize(localStorage.getItem('wallSize') || 'md');
+    // The template already renders the default (md) columns, so this only
+    // matters when the user has chosen another size.
+    const want = localStorage.getItem('wallSize') || 'md';
+    if(want !== 'md') setWallSize(want);
+    else document.querySelectorAll('.wall-size').forEach(b => {
+      b.className = 'wall-size rounded px-2 py-1 ' +
+        (b.dataset.size === 'md' ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
     document.querySelectorAll('.wall-pick').forEach(c => {
       if(picked.has(c.value)) c.checked = true;
     });

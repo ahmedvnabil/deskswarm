@@ -4,7 +4,11 @@
   <div class="text-neutral-600 text-xs">Add one above — it boots a full XFCE desktop plus its agent bridge.</div>
 </div>
 {% else %}
-<div id="wall-grid" class="grid gap-3">
+{# The column classes are rendered here, not applied by JS after the swap:
+   relying on the script left the grid with no columns whenever it lost the
+   race with htmx's initial load, and every tile went full-width. JS only
+   overrides this when the user picks a different size. #}
+<div id="wall-grid" class="grid gap-3 grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
   {% for c in computers %}
   <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900
        {{ 'border-amber-500/50' if c.active_task else ('border-red-500/40' if not c.bridge_ok else 'border-neutral-800') }}"
