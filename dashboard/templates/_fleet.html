@@ -1,63 +1,75 @@
 {% if not computers %}
-<div class="border border-dashed border-neutral-800 rounded-lg p-8 text-center">
-  <div class="text-neutral-400 text-sm mb-1">No computers yet</div>
+<div class="border border-dashed border-neutral-800 rounded-lg p-10 text-center">
+  <div class="text-neutral-400 text-sm mb-1">No machines yet</div>
   <div class="text-neutral-600 text-xs">Add one above — it boots a full XFCE desktop plus its agent bridge.</div>
 </div>
 {% else %}
-<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
+<div id="wall-grid" class="grid gap-3">
   {% for c in computers %}
-  <div class="bg-neutral-900 border rounded-lg overflow-hidden flex flex-col
-    {{ 'border-amber-500/40' if c.active_task else 'border-neutral-800' }}">
+  <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900
+       {{ 'border-amber-500/50' if c.active_task else ('border-red-500/40' if not c.bridge_ok else 'border-neutral-800') }}"
+       data-name="{{ c.name|e }}" data-id="{{ c.id }}"
+       data-state="{{ 'busy' if c.active_task else ('idle' if c.bridge_ok else 'down') }}">
 
-    <div class="px-3 pt-3 pb-2">
-      <div class="flex items-start justify-between gap-2">
-        <div class="flex items-center gap-2 min-w-0">
-          <span class="h-2 w-2 rounded-full shrink-0
-            {%- if c.active_task %} bg-amber-400 animate-pulse
-            {%- elif c.bridge_ok %} bg-emerald-500
-            {%- elif c.desktop_state == 'running' %} bg-amber-500
-            {%- else %} bg-red-500{% endif %}"></span>
-          <span class="font-semibold text-sm truncate">{{ c.name }}</span>
+    {# Click the picture to open a real interactive session for this machine. #}
+    <div class="aspect-[16/10] bg-black relative cursor-pointer"
+         onclick="openLive({{ c.id }}, '{{ c.name|e }}', '{{ c.novnc_url }}')">
+      {% if c.bridge_ok %}
+      {# src is rendered server-side with a token that only ticks every few
+         seconds: the picture loads on first paint, the 5s partial swap reuses
+         the cached URL (so no flicker), and the token change pulls a fresh
+         frame. alt is empty so a failed frame never paints text over the
+         overlay. #}
+      <img class="wall-shot absolute inset-0 w-full h-full object-cover
+                  {{ '' if c.active_task else 'opacity-60 group-hover:opacity-90' }}"
+           src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
+           alt="" loading="lazy">
+      {% else %}
+      <div class="absolute inset-0 flex items-center justify-center text-center">
+        <div>
+          <div class="text-red-400 text-xs font-semibold">bridge down</div>
+          <div class="text-[10px] text-neutral-600 mt-0.5">{{ c.desktop_state }}/{{ c.bridge_state }}</div>
         </div>
-        <button onclick="removeComputer({{ c.id }}, '{{ c.name|e }}')" title="remove"
-          class="text-neutral-600 hover:text-red-400 leading-none shrink-0 text-sm">✕</button>
       </div>
+      {% endif %}
+      <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/50 pointer-events-none"></div>
+    </div>
 
-      <div class="mt-1 text-[11px] mono truncate
-        {{ 'text-amber-400' if c.active_task else 'text-neutral-500' }}">
-        {%- if c.active_task -%}
-          {{ c.active_task.current_action or c.active_task.status|lower }}
-        {%- elif c.bridge_ok -%}idle
-        {%- else -%}{{ c.desktop_state }}/{{ c.bridge_state }}{%- endif -%}
-        <span class="text-neutral-600"> · :{{ c.novnc_port }}</span>
-      </div>
+    <!-- top overlay: selection + name + status -->
+    <div class="absolute top-0 inset-x-0 px-2 py-1.5 flex items-start gap-1.5 pointer-events-none">
+      <input type="checkbox" class="wall-pick accent-amber-500 mt-0.5 pointer-events-auto cursor-pointer"
+             value="{{ c.name|e }}" onclick="event.stopPropagation(); syncPicks()">
+      <span class="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0
+        {%- if c.active_task %} bg-amber-400 animate-pulse
+        {%- elif c.bridge_ok %} bg-emerald-500
+        {%- else %} bg-red-500{% endif %}"></span>
+      <span class="text-[11px] font-semibold truncate drop-shadow">{{ c.name }}</span>
+      <button class="ml-auto pointer-events-auto text-neutral-400 hover:text-red-400 text-xs leading-none"
+              title="remove" onclick="event.stopPropagation(); removeComputer({{ c.id }}, '{{ c.name|e }}')">✕</button>
+    </div>
 
+    <!-- bottom overlay: what it's doing -->
+    <div class="absolute bottom-0 inset-x-0 px-2 py-1.5 pointer-events-none">
       {% if c.active_task %}
-      <div class="mt-1 text-[11px] text-neutral-500 truncate" title="{{ c.active_task.description }}">
-        #{{ c.active_task.id }} {{ c.active_task.description }}
+      <div class="text-[10px] mono text-amber-300 truncate">{{ c.active_task.current_action or 'starting' }}</div>
+      <div class="text-[10px] text-neutral-300 truncate">#{{ c.active_task.id }} {{ c.active_task.description }}</div>
+      {% else %}
+      <div class="text-[10px] mono text-neutral-400">
+        {{ 'idle' if c.bridge_ok else 'offline' }} · :{{ c.novnc_port }}
       </div>
       {% endif %}
     </div>
 
-    {# Equal-width grid instead of wrapping flex, so every card is the same
-       height however long its name is. #}
-    <div class="grid grid-cols-5 gap-px bg-neutral-800 border-t border-neutral-800 mt-auto">
-      <button onclick="toggleLive(this)" title="show the live screen inline"
-        data-novnc-url="{{ c.novnc_url }}" data-target="live-{{ c.id }}"
-        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">screen</button>
-      <button onclick="openTerminal({{ c.id }}, '{{ c.name|e }}')" title="root shell on this machine"
-        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">shell</button>
-      <button onclick="openInventory({{ c.id }}, '{{ c.name|e }}')" title="installed software"
-        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">apps</button>
-      <button onclick="snapshotComputer({{ c.id }}, '{{ c.name|e }}')" title="save as a reusable snapshot"
-        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">snap</button>
-      <button onclick="renameComputer({{ c.id }}, '{{ c.name|e }}')" title="rename"
-        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">name</button>
-    </div>
-
-    <div id="live-{{ c.id }}" class="hidden bg-black relative" style="aspect-ratio: 16/10;">
-      <a href="{{ c.novnc_url }}" target="_blank" title="open full size in a new tab"
-        class="absolute top-1 right-1 z-10 bg-neutral-900/80 hover:bg-neutral-800 text-[11px] px-2 py-1 rounded">↗</a>
+    <!-- hover actions -->
+    <div class="absolute top-7 right-1.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
+      <button onclick="event.stopPropagation(); openTerminal({{ c.id }}, '{{ c.name|e }}')"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">shell</button>
+      <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">apps</button>
+      <button onclick="event.stopPropagation(); snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">snap</button>
+      <button onclick="event.stopPropagation(); renameComputer({{ c.id }}, '{{ c.name|e }}')"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">name</button>
     </div>
   </div>
   {% endfor %}

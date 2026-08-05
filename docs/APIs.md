@@ -149,6 +149,18 @@ What's installed on the machine.
 }
 ```
 
+### `GET /api/v1/computers/<id>/screenshot`
+
+A PNG of the machine's current screen, pulled through its bridge. This is what
+the wall's tiles use.
+
+Results are cached server-side for `DESKSWARM_SHOT_TTL` seconds (default 6) and
+sent with a matching `max-age`, so a wall of N machines costs one capture per
+machine per window no matter how often the page re-renders.
+
+**Errors**: `404` unknown machine, `503` the screen could not be captured
+(bridge down or mid-restart).
+
 ## `GET /api/v1/fleet`
 
 Alias of `GET /api/v1/computers`, kept for convenience.

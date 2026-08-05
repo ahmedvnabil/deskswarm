@@ -24,23 +24,33 @@
     </div>
   </header>
 
-  <main class="max-w-7xl mx-auto p-6 space-y-8">
+  <main class="max-w-[1800px] mx-auto p-6 pb-24 space-y-8">
 
     <section>
-      <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Fleet</h2>
-        <form onsubmit="addComputer(event)" class="flex items-center gap-2 flex-wrap justify-end">
-          <input id="new-computer-name" required placeholder="name, or agent-{1..10} for a batch"
-            title="A plain name makes one machine. A {1..N} range makes that many at once."
-            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-72">
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div class="flex items-center gap-2 text-xs">
+          <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase mr-1">Wall</h2>
+          <input id="wall-filter" oninput="applyWallFilter()" placeholder="filter…"
+            class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 w-40">
+          <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
+          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1">busy</button>
+          <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">idle</button>
+          <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">down</button>
+          <span class="text-neutral-700">|</span>
+          <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
+          <button type="button" onclick="setWallSize('md')" data-size="md" class="wall-size bg-neutral-800 rounded px-2 py-1">M</button>
+          <button type="button" onclick="setWallSize('lg')" data-size="lg" class="wall-size bg-neutral-800 rounded px-2 py-1">L</button>
+        </div>
+        <form onsubmit="addComputer(event)" class="flex items-center gap-2">
+          <input id="new-computer-name" required placeholder="name, or agent-{1..10}"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-56">
           <select id="new-computer-snapshot"
-            title="Start from a saved snapshot instead of a clean desktop"
             class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
             <option value="">clean desktop</option>
           </select>
           <button type="submit" id="add-btn"
             class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">
-            + add computer
+            + add
           </button>
         </form>
       </div>
@@ -49,30 +59,6 @@
       </div>
     </section>
 
-    <section class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
-      <h2 class="text-sm font-semibold text-neutral-400 mb-3 tracking-wide uppercase">New task</h2>
-      <form hx-post="/api/v1/tasks" hx-target="#submit-result" hx-swap="innerHTML"
-            hx-on::after-request="if(event.detail.successful){ this.reset(); htmx.trigger('#task-log','refresh'); htmx.trigger('#analytics','refresh'); }"
-            class="space-y-3">
-        <div class="flex gap-3 flex-wrap items-start">
-          {# Options are kept in sync by refreshTargets() in JS — htmx can't
-             swap bare <option> tags (the parser strips them outside a select). #}
-          <select name="desktop" id="task-target"
-            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm">
-            <option value="all">whole fleet (parallel)</option>
-            {% for c in computers %}
-            <option value="{{ c.name }}">{{ c.name }}</option>
-            {% endfor %}
-          </select>
-          <textarea name="description" required placeholder="Describe the task... e.g. open a browser and search for today's top news"
-            class="flex-1 min-w-[300px] bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm h-20"></textarea>
-          <button type="submit" class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-5 py-2 rounded text-sm self-start">
-            Run
-          </button>
-        </div>
-        <div id="submit-result" class="text-xs text-neutral-500"></div>
-      </form>
-    </section>
 
     <section>
       <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
@@ -128,10 +114,22 @@
 
   </main>
 
+  <!-- -------------------------------------------------------- broadcast -->
+  <div class="fixed bottom-0 inset-x-0 z-20 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur px-6 py-2.5">
+    <form onsubmit="broadcast(event)" class="max-w-[1800px] mx-auto flex items-center gap-3">
+      <span id="broadcast-scope" class="text-xs text-neutral-500 shrink-0 w-32">whole fleet</span>
+      <input id="broadcast-desc" required
+        class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm"
+        placeholder="task for the fleet — or tick machines on the wall to target them…">
+      <button type="submit" id="broadcast-btn"
+        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-5 py-2 rounded text-sm">Run</button>
+    </form>
+  </div>
+
   <!-- ------------------------------------------------------------ modal -->
   <div id="modal" class="hidden fixed inset-0 z-30 bg-black/70 backdrop-blur-sm p-4 sm:p-8 overflow-y-auto"
        onclick="if(event.target===this) closeModal()">
-    <div class="max-w-3xl mx-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl">
+    <div id="modal-panel" class="max-w-5xl mx-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl">
       <div class="flex items-center justify-between px-5 py-3 border-b border-neutral-800">
         <h3 id="modal-title" class="text-sm font-semibold"></h3>
         <button onclick="closeModal()" class="text-neutral-500 hover:text-neutral-200 text-lg leading-none">✕</button>
@@ -146,6 +144,7 @@
       new Date().toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
   }
   tick(); setInterval(tick, 1000);
+  setWallSize(localStorage.getItem('wallSize') || 'md');
 
   // ---------------------------------------------------------------- modal
   function openModal(title){
@@ -165,6 +164,105 @@
     if(!f) return;
     f.value = n;
     htmx.trigger('#task-filters', 'change');
+  }
+
+  // =============================================================== the wall
+  // Tiles show a still refreshed on a timer rather than N live VNC streams —
+  // one stream per machine does not scale. Clicking a tile opens the real
+  // interactive session for that one machine.
+
+  const picked    = new Set();  // machine names ticked for a broadcast
+  let   wallState = '';     // '', 'busy', 'idle', 'down'
+
+  const SIZES = {
+    sm: 'grid-cols-4 md:grid-cols-6 2xl:grid-cols-8',
+    md: 'grid-cols-2 md:grid-cols-3 2xl:grid-cols-4',
+    lg: 'grid-cols-1 md:grid-cols-2 2xl:grid-cols-3',
+  };
+
+  function setWallSize(k){
+    localStorage.setItem('wallSize', k);
+    const grid = document.getElementById('wall-grid');
+    if(grid) grid.className = 'grid gap-3 ' + SIZES[k];
+    document.querySelectorAll('.wall-size').forEach(b => {
+      const on = b.dataset.size === k;
+      b.className = 'wall-size rounded px-2 py-1 ' +
+        (on ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
+  }
+
+  function setWallState(v){
+    wallState = v;
+    document.querySelectorAll('.wall-chip').forEach(b => {
+      const on = b.dataset.chip === v;
+      b.className = 'wall-chip rounded px-2 py-1 ' +
+        (on ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
+    applyWallFilter();
+  }
+
+  function applyWallFilter(){
+    const q = (document.getElementById('wall-filter').value || '').toLowerCase();
+    document.querySelectorAll('.wall-tile').forEach(t => {
+      const okName  = !q || t.dataset.name.toLowerCase().includes(q);
+      const okState = !wallState || t.dataset.state === wallState;
+      t.classList.toggle('hidden', !(okName && okState));
+    });
+  }
+
+  function syncPicks(){
+    picked.clear();
+    document.querySelectorAll('.wall-pick:checked').forEach(c => picked.add(c.value));
+    const scope = document.getElementById('broadcast-scope');
+    const btn   = document.getElementById('broadcast-btn');
+    if(picked.size){
+      scope.textContent = picked.size + ' selected';
+      scope.className = 'text-xs text-amber-400 shrink-0 w-32';
+      btn.textContent = 'Run on ' + picked.size;
+    } else {
+      scope.textContent = 'whole fleet';
+      scope.className = 'text-xs text-neutral-500 shrink-0 w-32';
+      btn.textContent = 'Run';
+    }
+  }
+
+  // The wall re-renders every 5s; re-apply size, filter, ticks and pictures.
+  document.body.addEventListener('htmx:afterSwap', e => {
+    if(e.detail.target.id !== 'fleet-status') return;
+    setWallSize(localStorage.getItem('wallSize') || 'md');
+    document.querySelectorAll('.wall-pick').forEach(c => {
+      if(picked.has(c.value)) c.checked = true;
+    });
+    syncPicks();
+    applyWallFilter();
+  });
+
+  async function broadcast(e){
+    e.preventDefault();
+    const input = document.getElementById('broadcast-desc');
+    const description = input.value.trim();
+    if(!description) return;
+    const targets = picked.size ? [...picked] : ['all'];
+    for(const t of targets){
+      await fetch('/api/v1/tasks', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({desktop: t, description})
+      });
+    }
+    input.value = '';
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#task-log','refresh');
+    htmx.trigger('#analytics','refresh');
+  }
+
+  // Full interactive session for one machine.
+  function openLive(id, name, url){
+    openModal('Live — ' + name);
+    document.getElementById('modal-body').innerHTML =
+      '<div class="bg-black rounded overflow-hidden" style="aspect-ratio:16/10">' +
+      '<iframe src="' + url + '" style="width:100%;height:100%;border:0"></iframe></div>' +
+      '<div class="mt-2 text-xs text-neutral-500">You have keyboard and mouse control here — ' +
+      'anything you do happens on the real machine.</div>';
   }
 
   // ------------------------------------------------------- fleet actions

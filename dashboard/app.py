@@ -1,3 +1,4 @@
+import base64
 import csv
 import io
 import re
@@ -14,6 +15,8 @@ from functools import wraps
 from pathlib import Path
 
 from flask import Flask, Response, g, jsonify, render_template, request
+
+import requests
 
 import fleet
 
@@ -361,7 +364,8 @@ def partial_fleet():
         view = computer_view(c)
         view["active_task"] = busy.get(view["name"])
         computers.append(view)
-    return render_template("_fleet.html", computers=computers)
+    return render_template("_fleet.html", computers=computers,
+                           shot_token=int(time.time() // SHOT_TTL))
 
 
 @app.route("/partials/tasks")
@@ -608,6 +612,65 @@ def api_computers_exec(comp_id: int):
 @app.route("/api/v1/fleet")
 def api_fleet():
     return jsonify({"ok": True, "data": [computer_view(c) for c in list_computers()], "error": None})
+
+
+# --------------------------------------------------------------- screenshots
+# The wall shows every machine at once. Opening a live VNC stream per tile
+# would mean N simultaneous connections, so tiles poll a cached still instead
+# and only the tile you click gets a real interactive session.
+
+_SHOT_CACHE: dict[str, tuple[float, bytes]] = {}
+SHOT_TTL = float(os.environ.get("DESKSWARM_SHOT_TTL", "3"))
+
+
+def bridge_screenshot(view: dict) -> bytes | None:
+    """Grab a PNG of one machine's screen through its bridge."""
+    slug = view["slug"]
+    now = time.time()
+    hit = _SHOT_CACHE.get(slug)
+    if hit and now - hit[0] < SHOT_TTL:
+        return hit[1]
+
+    url = f"http://{view['bridge_host']}:{view['bridge_port']}/cmd"
+    try:
+        r = requests.post(url, json={"command": "screenshot", "params": {}}, timeout=12)
+    except Exception:  # noqa: BLE001
+        return None
+    if r.status_code != 200:
+        return None
+
+    # The bridge answers as an SSE-ish stream: `data: {json}`.
+    payload = None
+    for line in r.text.splitlines():
+        line = line.strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
+        if line.startswith("{"):
+            try:
+                payload = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+    if not payload or not payload.get("success") or not payload.get("image_data"):
+        return None
+
+    try:
+        png = base64.b64decode(payload["image_data"])
+    except Exception:  # noqa: BLE001
+        return None
+    _SHOT_CACHE[slug] = (now, png)
+    return png
+
+
+@app.route("/api/v1/computers/<int:comp_id>/screenshot")
+def api_computer_screenshot(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    png = bridge_screenshot(computer_view(comp, with_state=False))
+    if png is None:
+        return jsonify({"ok": False, "data": None, "error": "screen unavailable"}), 503
+    return Response(png, mimetype="image/png",
+                    headers={"Cache-Control": f"max-age={int(SHOT_TTL)}"})
 
 
 # ---------------------------------------------------------------- snapshots

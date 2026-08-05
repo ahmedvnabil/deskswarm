@@ -18,11 +18,11 @@ open-source computer-use SDK. deskswarm is the orchestration + fleet
 management + dashboard layer on top.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="deskswarm dashboard — fleet status, analytics with a per-day chart, embeddable live view, and a task log with cancel/retry" width="820">
+  <img src="docs/screenshots/dashboard.png" alt="deskswarm wall — every machine shown as its live screen, with the busy one outlined amber" width="820">
 </p>
 
 <p align="center">
-  <sub>Add machines by name, shell into any of them, watch what each agent is doing, and schedule repeat work — one page, live-updating.</sub>
+  <sub>Every machine's screen, live. Amber = an agent is working (here it has opened a terminal and typed a command), red = the machine is down.</sub>
 </p>
 
 ## Features
@@ -43,9 +43,14 @@ management + dashboard layer on top.
   machine needs for its job.
 - **Software inventory** — one click shows a machine's OS, kernel, runtimes
   (Python/Node/Go/…), installed apps, package count, and disk/RAM.
-- **See which agents are working** — a machine's card turns amber and names
-  the step its agent is on (`busy — screenshot`) plus the task it's running,
-  so at a glance you know what the fleet is doing.
+- **A wall of live screens** — the fleet is shown as its actual screens, not
+  a list. You see what every agent is doing at a glance; a working machine is
+  outlined amber with its current step and task, a broken one is red. Tiles
+  poll a cached still (a live VNC stream per machine would not scale), and
+  clicking one opens a real interactive session for that machine.
+- **Filter, resize, and broadcast** — filter the wall by name or by
+  busy/idle/down, switch tile size S/M/L, tick machines to aim a task at
+  them, or leave nothing ticked to run on the whole fleet.
 - **Control** — dispatch a task to one computer or the whole fleet in
   parallel; **cancel** a running task (kills the agent process cleanly);
   **retry** a failed one with one click.
@@ -57,10 +62,10 @@ management + dashboard layer on top.
 - **Live progress, not just a final answer** — while a task runs, the log
   shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
   ...), updated after every turn.
-- **Live monitoring** — embed any machine's live noVNC screen inline. Each
-  machine has its own VNC password and the dashboard connects for you, so
-  "screen" is one click (the password is shown in the machine's apps panel
-  if you'd rather open noVNC directly).
+- **Live control** — click any tile for a full keyboard-and-mouse session on
+  that machine. Each machine has its own VNC password and the dashboard
+  connects for you (the password is in the machine's apps panel if you'd
+  rather open noVNC directly).
 - **Analytics & reports** — success rate, cost, average duration, a per-day
   chart, a per-machine breakdown, and CSV export of the full history.
 
