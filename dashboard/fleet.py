@@ -105,8 +105,13 @@ def novnc_url(port: int) -> str:
     return f"http://{PUBLIC_HOST}:{port}/vnc.html"
 
 
-def create_computer(slug: str, novnc_port: int, vnc_password: str) -> None:
-    """Start the desktop + bridge container pair for one computer."""
+def create_computer(slug: str, novnc_port: int, vnc_password: str,
+                    image: str | None = None) -> None:
+    """Start the desktop + bridge container pair for one computer.
+
+    `image` overrides the stock desktop image, which is how a machine gets
+    created from a snapshot of an already-provisioned one.
+    """
     ensure_bridge_image()
     network = detect_network()
     extra = {}
@@ -114,7 +119,7 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str) -> None:
         extra["security_opt"] = ["apparmor:unconfined"]
 
     client().containers.run(
-        DESKTOP_IMAGE,
+        image or DESKTOP_IMAGE,
         name=desktop_container_name(slug),
         detach=True,
         environment={"VNC_PW": vnc_password},
@@ -139,6 +144,22 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str) -> None:
         labels={"deskswarm.role": "bridge", "deskswarm.slug": slug},
         **extra,
     )
+
+
+def snapshot_computer(slug: str, tag: str) -> str:
+    """Commit a running desktop container to an image so new machines can be
+    created pre-loaded with whatever was installed on it."""
+    container = client().containers.get(desktop_container_name(slug))
+    repo = f"{CONTAINER_PREFIX}-snapshot"
+    container.commit(repository=repo, tag=tag)
+    return f"{repo}:{tag}"
+
+
+def remove_image(image: str) -> None:
+    try:
+        client().images.remove(image, force=True)
+    except docker.errors.ImageNotFound:
+        pass
 
 
 def destroy_computer(slug: str) -> None:

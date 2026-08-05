@@ -71,10 +71,21 @@ stored in the database, not in `docker-compose.yml`.
 Boots a new machine. The noVNC port is assigned automatically from the first
 free port at or above `DESKSWARM_NOVNC_PORT_BASE`.
 
-**Body**: `{ "name": "research-01" }` — `201 Created`.
+**Body**: `{ "name": "research-01", "snapshot": "<optional snapshot name>" }`
+— `201 Created`.
 
 The very first call also builds the bridge image, which takes a minute;
 subsequent calls return in about a second.
+
+`name` may contain one `{N..M}` range to create a batch:
+`{"name": "agent-{1..10}"}`. Zero-padding is preserved (`node-{01..10}`).
+A batch returns `{"created": [...], "errors": [{"name", "error"}]}` — names
+that clash are reported without blocking the rest. A single name returns the
+computer object directly, as before. `DESKSWARM_MAX_BULK_CREATE` caps the
+range size.
+
+`snapshot` starts the machine from a saved snapshot image instead of a clean
+desktop, so it comes up with that software already installed.
 
 **Errors**: `400` missing name, `409` name already taken, `500` Docker refused
 to start the containers.
@@ -136,6 +147,77 @@ What's installed on the machine.
 ## `GET /api/v1/fleet`
 
 Alias of `GET /api/v1/computers`, kept for convenience.
+
+## Snapshots
+
+A snapshot freezes a provisioned machine into a Docker image so new machines
+can start from it.
+
+### `GET /api/v1/snapshots`
+
+```json
+{ "ok": true, "data": [
+  { "id": 1, "name": "with-xdotool", "image": "deskswarm-dyn-snapshot:with-xdotool",
+    "source": "agent-1", "created_at": "..." }], "error": null }
+```
+
+### `POST /api/v1/computers/<id>/snapshot`
+
+Commits that machine's desktop container. **Body**: `{ "name": "design-box" }`
+— `201 Created`.
+
+**Errors**: `404` unknown machine, `400` missing name, `409` snapshot name
+taken, `500` the commit failed.
+
+### `DELETE /api/v1/snapshots/<id>`
+
+Removes the snapshot. The underlying image is deleted too **unless** machines
+are still running from it, in which case the response reports
+`"image_kept": true`.
+
+## Schedules
+
+Repeat a task automatically. The dashboard ticks every 20s and claims due
+schedules with a conditional `UPDATE`, so running several gunicorn workers
+never double-dispatches one schedule.
+
+### `GET /api/v1/schedules`
+
+```json
+{ "ok": true, "data": [
+  { "id": 1, "desktop": "all", "description": "Daily fleet health check.",
+    "kind": "daily", "every_minutes": null, "at_time": "09:00",
+    "enabled": 1, "next_run_at": "2026-08-06T09:00:00+00:00",
+    "last_run_at": null, "run_count": 0, "created_at": "..." }], "error": null }
+```
+
+### `POST /api/v1/schedules`
+
+**Body** — every N minutes:
+
+```json
+{ "desktop": "all", "description": "Check the queue", "kind": "interval", "every_minutes": 30 }
+```
+
+or daily at a fixed UTC time:
+
+```json
+{ "desktop": "agent-1", "description": "Morning report", "kind": "daily", "at_time": "09:00" }
+```
+
+`desktop` accepts a machine name or `"all"`. `201 Created`.
+
+**Errors**: `400` missing description, bad `kind`, `every_minutes < 1`,
+`at_time` not `HH:MM`, or unknown machine.
+
+### `PATCH /api/v1/schedules/<id>`
+
+Pause or resume. **Body**: `{ "enabled": "0" }` / `{ "enabled": "1" }`.
+Resuming recomputes the next run from now.
+
+### `DELETE /api/v1/schedules/<id>`
+
+Removes the schedule. Tasks it already created are kept.
 
 ## `GET /api/v1/tasks`
 
@@ -275,8 +357,11 @@ oldest first — this is what powers the dashboard's chart.
 ## HTML partials (used internally by the dashboard, not a stable API)
 
 - `GET /partials/fleet` — fleet cards with their per-machine controls
-- `GET /partials/tasks?desktop=&status=` — task history table; `status`
-  accepts `ACTIVE` (pending+running), `COMPLETED`, `FAILED`, `CANCELLED`
+- `GET /partials/tasks?desktop=&status=&page=` — task history table;
+  `status` accepts `ACTIVE` (pending+running), `COMPLETED`, `FAILED`,
+  `CANCELLED`. Page size is `DESKSWARM_PAGE_SIZE` (default 25); out-of-range
+  pages clamp to the last one
+- `GET /partials/schedules` — schedule table
 - `GET /partials/analytics` — stat tiles + chart + per-machine breakdown
 - `GET /partials/computers/<id>/inventory` — rendered software inventory
 

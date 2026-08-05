@@ -29,9 +29,15 @@
     <section>
       <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
         <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Fleet</h2>
-        <form onsubmit="addComputer(event)" class="flex items-center gap-2">
-          <input id="new-computer-name" required placeholder="new computer name…"
-            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-56">
+        <form onsubmit="addComputer(event)" class="flex items-center gap-2 flex-wrap justify-end">
+          <input id="new-computer-name" required placeholder="name, or agent-{1..10} for a batch"
+            title="A plain name makes one machine. A {1..N} range makes that many at once."
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-72">
+          <select id="new-computer-snapshot"
+            title="Start from a saved snapshot instead of a clean desktop"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
+            <option value="">clean desktop</option>
+          </select>
           <button type="submit" id="add-btn"
             class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">
             + add computer
@@ -66,6 +72,32 @@
         </div>
         <div id="submit-result" class="text-xs text-neutral-500"></div>
       </form>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Schedules</h2>
+        <form onsubmit="addSchedule(event)" class="flex items-center gap-2 flex-wrap justify-end text-sm">
+          <select id="sched-desktop" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+            <option value="all">whole fleet</option>
+            {% for c in computers %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+          </select>
+          <input id="sched-desc" required placeholder="task to repeat…"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 w-72">
+          <select id="sched-kind" onchange="syncSchedKind()"
+            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+            <option value="interval">every…</option>
+            <option value="daily">daily at…</option>
+          </select>
+          <input id="sched-every" type="number" min="1" value="60" title="minutes"
+            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5 w-20">
+          <input id="sched-at" type="time" value="09:00" class="hidden bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+          <button type="submit" class="bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">+ schedule</button>
+        </form>
+      </div>
+      <div id="schedules" hx-get="/partials/schedules" hx-trigger="load, every 15s, refresh" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
     </section>
 
     <section>
@@ -126,6 +158,15 @@
   }
   document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
 
+  // Pager: set the hidden page field, then let the filter form re-fetch, so
+  // paging goes through the same request shape as the poll and the filters.
+  function gotoPage(n){
+    const f = document.getElementById('task-page');
+    if(!f) return;
+    f.value = n;
+    htmx.trigger('#task-filters', 'change');
+  }
+
   // ------------------------------------------------------- fleet actions
   // Rebuilds the task-target dropdown from the JSON API, preserving the
   // current selection where possible.
@@ -145,21 +186,99 @@
   }
   setInterval(refreshTargets, 15000);
 
+  async function refreshSnapshots(){
+    try {
+      const r = await fetch('/api/v1/snapshots');
+      const j = await r.json();
+      if(!j.ok) return;
+      const sel = document.getElementById('new-computer-snapshot');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      sel.add(new Option('clean desktop', ''));
+      for(const s of j.data) sel.add(new Option('from: ' + s.name, s.name));
+      sel.value = [...sel.options].some(o => o.value === prev) ? prev : '';
+    } catch(_){}
+  }
+  refreshSnapshots();
+
+  async function snapshotComputer(id, name){
+    const snap = prompt(
+      `Save "${name}" as a reusable snapshot.\n\n` +
+      'New machines created from it start with everything installed here.\n\nSnapshot name:');
+    if(!snap) return;
+    const r = await fetch(`/api/v1/computers/${id}/snapshot`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name: snap.trim()})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'snapshot failed');
+    else refreshSnapshots();
+  }
+
+  // ---------------------------------------------------------- schedules
+  function syncSchedKind(){
+    const daily = document.getElementById('sched-kind').value === 'daily';
+    document.getElementById('sched-every').classList.toggle('hidden', daily);
+    document.getElementById('sched-at').classList.toggle('hidden', !daily);
+  }
+
+  async function addSchedule(e){
+    e.preventDefault();
+    const kind = document.getElementById('sched-kind').value;
+    const body = {
+      desktop: document.getElementById('sched-desktop').value,
+      description: document.getElementById('sched-desc').value.trim(),
+      kind,
+      every_minutes: document.getElementById('sched-every').value,
+      at_time: document.getElementById('sched-at').value,
+    };
+    const r = await fetch('/api/v1/schedules', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if(!j.ok){ alert(j.error || 'failed'); return; }
+    document.getElementById('sched-desc').value = '';
+    htmx.trigger('#schedules', 'refresh');
+  }
+
+  async function toggleSchedule(id, enabled){
+    await fetch(`/api/v1/schedules/${id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({enabled: String(enabled)})
+    });
+    htmx.trigger('#schedules', 'refresh');
+  }
+
+  async function deleteSchedule(id){
+    if(!confirm('Remove this schedule?')) return;
+    await fetch(`/api/v1/schedules/${id}`, {method: 'DELETE'});
+    htmx.trigger('#schedules', 'refresh');
+  }
+
   async function addComputer(e){
     e.preventDefault();
     const input = document.getElementById('new-computer-name');
     const btn = document.getElementById('add-btn');
     const name = input.value.trim();
     if(!name) return;
+    const snapshot = document.getElementById('new-computer-snapshot').value;
     btn.disabled = true; btn.textContent = 'creating…';
     try {
       const r = await fetch('/api/v1/computers', {
         method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({name})
+        body: JSON.stringify({name, snapshot})
       });
       const j = await r.json();
       if(!j.ok){ alert(j.error || 'failed to create'); }
-      else { input.value = ''; htmx.trigger('#fleet-status','refresh'); refreshTargets(); }
+      else {
+        // A batch reports per-name failures without blocking the ones that worked.
+        if(j.data && j.data.errors && j.data.errors.length){
+          alert('Some machines were not created:\n' +
+                j.data.errors.map(e => `${e.name}: ${e.error}`).join('\n'));
+        }
+        input.value = ''; htmx.trigger('#fleet-status','refresh'); refreshTargets();
+      }
     } catch(err){ alert(err); }
     btn.disabled = false; btn.textContent = '+ add computer';
   }

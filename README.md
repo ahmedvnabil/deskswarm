@@ -32,6 +32,12 @@ management + dashboard layer on top.
   Rename it, remove it, or grow to dozens of machines without touching
   `docker-compose.yml`. Each one is an independent machine with its own
   agent, its own screen, and its own installed software.
+- **Add a batch at once** — `agent-{1..10}` in the name field creates ten
+  machines in one go (zero-padding like `node-{01..10}` is preserved). Names
+  that clash are reported individually; the rest still get created.
+- **Snapshots** — provision one machine the way you like, hit **snapshot**,
+  and every machine you create from it starts with that software already
+  installed. No re-running setup on each new machine.
 - **Per-machine terminal** — shell into any computer straight from the
   dashboard (runs as root), so you can `apt-get install` whatever that
   machine needs for its job.
@@ -43,8 +49,11 @@ management + dashboard layer on top.
 - **Control** — dispatch a task to one computer or the whole fleet in
   parallel; **cancel** a running task (kills the agent process cleanly);
   **retry** a failed one with one click.
-- **Filter the task log** by machine and by status (in-flight / completed /
-  failed / cancelled) — the log stays readable once the fleet grows.
+- **Filter and page the task log** by machine and by status (in-flight /
+  completed / failed / cancelled) — the log stays readable once the fleet
+  grows and history piles up.
+- **Schedules** — repeat a task every N minutes or daily at a set UTC time,
+  on one machine or the whole fleet. Pause and resume from the table.
 - **Live progress, not just a final answer** — while a task runs, the log
   shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
   ...), updated after every turn.
@@ -162,7 +171,9 @@ package for what's natively supported.
 ## Scaling the fleet
 
 Just add more computers from the UI — each gets its own containers and the
-next free noVNC port automatically. Nothing to edit, nothing to restart.
+next free noVNC port automatically. Nothing to edit, nothing to restart. Use
+an `agent-{1..10}` range to create a batch; `DESKSWARM_MAX_BULK_CREATE`
+(default 25) caps one batch.
 
 Sizing: each desktop is a full XFCE session, so budget roughly 0.5–1 GB RAM
 per idle machine plus whatever its tasks need. `DESKSWARM_NOVNC_PORT_BASE`

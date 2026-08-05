@@ -47,6 +47,9 @@
         class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">software</button>
       <button onclick="renameComputer({{ c.id }}, '{{ c.name|e }}')"
         class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">rename</button>
+      <button onclick="snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
+        title="save this machine as a reusable template"
+        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">snapshot</button>
       <a href="{{ c.novnc_url }}" target="_blank"
         class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">↗</a>
     </div>

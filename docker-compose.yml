@@ -14,6 +14,10 @@ services:
       # Set to 1 on hosts that can't apply AppArmor profiles (Proxmox LXC).
       DESKSWARM_DISABLE_APPARMOR: ${DESKSWARM_DISABLE_APPARMOR:-}
       DESKSWARM_NETWORK: ${DESKSWARM_NETWORK:-deskswarm_default}
+      # Rows per page in the task log, and the ceiling on one {1..N} batch.
+      DESKSWARM_PAGE_SIZE: ${DESKSWARM_PAGE_SIZE:-25}
+      DESKSWARM_MAX_BULK_CREATE: ${DESKSWARM_MAX_BULK_CREATE:-25}
+      DESKSWARM_TASK_TIMEOUT: ${DESKSWARM_TASK_TIMEOUT:-300}
     ports:
       - "${DASHBOARD_PORT:-7861}:7000"
     volumes:
