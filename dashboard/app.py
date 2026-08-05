@@ -682,23 +682,46 @@ def touch_active(comp_id: int) -> None:
     conn.close()
 
 
-def wake_and_wait(comp: dict, timeout: float = WAKE_TIMEOUT_SECONDS) -> bool:
-    """Start a sleeping machine and block until its bridge answers.
-
-    Callers need the machine actually usable, not merely started: a desktop
-    takes a few seconds to bring up X and the bridge a few more to attach. The
-    alternative — returning as soon as Docker says "started" — hands back a
-    machine whose screen is still black and whose first command fails.
-    """
-    fleet.resume_computer(comp["slug"])
-    touch_active(comp["id"])
+def _wait_for_bridge(slug: str, timeout: float) -> bool:
+    view = {"bridge_host": fleet.bridge_container_name(slug), "bridge_port": 8000}
     deadline = time.monotonic() + timeout
-    view = {"bridge_host": fleet.bridge_container_name(comp["slug"]), "bridge_port": 8000}
     while time.monotonic() < deadline:
         if check_bridge(view):
             return True
         time.sleep(1.5)
     return False
+
+
+def wake_and_wait(comp: dict, timeout: float | None = None) -> dict:
+    """Start a sleeping machine and block until its bridge answers.
+
+    Callers need the machine actually usable, not merely started: a desktop
+    takes a few seconds to bring up X and the bridge a few more to attach.
+    Returning as soon as Docker says "started" would hand back a machine whose
+    screen is still black and whose first command fails.
+
+    A container that is started rather than created keeps the filesystem of its
+    previous life, and that is a reliable source of processes which refuse to
+    start twice — stale lock files, sockets, pid files. When the bridge doesn't
+    come back, recreating the pair clears all of it. The home volume survives
+    either way, so the cost is the container's own scratch state, which is a
+    fair price for a machine that works. It is reported rather than hidden.
+    """
+    # Read at call time, not as a default argument: a default binds once at
+    # import and then silently ignores anything that changes the setting.
+    timeout = WAKE_TIMEOUT_SECONDS if timeout is None else timeout
+    fleet.resume_computer(comp["slug"])
+    touch_active(comp["id"])
+    if _wait_for_bridge(comp["slug"], timeout):
+        return {"ready": True, "recreated": False}
+
+    try:
+        fleet.destroy_computer(comp["slug"], keep_home=True)
+        fleet.create_computer(comp["slug"], comp["novnc_port"],
+                              comp["vnc_password"], image=comp["image"])
+    except Exception:  # noqa: BLE001
+        return {"ready": False, "recreated": False}
+    return {"ready": _wait_for_bridge(comp["slug"], timeout), "recreated": True}
 
 
 @app.route("/api/v1/computers/<int:comp_id>/sleep", methods=["POST"])
@@ -730,12 +753,12 @@ def api_computer_wake(comp_id: int):
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
     try:
-        ready = wake_and_wait(comp)
+        result = wake_and_wait(comp)
     except Exception as exc:  # noqa: BLE001
         return jsonify({"ok": False, "data": None, "error": f"failed to wake: {exc}"}), 500
     # Started but not yet answering is not an error — the screen will come up
     # a moment later — so this reports readiness rather than failing.
-    return jsonify({"ok": True, "data": {"id": comp_id, "sleeping": False, "ready": ready},
+    return jsonify({"ok": True, "data": {"id": comp_id, "sleeping": False, **result},
                     "error": None})
 
 

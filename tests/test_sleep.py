@@ -133,6 +133,30 @@ def test_first_sweep_starts_the_clock_instead_of_suspending(client, monkeypatch)
     assert view(client, comp_id)["last_active_at"] is not None
 
 
+def test_wake_recreates_a_bridge_that_will_not_come_back(client, monkeypatch):
+    """A started container keeps its old filesystem, and things that refuse to
+    start twice live there — stale X locks, sockets, pid files. Recreating
+    clears them; the home volume is untouched either way."""
+    app = client.module
+    comp_id = add(client)
+    client.post(f"/api/v1/computers/{comp_id}/sleep")
+
+    monkeypatch.setattr(app, "check_bridge", lambda view: False)
+    monkeypatch.setattr(app, "WAKE_TIMEOUT_SECONDS", 0.01)
+    client.created.clear()
+
+    r = client.post(f"/api/v1/computers/{comp_id}/wake")
+    assert r.get_json()["data"]["recreated"] is True
+    assert "m1" in client.created, "the pair should have been rebuilt"
+
+
+def test_a_healthy_wake_does_not_recreate(client):
+    comp_id = add(client)
+    client.post(f"/api/v1/computers/{comp_id}/sleep")
+    data = client.post(f"/api/v1/computers/{comp_id}/wake").get_json()["data"]
+    assert data == {"id": comp_id, "sleeping": False, "ready": True, "recreated": False}
+
+
 def test_a_task_wakes_a_sleeping_target(client):
     """A schedule naming a sleeping machine should work, not fail."""
     comp_id = add(client)
