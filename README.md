@@ -18,12 +18,28 @@ open-source computer-use SDK. deskswarm is the orchestration + fleet
 management + dashboard layer on top.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="deskswarm dashboard — fleet status, task launcher, task log with cost per run" width="820">
+  <img src="docs/screenshots/dashboard.png" alt="deskswarm dashboard — fleet status, analytics with a per-day chart, embeddable live view, and a task log with cancel/retry" width="820">
 </p>
 
 <p align="center">
-  <sub>Fleet status, a task launcher, and a live task log/report — all in one page.</sub>
+  <sub>Fleet status, analytics, live view, and a task log with cancel/retry — all in one page, all live-updating.</sub>
 </p>
+
+## Features
+
+- **Control** — dispatch a task to one desktop or the whole fleet in
+  parallel; **cancel** a running task (kills the agent process cleanly);
+  **retry** a failed one with one click, without retyping the description.
+- **Live progress, not just a final answer** — while a task is running, the
+  task log shows the agent's *current step* (`screenshot`, `left_click`,
+  `type_text`, ...), updated after every turn, not just once it finishes.
+- **Analytics** — total tasks, success rate, total cost, average duration,
+  a per-day tasks/cost chart, and a per-desktop breakdown, all computed live
+  from task history.
+- **Live monitoring** — click any desktop to embed its live noVNC screen
+  directly in the dashboard, no extra tab, no extra setup.
+- **Reports** — every task's full result, cost, and duration is kept;
+  export the whole history as CSV for a report you can hand someone.
 
 ```
 ┌─────────────┐      ┌─────────────┐      ┌─────────────┐
@@ -77,8 +93,9 @@ docker compose up -d --build
 ```
 
 Open `http://localhost:7861`. You should see 3 desktops (green = healthy),
-a task box, and an empty task log. Send a task, watch it complete, click
-"watch live" on any desktop to see it work in real time over noVNC.
+a task box, an analytics panel, and an empty task log. Send a task and watch
+its status go `pending → running (screenshot) → completed` live, or click
+into the Live View section to embed a desktop's screen right on the page.
 
 ## Configuring a model
 
@@ -121,8 +138,9 @@ The default `docker-compose.yml` ships 3 desktop+bridge pairs. To add more:
 
 ## API
 
-See [`docs/APIs.md`](docs/APIs.md) — `GET /api/v1/fleet`,
-`GET /api/v1/tasks`, `POST /api/v1/tasks`, optional bearer-token auth.
+See [`docs/APIs.md`](docs/APIs.md) — fleet status, task CRUD (create,
+list, detail, **cancel**, **retry**), live **analytics**, and **CSV export**,
+all under `/api/v1/*` with optional bearer-token auth.
 
 ## Known issues
 
@@ -146,7 +164,7 @@ full writeup in [`docs/UPSTREAM_CUA_BUG.md`](docs/UPSTREAM_CUA_BUG.md).
 
 - **desktop-N**: [`trycua/xfce-cua`](https://hub.docker.com/r/trycua/xfce-cua) — a real XFCE session over VNC/noVNC.
 - **bridge-N**: `cua-computer-server` in VNC-backend mode, translating REST/WS calls into VNC input events + screenshots. See `bridge/`.
-- **dashboard**: Flask + HTMX + SQLite. Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state.
+- **dashboard**: Flask + HTMX + Chart.js + SQLite (WAL mode). Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state. The subprocess writes its `current_action` back to SQLite after every agent turn — that's what makes progress visible before the task finishes. Cancelling a task sends `SIGTERM` to that subprocess's PID.
 
 ## Credits
 

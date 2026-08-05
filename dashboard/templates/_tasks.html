@@ -8,7 +8,9 @@
       <th class="px-3 py-2 font-medium">status</th>
       <th class="px-3 py-2 font-medium">result / error</th>
       <th class="px-3 py-2 font-medium">cost</th>
+      <th class="px-3 py-2 font-medium">duration</th>
       <th class="px-3 py-2 font-medium">updated</th>
+      <th class="px-3 py-2 font-medium"></th>
     </tr>
   </thead>
   <tbody class="divide-y divide-neutral-900">
@@ -22,8 +24,12 @@
           <span class="text-emerald-400 font-semibold">completed</span>
         {% elif t.status == 'FAILED' %}
           <span class="text-red-400 font-semibold">failed</span>
+        {% elif t.status == 'CANCELLED' %}
+          <span class="text-neutral-500 font-semibold">cancelled</span>
         {% elif t.status == 'RUNNING' %}
-          <span class="text-amber-400 font-semibold animate-pulse">running...</span>
+          <span class="text-amber-400 font-semibold animate-pulse">
+            running{{ ' — ' + t.current_action if t.current_action else '...' }}
+          </span>
         {% else %}
           <span class="text-neutral-500 font-semibold">pending</span>
         {% endif %}
@@ -38,10 +44,32 @@
       <td class="px-3 py-2 mono text-neutral-500">
         {{ '$%.4f'|format(t.cost_usd) if t.cost_usd else '—' }}
       </td>
+      <td class="px-3 py-2 mono text-neutral-500">
+        {{ '%.1fs'|format(t.duration_seconds) if t.duration_seconds is not none else '—' }}
+      </td>
       <td class="px-3 py-2 mono text-neutral-600">{{ t.updated_at.replace('T',' ') }}</td>
+      <td class="px-3 py-2 whitespace-nowrap">
+        {% if t.status in ('PENDING', 'RUNNING') %}
+        <button
+          hx-post="/api/v1/tasks/{{ t.id }}/cancel"
+          hx-swap="none"
+          hx-on::after-request="htmx.trigger('#task-log','refresh')"
+          class="text-xs bg-neutral-800 hover:bg-red-900/50 hover:text-red-300 px-2 py-1 rounded">
+          cancel
+        </button>
+        {% elif t.status == 'FAILED' %}
+        <button
+          hx-post="/api/v1/tasks/{{ t.id }}/retry"
+          hx-swap="none"
+          hx-on::after-request="htmx.trigger('#task-log','refresh'); htmx.trigger('#analytics','refresh')"
+          class="text-xs bg-neutral-800 hover:bg-amber-900/50 hover:text-amber-300 px-2 py-1 rounded">
+          retry
+        </button>
+        {% endif %}
+      </td>
     </tr>
     {% else %}
-    <tr><td colspan="7" class="px-3 py-6 text-center text-neutral-600">no tasks yet</td></tr>
+    <tr><td colspan="9" class="px-3 py-6 text-center text-neutral-600">no tasks yet</td></tr>
     {% endfor %}
   </tbody>
 </table>

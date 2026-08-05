@@ -6,6 +6,7 @@
 <title>deskswarm — fleet control</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   body { font-family: ui-sans-serif, system-ui, sans-serif; }
   .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; }
@@ -23,7 +24,7 @@
     </div>
   </header>
 
-  <main class="max-w-6xl mx-auto p-6 space-y-8">
+  <main class="max-w-7xl mx-auto p-6 space-y-8">
 
     <section>
       <h2 class="text-sm font-semibold text-neutral-400 mb-3 tracking-wide uppercase">Fleet status</h2>
@@ -35,7 +36,7 @@
     <section class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
       <h2 class="text-sm font-semibold text-neutral-400 mb-3 tracking-wide uppercase">New task</h2>
       <form hx-post="/api/v1/tasks" hx-target="#submit-result" hx-swap="innerHTML"
-            hx-on::after-request="if(event.detail.successful){ this.reset(); htmx.trigger('#task-log','refresh'); }"
+            hx-on::after-request="if(event.detail.successful){ this.reset(); htmx.trigger('#task-log','refresh'); htmx.trigger('#analytics','refresh'); }"
             class="space-y-3">
         <div class="flex gap-3 flex-wrap items-start">
           <select name="desktop" class="bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm">
@@ -56,8 +57,33 @@
 
     <section>
       <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Analytics</h2>
+        <span class="text-xs text-neutral-600">refreshes every 10s</span>
+      </div>
+      <div id="analytics" hx-get="/partials/analytics" hx-trigger="load, every 10s, refresh" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Live view</h2>
+        <span class="text-xs text-neutral-600">click a desktop to embed its live screen</span>
+      </div>
+      <div id="live-view" hx-get="/partials/live" hx-trigger="load" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Task log / reports</h2>
-        <span class="text-xs text-neutral-600">refreshes every 4s</span>
+        <div class="flex items-center gap-3">
+          <a href="/api/v1/tasks/export.csv" class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">
+            export CSV
+          </a>
+          <span class="text-xs text-neutral-600">refreshes every 4s</span>
+        </div>
       </div>
       <div id="task-log" hx-get="/partials/tasks" hx-trigger="load, every 4s, refresh" hx-swap="innerHTML">
         <div class="text-neutral-600 text-sm">loading...</div>
@@ -71,6 +97,33 @@
       document.getElementById('clock').textContent = new Date().toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
     }
     tick(); setInterval(tick, 1000);
+
+    let dailyChart = null;
+    function renderDailyChart(labels, counts, costs){
+      const canvas = document.getElementById('daily-chart');
+      if(!canvas) return;
+      if(dailyChart) dailyChart.destroy();
+      dailyChart = new Chart(canvas, {
+        type: 'bar',
+        data: {
+          labels: labels,
+          datasets: [
+            { label: 'tasks', data: counts, backgroundColor: '#f59e0b', yAxisID: 'y' },
+            { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399', backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3 }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          scales: {
+            y: { position: 'left', ticks: { color: '#a3a3a3' }, grid: { color: '#262626' }, title: { display: true, text: 'tasks', color: '#a3a3a3' } },
+            y1: { position: 'right', ticks: { color: '#a3a3a3' }, grid: { display: false }, title: { display: true, text: 'USD', color: '#a3a3a3' } },
+            x: { ticks: { color: '#a3a3a3' }, grid: { display: false } }
+          },
+          plugins: { legend: { labels: { color: '#d4d4d4' } } }
+        }
+      });
+    }
   </script>
 </body>
 </html>
