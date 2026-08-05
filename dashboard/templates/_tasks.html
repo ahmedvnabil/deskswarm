@@ -1,3 +1,23 @@
+<form id="task-filters" class="flex items-center gap-2 mb-3 text-xs"
+      hx-get="/partials/tasks" hx-target="#task-log" hx-swap="innerHTML"
+      hx-trigger="change">
+  <select name="desktop" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+    <option value="">all machines</option>
+    {% for n in names %}
+    <option value="{{ n }}" {{ 'selected' if n == sel_desktop }}>{{ n }}</option>
+    {% endfor %}
+  </select>
+  <select name="status" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+    {% for v, label in [('', 'any status'), ('ACTIVE', 'in flight'), ('COMPLETED', 'completed'),
+                        ('FAILED', 'failed'), ('CANCELLED', 'cancelled')] %}
+    <option value="{{ v }}" {{ 'selected' if v == sel_status }}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  {% if sel_desktop or sel_status %}
+  <span class="text-neutral-500">showing {{ tasks|length }}</span>
+  {% endif %}
+</form>
+
 <div class="overflow-x-auto border border-neutral-800 rounded-lg">
 <table class="w-full text-xs">
   <thead class="bg-neutral-900 text-neutral-500">

@@ -37,11 +37,11 @@
     </div>
   </div>
   <div class="bg-neutral-900 border border-neutral-800 rounded-lg p-4">
-    <div class="text-xs text-neutral-500 uppercase tracking-wide mb-2">Per-desktop</div>
+    <div class="text-xs text-neutral-500 uppercase tracking-wide mb-2">Per-machine</div>
     <table class="w-full text-xs">
       <thead class="text-neutral-500">
         <tr class="text-left">
-          <th class="pb-2 font-medium">desktop</th>
+          <th class="pb-2 font-medium">machine</th>
           <th class="pb-2 font-medium">ok</th>
           <th class="pb-2 font-medium">failed</th>
           <th class="pb-2 font-medium">cost</th>
@@ -49,8 +49,11 @@
       </thead>
       <tbody class="divide-y divide-neutral-900">
         {% for d in analytics.per_desktop %}
-        <tr>
-          <td class="py-1.5 mono">{{ d.name }}</td>
+        <tr class="{{ '' if d.exists else 'opacity-45' }}">
+          <td class="py-1.5 mono">
+            {{ d.name }}
+            {% if not d.exists %}<span class="text-neutral-600">· removed</span>{% endif %}
+          </td>
           <td class="py-1.5 text-emerald-400">{{ d.completed }}</td>
           <td class="py-1.5 text-red-400">{{ d.failed }}</td>
           <td class="py-1.5 mono text-neutral-500">${{ '%.4f'|format(d.cost_usd) }}</td>

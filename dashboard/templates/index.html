@@ -86,7 +86,10 @@
           <span class="text-xs text-neutral-600">refreshes every 4s</span>
         </div>
       </div>
-      <div id="task-log" hx-get="/partials/tasks" hx-trigger="load, every 4s, refresh" hx-swap="innerHTML">
+      {# hx-include carries the filter selects (rendered inside this div) into
+         the 4s poll, so auto-refresh doesn't reset the user's filter. #}
+      <div id="task-log" hx-get="/partials/tasks" hx-trigger="load, every 4s, refresh"
+           hx-swap="innerHTML" hx-include="#task-filters">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
     </section>
@@ -273,8 +276,13 @@
     dailyChart = new Chart(canvas, {
       type: 'bar',
       data: { labels, datasets: [
-        { label: 'tasks', data: counts, backgroundColor: '#f59e0b', yAxisID: 'y' },
-        { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399', backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3 }
+        // translucent bars + higher line order so the cost series stays readable
+            { label: 'tasks', data: counts, backgroundColor: 'rgba(245,158,11,0.7)',
+              yAxisID: 'y', order: 2 },
+        { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399',
+              backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3,
+              // visible marker so a single day still shows the cost point
+              pointRadius: 3, pointHoverRadius: 5, order: 1 }
       ]},
       options: {
         responsive: true, maintainAspectRatio: false,

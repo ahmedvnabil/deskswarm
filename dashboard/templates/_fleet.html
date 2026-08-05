@@ -12,13 +12,25 @@
       <div class="min-w-0">
         <div class="flex items-center gap-2">
           <span class="h-2.5 w-2.5 rounded-full shrink-0
-            {{ 'bg-emerald-500' if c.bridge_ok else ('bg-amber-500' if c.desktop_state == 'running' else 'bg-red-500') }}"></span>
+            {%- if c.active_task %} bg-amber-400 animate-pulse
+            {%- elif c.bridge_ok %} bg-emerald-500
+            {%- elif c.desktop_state == 'running' %} bg-amber-500
+            {%- else %} bg-red-500{% endif %}"></span>
           <span class="font-semibold truncate">{{ c.name }}</span>
         </div>
-        <div class="text-xs text-neutral-500 mt-1 mono truncate">
-          {% if c.bridge_ok %}ready{% else %}desktop:{{ c.desktop_state }} · bridge:{{ c.bridge_state }}{% endif %}
+        <div class="text-xs mt-1 mono truncate
+          {{ 'text-amber-400' if c.active_task else 'text-neutral-500' }}">
+          {% if c.active_task %}
+            busy — {{ c.active_task.current_action or c.active_task.status|lower }}
+          {% elif c.bridge_ok %}idle
+          {% else %}desktop:{{ c.desktop_state }} · bridge:{{ c.bridge_state }}{% endif %}
           · :{{ c.novnc_port }}
         </div>
+        {% if c.active_task %}
+        <div class="text-xs text-neutral-500 mt-1 truncate" title="{{ c.active_task.description }}">
+          #{{ c.active_task.id }} {{ c.active_task.description }}
+        </div>
+        {% endif %}
       </div>
       <button onclick="removeComputer({{ c.id }}, '{{ c.name|e }}')"
         title="remove this computer"

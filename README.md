@@ -37,9 +37,14 @@ management + dashboard layer on top.
   machine needs for its job.
 - **Software inventory** — one click shows a machine's OS, kernel, runtimes
   (Python/Node/Go/…), installed apps, package count, and disk/RAM.
+- **See which agents are working** — a machine's card turns amber and names
+  the step its agent is on (`busy — screenshot`) plus the task it's running,
+  so at a glance you know what the fleet is doing.
 - **Control** — dispatch a task to one computer or the whole fleet in
   parallel; **cancel** a running task (kills the agent process cleanly);
   **retry** a failed one with one click.
+- **Filter the task log** by machine and by status (in-flight / completed /
+  failed / cancelled) — the log stays readable once the fleet grows.
 - **Live progress, not just a final answer** — while a task runs, the log
   shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
   ...), updated after every turn.

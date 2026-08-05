@@ -263,6 +263,10 @@ def build_analytics() -> dict:
         if r.get("cost_usd"):
             pd["cost_usd"] += r["cost_usd"]
 
+    live_names = {c["name"] for c in list_computers()}
+    for pd in per_desktop.values():
+        pd["exists"] = pd["name"] in live_names
+
     finished = by_status["COMPLETED"] + by_status["FAILED"]
     daily_rows = db.execute(
         """
@@ -278,7 +282,9 @@ def build_analytics() -> dict:
         "success_rate": round(100 * by_status["COMPLETED"] / finished, 1) if finished else None,
         "total_cost_usd": round(total_cost, 4),
         "avg_duration_seconds": round(sum(durations) / len(durations), 1) if durations else None,
-        "per_desktop": list(per_desktop.values()),
+        "per_desktop": sorted(
+            per_desktop.values(), key=lambda d: (not d["exists"], d["name"])
+        ),
         "daily": [{"day": r["day"], "count": r["n"], "cost": round(r["cost"], 4)} for r in daily_rows][::-1],
     }
 
@@ -295,18 +301,62 @@ def index():
     return render_template("index.html", computers=list_computers())
 
 
+def active_task_by_computer() -> dict[str, dict]:
+    """Newest in-flight task per computer name, so a card can show what its
+    agent is doing right now instead of just whether the bridge is up."""
+    conn = connect()
+    rows = conn.execute(
+        "SELECT id, desktop, description, status, current_action FROM tasks "
+        "WHERE status IN ('PENDING', 'RUNNING') ORDER BY id DESC"
+    ).fetchall()
+    conn.close()
+    busy: dict[str, dict] = {}
+    for r in rows:
+        busy.setdefault(r["desktop"], dict(r))
+    return busy
+
+
 @app.route("/partials/fleet")
 def partial_fleet():
-    return render_template("_fleet.html", computers=[computer_view(c) for c in list_computers()])
+    busy = active_task_by_computer()
+    computers = []
+    for c in list_computers():
+        view = computer_view(c)
+        view["active_task"] = busy.get(view["name"])
+        computers.append(view)
+    return render_template("_fleet.html", computers=computers)
 
 
 @app.route("/partials/tasks")
 def partial_tasks():
+    desktop = (request.args.get("desktop") or "").strip()
+    status = (request.args.get("status") or "").strip().upper()
+
+    sql = "SELECT * FROM tasks"
+    where, params = [], []
+    if desktop:
+        where.append("desktop = ?")
+        params.append(desktop)
+    if status == "ACTIVE":
+        where.append("status IN ('PENDING', 'RUNNING')")
+    elif status in ("COMPLETED", "FAILED", "CANCELLED"):
+        where.append("status = ?")
+        params.append(status)
+    if where:
+        sql += " WHERE " + " AND ".join(where)
+    sql += " ORDER BY id DESC LIMIT 50"
+
     db = get_db()
-    rows = [dict(r) for r in db.execute("SELECT * FROM tasks ORDER BY id DESC LIMIT 30").fetchall()]
+    rows = [dict(r) for r in db.execute(sql, params).fetchall()]
     for r in rows:
         r["duration_seconds"] = compute_duration_seconds(r)
-    return render_template("_tasks.html", tasks=rows)
+    return render_template(
+        "_tasks.html",
+        tasks=rows,
+        names=[c["name"] for c in list_computers()],
+        sel_desktop=desktop,
+        sel_status=status,
+    )
 
 
 @app.route("/partials/analytics")

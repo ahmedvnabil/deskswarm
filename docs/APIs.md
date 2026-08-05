@@ -275,7 +275,8 @@ oldest first — this is what powers the dashboard's chart.
 ## HTML partials (used internally by the dashboard, not a stable API)
 
 - `GET /partials/fleet` — fleet cards with their per-machine controls
-- `GET /partials/tasks` — task history table
+- `GET /partials/tasks?desktop=&status=` — task history table; `status`
+  accepts `ACTIVE` (pending+running), `COMPLETED`, `FAILED`, `CANCELLED`
 - `GET /partials/analytics` — stat tiles + chart + per-machine breakdown
 - `GET /partials/computers/<id>/inventory` — rendered software inventory
 
