@@ -60,9 +60,39 @@ def check_cost(conn: sqlite3.Connection) -> tuple[bool, str]:
 
 # ----------------------------------------------------------------- memory
 
-def available_mb() -> int | None:
-    """MemAvailable, which is what actually matters — free memory alone
-    ignores reclaimable cache and would refuse far too eagerly."""
+# An explicit budget in MB for the whole fleet. Needed more often than it
+# looks: when the dashboard runs in Docker inside an LXC or a VM with a memory
+# cap, /proc/meminfo shows the *outer host's* memory and the container's own
+# cgroup says "max", so nothing visible from in here knows the real ceiling.
+# Measured on a Proxmox LXC capped at 8 GB, /proc/meminfo reported 63 GB — the
+# guard would have waved machines through until the OOM killer started
+# choosing victims, which is the exact failure it exists to prevent.
+MEMORY_BUDGET_MB = int(os.environ.get("DESKSWARM_MEMORY_BUDGET_MB", "0"))
+
+
+def cgroup_limit_mb() -> int | None:
+    """The container's own memory cap, when it has one."""
+    for path, unlimited in (("/sys/fs/cgroup/memory.max", "max"),
+                            ("/sys/fs/cgroup/memory/memory.limit_in_bytes", None)):
+        try:
+            raw = open(path).read().strip()
+        except OSError:
+            continue
+        if raw == unlimited:
+            continue
+        try:
+            val = int(raw)
+        except ValueError:
+            continue
+        # cgroup v1 spells "no limit" as an enormous number.
+        if val < (1 << 62):
+            return val // (1024 * 1024)
+    return None
+
+
+def meminfo_available_mb() -> int | None:
+    """MemAvailable, which counts reclaimable cache — free alone refuses far
+    too eagerly."""
     try:
         with open("/proc/meminfo") as fh:
             for line in fh:
@@ -73,18 +103,45 @@ def available_mb() -> int | None:
     return None
 
 
-def check_memory(count: int = 1) -> tuple[bool, str]:
-    avail = available_mb()
+def memory_report(machines: int = 0) -> dict:
+    """How much room is left, and how we know.
+
+    With an explicit budget the arithmetic is deterministic — budget minus what
+    the fleet is estimated to use — which beats a reading that may describe the
+    wrong machine entirely.
+    """
+    if MEMORY_BUDGET_MB > 0:
+        return {"available_mb": max(0, MEMORY_BUDGET_MB - machines * MACHINE_MB),
+                "source": "budget", "trusted": True}
+    cg = cgroup_limit_mb()
+    if cg:
+        return {"available_mb": max(0, cg - machines * MACHINE_MB),
+                "source": "cgroup", "trusted": True}
+    return {"available_mb": meminfo_available_mb(), "source": "meminfo",
+            "trusted": False}
+
+
+def available_mb() -> int | None:
+    return memory_report().get("available_mb")
+
+
+def check_memory(count: int = 1, machines: int = 0) -> tuple[bool, str]:
+    rep = memory_report(machines)
+    avail = rep["available_mb"]
     if avail is None:
         return True, ""   # can't tell; don't block on a guess
     needed = MACHINE_MB * count + MIN_FREE_MB
     if avail >= needed:
         return True, ""
     fits = max(0, (avail - MIN_FREE_MB) // MACHINE_MB)
+    hint = "" if rep["trusted"] else (
+        " This reading comes from /proc/meminfo, which shows the host's memory "
+        "rather than this container's share — set DESKSWARM_MEMORY_BUDGET_MB if "
+        "you run under an LXC or VM cap."
+    )
     return False, (
         f"not enough memory — {avail} MB available, {needed} MB needed for "
-        f"{count} machine(s). Room for about {fits} more. Remove a machine, or "
-        f"lower DESKSWARM_MACHINE_MB if yours are lighter than {MACHINE_MB} MB."
+        f"{count} machine(s). Room for about {fits} more.{hint}"
     )
 
 
@@ -160,16 +217,18 @@ def check_breaker(conn: sqlite3.Connection) -> tuple[bool, str]:
 
 # --------------------------------------------------------------- summary
 
-def status(conn: sqlite3.Connection) -> dict:
+def status(conn: sqlite3.Connection, machines: int = 0) -> dict:
     fails, _ = consecutive_failures(conn)
     cost_ok, cost_msg = check_cost(conn)
-    mem_ok, mem_msg = check_memory(1)
+    mem_ok, mem_msg = check_memory(1, machines)
+    mem = memory_report(machines)
     disk_ok, disk_msg = check_disk()
     brk_ok, brk_msg = check_breaker(conn)
     return {
         "spend_today_usd": todays_spend(conn),
         "daily_cost_limit_usd": DAILY_COST_LIMIT or None,
-        "memory_available_mb": available_mb(),
+        "memory_available_mb": mem["available_mb"],
+        "memory_source": mem["source"],
         "disk_free_gb": disk_free_gb(),
         "consecutive_failures": fails,
         "blocking": [m for m in (cost_msg, brk_msg) if m],

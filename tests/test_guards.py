@@ -55,28 +55,70 @@ class TestCostCap:
 
 
 class TestMemoryAdmission:
-    def test_creation_is_refused_when_memory_is_short(self, client, monkeypatch):
+    @staticmethod
+    def _budget(monkeypatch, mb):
         import guards
-        monkeypatch.setattr(guards, "available_mb", lambda: 600)
+        monkeypatch.setattr(guards, "MEMORY_BUDGET_MB", mb)
         monkeypatch.setattr(guards, "MACHINE_MB", 300)
         monkeypatch.setattr(guards, "MIN_FREE_MB", 512)
+
+    def test_creation_is_refused_when_memory_is_short(self, client, monkeypatch):
+        self._budget(monkeypatch, 600)
         r = add(client, "too-many")
         assert r.status_code == 507
         assert "not enough memory" in r.get_json()["error"]
 
     def test_a_batch_is_sized_as_a_whole(self, client, monkeypatch):
         """Room for one machine is not room for ten."""
-        import guards
-        monkeypatch.setattr(guards, "available_mb", lambda: 1200)
-        monkeypatch.setattr(guards, "MACHINE_MB", 300)
-        monkeypatch.setattr(guards, "MIN_FREE_MB", 512)
+        self._budget(monkeypatch, 1200)
         assert add(client, "solo").status_code == 201
         assert client.post("/api/v1/computers",
                            json={"name": "many-{1..10}"}).status_code == 507
 
+    def test_the_budget_is_spent_by_existing_machines(self, client, monkeypatch):
+        """Each machine already running eats into what is left, so a fleet
+        fills up rather than accepting new machines for ever."""
+        # budget 1500, 300 per machine, 512 must stay free -> a new machine
+        # needs 812 MB of headroom.
+        self._budget(monkeypatch, 1500)
+        assert add(client, "one").status_code == 201     # 1500 free, needs 812
+        assert add(client, "two").status_code == 201     # 1200 free
+        assert add(client, "three").status_code == 201   #  900 free
+        assert add(client, "four").status_code == 507    #  600 free -> refused
+
+    def test_meminfo_is_used_when_no_budget_is_set(self, client, monkeypatch):
+        import guards
+        monkeypatch.setattr(guards, "MEMORY_BUDGET_MB", 0)
+        monkeypatch.setattr(guards, "cgroup_limit_mb", lambda: None)
+        monkeypatch.setattr(guards, "meminfo_available_mb", lambda: 400)
+        monkeypatch.setattr(guards, "MACHINE_MB", 300)
+        monkeypatch.setattr(guards, "MIN_FREE_MB", 512)
+        r = add(client, "tight")
+        assert r.status_code == 507
+        # and it says why the number may be wrong under a nested cap
+        assert "DESKSWARM_MEMORY_BUDGET_MB" in r.get_json()["error"]
+
+    def test_a_nested_cap_is_not_silently_trusted(self, client, monkeypatch):
+        """Docker inside an LXC reads the *host's* /proc/meminfo — 63 GB on a
+        CT capped at 8 GB — so that reading must be marked untrusted."""
+        import guards
+        monkeypatch.setattr(guards, "MEMORY_BUDGET_MB", 0)
+        monkeypatch.setattr(guards, "cgroup_limit_mb", lambda: None)
+        monkeypatch.setattr(guards, "meminfo_available_mb", lambda: 63000)
+        assert guards.memory_report()["trusted"] is False
+        assert guards.memory_report()["source"] == "meminfo"
+
+    def test_an_explicit_budget_is_trusted(self, client, monkeypatch):
+        import guards
+        monkeypatch.setattr(guards, "MEMORY_BUDGET_MB", 8192)
+        rep = guards.memory_report()
+        assert rep["trusted"] is True and rep["source"] == "budget"
+
     def test_unknown_memory_does_not_block(self, client, monkeypatch):
         import guards
-        monkeypatch.setattr(guards, "available_mb", lambda: None)
+        monkeypatch.setattr(guards, "MEMORY_BUDGET_MB", 0)
+        monkeypatch.setattr(guards, "cgroup_limit_mb", lambda: None)
+        monkeypatch.setattr(guards, "meminfo_available_mb", lambda: None)
         assert add(client, "unknowable").status_code == 201
 
 

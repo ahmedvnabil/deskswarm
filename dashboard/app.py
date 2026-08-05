@@ -569,7 +569,8 @@ def api_computers_create():
     except ValueError as exc:
         return jsonify({"ok": False, "data": None, "error": str(exc)}), 400
 
-    for ok, msg in (guards.check_memory(len(names)), guards.check_disk()):
+    fleet_size = len(list_computers())
+    for ok, msg in (guards.check_memory(len(names), fleet_size), guards.check_disk()):
         if not ok:
             return jsonify({"ok": False, "data": None, "error": msg}), 507
 
@@ -983,7 +984,7 @@ def scheduler_loop() -> None:
 @app.route("/api/v1/guards")
 def api_guards():
     conn = connect()
-    data = guards.status(conn)
+    data = guards.status(conn, len(list_computers()))
     conn.close()
     return jsonify({"ok": True, "data": data, "error": None})
 
@@ -991,7 +992,7 @@ def api_guards():
 @app.route("/partials/guards")
 def partial_guards():
     conn = connect()
-    data = guards.status(conn)
+    data = guards.status(conn, len(list_computers()))
     conn.close()
     return render_template("_guards.html", g=data)
 
