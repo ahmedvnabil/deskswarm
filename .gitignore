@@ -7,3 +7,4 @@ data/
 # Built by mac/build-app.sh; hardcodes one machine's checkout path.
 DeskSwarm.app/
 .deskswarm-build-stamp
+node_modules/

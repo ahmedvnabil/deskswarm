@@ -1,0 +1,53 @@
+<div class="flex items-center gap-2 mb-3 text-xs flex-wrap">
+  <select onchange="filterAudit(this.value)"
+    class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1">
+    <option value="">every machine</option>
+    {% for n in names %}
+    <option value="{{ n }}" {{ 'selected' if n == target else '' }}>{{ n }}</option>
+    {% endfor %}
+  </select>
+  <a href="/api/v1/audit/export.csv"
+     class="bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded">export CSV</a>
+  <span class="ml-auto text-neutral-600">page {{ page }} / {{ pages }}</span>
+  <button onclick="pageAudit({{ page - 1 }})" {{ 'disabled' if page <= 1 else '' }}
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">prev</button>
+  <button onclick="pageAudit({{ page + 1 }})" {{ 'disabled' if page >= pages else '' }}
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">next</button>
+</div>
+
+<div class="overflow-x-auto">
+<table class="w-full text-xs">
+  <thead class="text-neutral-500 border-b border-neutral-800">
+    <tr class="text-left">
+      <th class="py-1.5 pr-3 font-medium">when</th>
+      <th class="py-1.5 pr-3 font-medium">who</th>
+      <th class="py-1.5 pr-3 font-medium">action</th>
+      <th class="py-1.5 pr-3 font-medium">machine</th>
+      <th class="py-1.5 pr-3 font-medium">detail</th>
+      <th class="py-1.5 font-medium">•</th>
+    </tr>
+  </thead>
+  <tbody class="divide-y divide-neutral-900">
+    {% if rows and rows.length %}{% for r in rows %}
+    <tr class="hover:bg-neutral-800/40 {{ '' if r.ok else 'text-red-300' }}">
+      <td class="py-1.5 pr-3 mono text-neutral-500 whitespace-nowrap">{{ r.at.slice(5, 16)|replace('T',' ') }}</td>
+      <td class="py-1.5 pr-3 whitespace-nowrap">
+        {% if r.actor.startsWith('share:') %}
+        <span class="text-sky-300">{{ r.actor.slice(6) }}</span>
+        <span class="text-neutral-700">guest</span>
+        {% else %}
+        <span class="text-neutral-400">{{ r.actor }}</span>
+        {% endif %}
+        {% if r.source_ip %}<span class="mono text-neutral-700">{{ r.source_ip }}</span>{% endif %}
+      </td>
+      <td class="py-1.5 pr-3 mono truncate max-w-[22rem]">{{ r.action }}</td>
+      <td class="py-1.5 pr-3">{{ r.target or '' }}</td>
+      <td class="py-1.5 pr-3 text-neutral-500 truncate max-w-[24rem]">{{ r.detail or '' }}</td>
+      <td class="py-1.5 mono text-neutral-600">{{ r.status or '' }}</td>
+    </tr>
+    {% endfor %}{% else %}
+    <tr><td colspan="6" class="py-6 text-center text-neutral-600">nothing recorded yet</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>

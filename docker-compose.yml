@@ -6,7 +6,10 @@ name: deskswarm
 services:
 
   dashboard:
-    build: ./dashboard
+    # The Bun/Hono dashboard. The original Flask one is still in ./dashboard —
+    # point this at it to switch back; the database and every container it
+    # manages are the same.
+    build: ./dashboard-ts
     environment:
       PORT: 7000
       # Only needed for agent tasks — machines, screens, files, clipboard,

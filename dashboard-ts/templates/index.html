@@ -1,0 +1,964 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>deskswarm — fleet control</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, sans-serif; }
+  .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; }
+</style>
+</head>
+<body class="bg-neutral-950 text-neutral-200 min-h-screen">
+  <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-20 backdrop-blur">
+    <div class="flex items-center gap-3">
+      <span class="text-lg font-bold text-amber-400">deskswarm</span>
+      <span class="text-xs text-neutral-500 mono">self-hosted computer-use agent fleet</span>
+    </div>
+    <div class="flex items-center gap-4 text-xs text-neutral-500">
+      <a href="https://github.com/ahmedvnabil/deskswarm" target="_blank" class="hover:text-amber-400">GitHub</a>
+      <span class="mono" id="clock"></span>
+    </div>
+  </header>
+
+  <main class="max-w-[1800px] mx-auto p-6 pb-24 space-y-8">
+
+    {# Resource and cost guards. These sit at the top because the failures
+       they catch are the quiet kind — a disk filling, a schedule burning
+       money — that nothing else announces. #}
+    <div id="guards" hx-get="/partials/guards" hx-trigger="load, every 15s, refresh"
+         hx-swap="innerHTML" class="-mb-4"></div>
+
+    <section>
+      <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
+        <div class="flex items-center gap-2 text-xs">
+          <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase mr-1">Wall</h2>
+          <input id="wall-filter" oninput="applyWallFilter()" placeholder="filter…"
+            class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 w-40">
+          <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
+          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1">busy</button>
+          <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">idle</button>
+          <button type="button" onclick="setWallState('asleep')" data-chip="asleep" class="wall-chip bg-neutral-800 rounded px-2 py-1">asleep</button>
+          <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">down</button>
+          <span class="text-neutral-700">|</span>
+          <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
+          <button type="button" onclick="setWallSize('md')" data-size="md" class="wall-size bg-neutral-800 rounded px-2 py-1">M</button>
+          <button type="button" onclick="setWallSize('lg')" data-size="lg" class="wall-size bg-neutral-800 rounded px-2 py-1">L</button>
+        </div>
+        <form onsubmit="addComputer(event)" class="flex items-center gap-2">
+          <input id="new-computer-name" required placeholder="name, or agent-{1..10}"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-56">
+          <select id="new-computer-snapshot"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
+            <option value="">clean desktop</option>
+          </select>
+          <button type="submit" id="add-btn"
+            class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">
+            + add
+          </button>
+        </form>
+      </div>
+      <div id="fleet-status" hx-get="/partials/fleet" hx-trigger="load, every 5s, refresh" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+
+    <section>
+      <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Schedules</h2>
+        <form onsubmit="addSchedule(event)" class="flex items-center gap-2 flex-wrap justify-end text-sm">
+          <select id="sched-desktop" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+            <option value="all">whole fleet</option>
+            {% for c in computers %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
+          </select>
+          <input id="sched-desc" required placeholder="task to repeat…"
+            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 w-72">
+          <select id="sched-kind" onchange="syncSchedKind()"
+            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+            <option value="interval">every…</option>
+            <option value="daily">daily at…</option>
+          </select>
+          <input id="sched-every" type="number" min="1" value="60" title="minutes"
+            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5 w-20">
+          <input id="sched-at" type="time" value="09:00" class="hidden bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+          <button type="submit" class="bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">+ schedule</button>
+        </form>
+      </div>
+      <div id="schedules" hx-get="/partials/schedules" hx-trigger="load, every 15s, refresh" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Analytics</h2>
+        <span class="text-xs text-neutral-600">refreshes every 10s</span>
+      </div>
+      <div id="analytics" hx-get="/partials/analytics" hx-trigger="load, every 10s, refresh" hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Task log / reports</h2>
+        <div class="flex items-center gap-3">
+          <a href="/api/v1/tasks/export.csv" class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">export CSV</a>
+          <span class="text-xs text-neutral-600">refreshes every 4s</span>
+        </div>
+      </div>
+      {# hx-include carries the filter selects (rendered inside this div) into
+         the 4s poll, so auto-refresh doesn't reset the user's filter. #}
+      <div id="task-log" hx-get="/partials/tasks" hx-trigger="load, every 4s, refresh"
+           hx-swap="innerHTML" hx-include="#task-filters">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Shared links</h2>
+        <span class="text-xs text-neutral-600">one machine each · revocable</span>
+      </div>
+      <div id="shares"><div class="text-neutral-600 text-sm">loading...</div></div>
+    </section>
+
+    <section>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Audit log</h2>
+        <span class="text-xs text-neutral-600">every change, and every guest</span>
+      </div>
+      <div id="audit" hx-get="/partials/audit" hx-trigger="load, every 15s, refresh"
+           hx-swap="innerHTML">
+        <div class="text-neutral-600 text-sm">loading...</div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- -------------------------------------------------------- broadcast -->
+  <div class="fixed bottom-0 inset-x-0 z-20 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur px-6 py-2.5">
+    <form onsubmit="broadcast(event)" class="max-w-[1800px] mx-auto flex items-center gap-3">
+      <span id="broadcast-scope" class="text-xs text-neutral-500 shrink-0 w-32">whole fleet</span>
+      <input id="broadcast-desc" required
+        class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm"
+        placeholder="task for the fleet — or tick machines on the wall to target them…">
+      <button type="submit" id="broadcast-btn"
+        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-5 py-2 rounded text-sm">Run</button>
+    </form>
+  </div>
+
+  <!-- ------------------------------------------------------------ modal -->
+  <div id="modal" class="hidden fixed inset-0 z-30 bg-black/70 backdrop-blur-sm p-4 sm:p-8 overflow-y-auto"
+       onclick="if(event.target===this) closeModal()">
+    <div id="modal-panel" class="max-w-5xl mx-auto bg-neutral-900 border border-neutral-800 rounded-lg shadow-2xl">
+      <div class="flex items-center justify-between px-5 py-3 border-b border-neutral-800">
+        <h3 id="modal-title" class="text-sm font-semibold"></h3>
+        <button onclick="closeModal()" class="text-neutral-500 hover:text-neutral-200 text-lg leading-none">✕</button>
+      </div>
+      <div id="modal-body" class="p-5"></div>
+    </div>
+  </div>
+
+<script>
+  function tick(){
+    document.getElementById('clock').textContent =
+      new Date().toLocaleString('en-GB', { timeZone: 'UTC' }) + ' UTC';
+  }
+  tick(); setInterval(tick, 1000);
+  setWallSize(localStorage.getItem('wallSize') || 'md');
+
+  // ---------------------------------------------------------------- modal
+  function openModal(title){
+    document.getElementById('modal-title').textContent = title;
+    document.getElementById('modal').classList.remove('hidden');
+  }
+  function closeModal(){
+    document.getElementById('modal').classList.add('hidden');
+    document.getElementById('modal-body').innerHTML = '';
+  }
+  document.addEventListener('keydown', e => { if(e.key === 'Escape') closeModal(); });
+
+  // Pager: set the hidden page field, then let the filter form re-fetch, so
+  // paging goes through the same request shape as the poll and the filters.
+  function gotoPage(n){
+    const f = document.getElementById('task-page');
+    if(!f) return;
+    f.value = n;
+    htmx.trigger('#task-filters', 'change');
+  }
+
+  // =============================================================== the wall
+  // Tiles show a still refreshed on a timer rather than N live VNC streams —
+  // one stream per machine does not scale. Clicking a tile opens the real
+  // interactive session for that one machine.
+
+  const picked    = new Set();  // machine names ticked for a broadcast
+  let   wallState = '';     // '', 'busy', 'idle', 'down'
+
+  const SIZES = {
+    sm: 'grid-cols-4 md:grid-cols-6 2xl:grid-cols-8',
+    md: 'grid-cols-2 md:grid-cols-3 2xl:grid-cols-4',
+    lg: 'grid-cols-1 md:grid-cols-2 2xl:grid-cols-3',
+  };
+
+  function setWallSize(k){
+    localStorage.setItem('wallSize', k);
+    const grid = document.getElementById('wall-grid');
+    if(grid) grid.className = 'grid gap-3 ' + SIZES[k];
+    document.querySelectorAll('.wall-size').forEach(b => {
+      const on = b.dataset.size === k;
+      b.className = 'wall-size rounded px-2 py-1 ' +
+        (on ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
+  }
+
+  function setWallState(v){
+    wallState = v;
+    document.querySelectorAll('.wall-chip').forEach(b => {
+      const on = b.dataset.chip === v;
+      b.className = 'wall-chip rounded px-2 py-1 ' +
+        (on ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
+    applyWallFilter();
+  }
+
+  function applyWallFilter(){
+    const q = (document.getElementById('wall-filter').value || '').toLowerCase();
+    document.querySelectorAll('.wall-tile').forEach(t => {
+      const okName  = !q || t.dataset.name.toLowerCase().includes(q);
+      const okState = !wallState || t.dataset.state === wallState;
+      t.classList.toggle('hidden', !(okName && okState));
+    });
+  }
+
+  function syncPicks(){
+    picked.clear();
+    document.querySelectorAll('.wall-pick:checked').forEach(c => picked.add(c.value));
+    const scope = document.getElementById('broadcast-scope');
+    const btn   = document.getElementById('broadcast-btn');
+    if(picked.size){
+      scope.textContent = picked.size + ' selected';
+      scope.className = 'text-xs text-amber-400 shrink-0 w-32';
+      btn.textContent = 'Run on ' + picked.size;
+    } else {
+      // "Whole fleet" skips reserved machines, so say how many that really is.
+      const tiles = document.querySelectorAll('.wall-tile');
+      const free = [...tiles].filter(t => t.dataset.reserved === '0').length;
+      const held = tiles.length - free;
+      scope.textContent = held ? `fleet (${free}, ${held} yours)` : 'whole fleet';
+      scope.className = 'text-xs text-neutral-500 shrink-0 w-32';
+      btn.textContent = free ? 'Run on ' + free : 'Run';
+    }
+  }
+
+  // The wall re-renders every 5s; re-apply size, filter, ticks and pictures.
+  document.body.addEventListener('htmx:afterSwap', e => {
+    if(e.detail.target.id !== 'fleet-status') return;
+    // The template already renders the default (md) columns, so this only
+    // matters when the user has chosen another size.
+    const want = localStorage.getItem('wallSize') || 'md';
+    if(want !== 'md') setWallSize(want);
+    else document.querySelectorAll('.wall-size').forEach(b => {
+      b.className = 'wall-size rounded px-2 py-1 ' +
+        (b.dataset.size === 'md' ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
+    });
+    document.querySelectorAll('.wall-pick').forEach(c => {
+      if(picked.has(c.value)) c.checked = true;
+    });
+    syncPicks();
+    applyWallFilter();
+  });
+
+  async function broadcast(e){
+    e.preventDefault();
+    const input = document.getElementById('broadcast-desc');
+    const description = input.value.trim();
+    if(!description) return;
+    const targets = picked.size ? [...picked] : ['all'];
+    for(const t of targets){
+      await fetch('/api/v1/tasks', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({desktop: t, description})
+      });
+    }
+    input.value = '';
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#task-log','refresh');
+    htmx.trigger('#analytics','refresh');
+  }
+
+  // Full interactive session for one machine. A sleeping machine is woken
+  // first — clicking its picture should just work, not report an error.
+  async function openLive(id, name, url){
+    const tile = document.querySelector('.wall-tile[data-id="' + id + '"]');
+    if(tile && tile.dataset.sleeping === '1'){
+      openModal('Waking — ' + name);
+      document.getElementById('modal-body').innerHTML =
+        '<div class="text-sm text-neutral-300">starting the desktop…</div>' +
+        '<div class="text-xs text-neutral-500 mt-1">A cold desktop takes a few ' +
+        'seconds to bring up X and attach its bridge.</div>';
+      const j = await (await fetch('/api/v1/computers/' + id + '/wake',
+                                   {method:'POST'})).json();
+      htmx.trigger('#fleet-status','refresh');
+      if(!j.ok){
+        document.getElementById('modal-body').innerHTML =
+          '<div class="text-sm text-red-400"></div>';
+        document.querySelector('#modal-body div').textContent = j.error || 'wake failed';
+        return;
+      }
+    }
+    openModal('Live — ' + name);
+    document.getElementById('modal-body').innerHTML =
+      '<div class="bg-black rounded overflow-hidden" style="aspect-ratio:16/10">' +
+      '<iframe src="' + url + '" style="width:100%;height:100%;border:0"></iframe></div>' +
+      '<div class="mt-2 text-xs text-neutral-500">You have keyboard and mouse control here — ' +
+      'anything you do happens on the real machine.</div>';
+  }
+
+  // ------------------------------------------------------- fleet actions
+  // Rebuilds the task-target dropdown from the JSON API, preserving the
+  // current selection where possible.
+  async function refreshTargets(){
+    try {
+      const r = await fetch('/api/v1/computers');
+      const j = await r.json();
+      if(!j.ok) return;
+      const sel = document.getElementById('task-target');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      const all = new Option('whole fleet (parallel)', 'all');
+      sel.add(all);
+      for(const c of j.data) sel.add(new Option(c.name, c.name));
+      sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
+    } catch(_){}
+  }
+  setInterval(refreshTargets, 15000);
+
+  async function refreshSnapshots(){
+    try {
+      const r = await fetch('/api/v1/snapshots');
+      const j = await r.json();
+      if(!j.ok) return;
+      const sel = document.getElementById('new-computer-snapshot');
+      const prev = sel.value;
+      sel.innerHTML = '';
+      sel.add(new Option('clean desktop', ''));
+      for(const s of j.data) sel.add(new Option('from: ' + s.name, s.name));
+      sel.value = [...sel.options].some(o => o.value === prev) ? prev : '';
+    } catch(_){}
+  }
+  refreshSnapshots();
+
+  async function pruneSpace(){
+    if(!confirm('Reclaim Docker build cache and dangling layers?\n\n' +
+                'Tagged images — including every snapshot — are left alone.')) return;
+    const j = await (await fetch('/api/v1/maintenance/prune', {method:'POST'})).json();
+    if(!j.ok){ alert(j.error || 'prune failed'); return; }
+    alert(`Reclaimed ${j.data.reclaimed_gb} GB.\n` +
+          `Disk free: ${j.data.disk_free_gb_before} GB -> ${j.data.disk_free_gb_after} GB.`);
+    htmx.trigger('#guards','refresh');
+  }
+
+  // ------------------------------------------------------------- files
+  function openFiles(id, name){
+    openModal('Files — ' + name);
+    browseFiles(id, '');
+  }
+
+  async function browseFiles(id, path){
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
+    const r = await fetch(`/partials/computers/${id}/files?path=` + encodeURIComponent(path || ''));
+    body.innerHTML = await r.text();
+    body.dataset.filesId = id;
+    body.dataset.filesPath = path || '';
+  }
+
+  async function uploadFiles(id, path, files){
+    if(!files || !files.length) return;
+    const body = document.getElementById('modal-body');
+    for(const f of files){
+      const fd = new FormData();
+      fd.append('file', f);
+      fd.append('path', path || 'Desktop');
+      const j = await (await fetch(`/api/v1/computers/${id}/files`,
+                                   {method:'POST', body: fd})).json();
+      if(!j.ok){ alert(`${f.name}: ${j.error}`); }
+    }
+    browseFiles(id, path);
+  }
+
+  async function toggleReserved(id, on){
+    const r = await fetch(`/api/v1/computers/${id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({reserved: String(on)})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed');
+    htmx.trigger('#fleet-status','refresh');
+    syncPicks();
+  }
+
+  // ------------------------------------------------------------- backups
+  async function openBackups(id, name){
+    openModal('Backups — ' + name);
+    await refreshBackups(id);
+  }
+
+  async function refreshBackups(id){
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
+    body.innerHTML = await (await fetch(`/partials/computers/${id}/backups`)).text();
+    body.dataset.backupId = id;
+  }
+
+  function backupNote(msg, bad){
+    const n = document.getElementById('backup-note');
+    if(n){ n.textContent = msg; n.className = 'text-xs mb-2 ' + (bad ? 'text-red-400' : 'text-emerald-400'); }
+  }
+
+  async function makeBackup(id){
+    backupNote('backing up — this streams the whole home directory…');
+    const j = await (await fetch(`/api/v1/computers/${id}/backups`, {method:'POST'})).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    await refreshBackups(id);
+    backupNote(`saved ${j.data.name} — ${(j.data.bytes/1048576).toFixed(1)} MB in ${j.data.seconds}s`);
+  }
+
+  async function deleteBackup(id, name){
+    if(!confirm(`Delete backup ${name}?`)) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/backups/${name}`,
+                                 {method:'DELETE'})).json();
+    await refreshBackups(id);
+    if(!j.ok) backupNote(j.error, true);
+  }
+
+  async function restoreBackup(id, name){
+    if(!confirm(`Restore ${name}?\n\n` +
+                'This REPLACES the machine\'s home directory — anything not in the ' +
+                'backup is removed. The machine is stopped while it happens, so open ' +
+                'windows are lost, and started again afterwards.')) return;
+    backupNote('restoring — the machine is stopped for this…');
+    const j = await (await fetch(`/api/v1/computers/${id}/restore`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({backup: name})
+    })).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    backupNote(`restored ${j.data.entries} entries` +
+               (j.data.restarted ? ' — machine restarted' : ''));
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  async function restoreFromFile(id, file){
+    if(!file) return;
+    if(!confirm(`Restore "${file.name}" onto this machine?\n\n` +
+                'This REPLACES its home directory. Only use a file that came from ' +
+                'a deskswarm backup.')) return;
+    backupNote('uploading…');
+    const fd = new FormData();
+    fd.append('file', file);
+    const j = await (await fetch(`/api/v1/computers/${id}/restore/upload`,
+                                 {method:'POST', body: fd})).json();
+    if(!j.ok){ backupNote(j.error, true); return; }
+    backupNote(`restored ${j.data.entries} entries from ${file.name}`);
+    await refreshBackups(id);
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  // -------------------------------------------------------------- shares
+  async function openShare(id, name){
+    openModal('Share — ' + name);
+    const body = document.getElementById('modal-body');
+    body.innerHTML = `
+      <div class="grid sm:grid-cols-4 gap-2 items-end">
+        <label class="text-xs text-neutral-500 sm:col-span-2">who is it for
+          <input id="share-label" placeholder="e.g. Sara, or client-review"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+        </label>
+        <label class="text-xs text-neutral-500">they can
+          <select id="share-mode"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+            <option value="watch">watch only</option>
+            <option value="control">watch and control</option>
+          </select>
+        </label>
+        <label class="text-xs text-neutral-500">for
+          <select id="share-hours"
+            class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
+            <option value="1">1 hour</option>
+            <option value="24" selected>24 hours</option>
+            <option value="168">7 days</option>
+            <option value="720">30 days</option>
+          </select>
+        </label>
+      </div>
+      <button onclick="createShare(${id})"
+        class="mt-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-xs px-3 py-1.5 rounded">
+        create link</button>
+      <div id="share-out" class="mt-3"></div>
+      <div class="text-[11px] text-neutral-500 mt-4 leading-relaxed border-t border-neutral-800 pt-3">
+        <strong class="text-neutral-300">watch</strong> serves the screen through the
+        link itself, so revoking it is complete and immediate.
+        <strong class="text-neutral-300">control</strong> hands the guest's browser this
+        machine's screen password — revoking closes the page, but cannot take back a
+        URL they already saved. Rotate the machine's password to retract it for good.
+        <button onclick="rotatePassword(${id})"
+          class="ml-1 underline hover:text-amber-400">rotate now</button>
+      </div>`;
+  }
+
+  async function createShare(id){
+    const out = document.getElementById('share-out');
+    out.innerHTML = '<div class="text-xs text-neutral-500">creating…</div>';
+    const j = await (await fetch(`/api/v1/computers/${id}/shares`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        label: document.getElementById('share-label').value,
+        mode: document.getElementById('share-mode').value,
+        hours: Number(document.getElementById('share-hours').value)
+      })
+    })).json();
+    if(!j.ok){ out.innerHTML = ''; out.textContent = j.error; out.className = 'mt-3 text-xs text-red-400'; return; }
+    out.className = 'mt-3';
+    out.innerHTML = `
+      <div class="text-xs text-neutral-500 mb-1">send this link — it works until ${j.data.expires_at} UTC</div>
+      <div class="flex gap-2">
+        <input readonly class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-xs mono">
+        <button class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 rounded">copy</button>
+      </div>`;
+    const input = out.querySelector('input');
+    input.value = j.data.url;
+    out.querySelector('button').onclick = () => {
+      input.select(); navigator.clipboard?.writeText(input.value);
+    };
+    refreshShares();
+  }
+
+  async function refreshShares(){
+    const box = document.getElementById('shares');
+    if(!box) return;
+    const j = await (await fetch('/api/v1/shares')).json();
+    if(!j.ok) return;
+    if(!j.data.length){
+      box.innerHTML = '<div class="border border-dashed border-neutral-800 rounded-lg p-6 ' +
+        'text-center text-neutral-600 text-xs">No links yet — use <strong>share</strong> ' +
+        'on a machine to give someone access to just that one.</div>';
+      return;
+    }
+    const rows = j.data.map(s => `
+      <tr class="hover:bg-neutral-800/40">
+        <td class="py-1.5 pr-3">${esc(s.label)}</td>
+        <td class="py-1.5 pr-3">${esc(s.computer || '')}</td>
+        <td class="py-1.5 pr-3">${s.mode === 'control'
+          ? '<span class="text-amber-300">control</span>'
+          : '<span class="text-sky-300">watch</span>'}</td>
+        <td class="py-1.5 pr-3 mono text-neutral-500">${esc(s.expires_at.replace('T',' '))}</td>
+        <td class="py-1.5 pr-3 mono text-neutral-500">${s.uses}${
+          s.last_used_at ? ' · ' + esc(s.last_used_at.slice(5,16).replace('T',' ')) : ''}</td>
+        <td class="py-1.5 pr-3">${
+          s.status === 'live' ? '<span class="text-emerald-400">live</span>'
+          : '<span class="text-neutral-600">' + s.status + '</span>'}</td>
+        <td class="py-1.5 text-right">${s.status === 'live'
+          ? `<button onclick="revokeShare(${s.id})" class="bg-neutral-800 hover:bg-red-600 text-[11px] px-2 py-0.5 rounded">revoke</button>`
+          : ''}</td>
+      </tr>`).join('');
+    box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-xs">
+      <thead class="text-neutral-500 border-b border-neutral-800"><tr class="text-left">
+        <th class="py-1.5 pr-3 font-medium">for</th>
+        <th class="py-1.5 pr-3 font-medium">machine</th>
+        <th class="py-1.5 pr-3 font-medium">can</th>
+        <th class="py-1.5 pr-3 font-medium">until (UTC)</th>
+        <th class="py-1.5 pr-3 font-medium">opened</th>
+        <th class="py-1.5 pr-3 font-medium">state</th>
+        <th></th></tr></thead>
+      <tbody class="divide-y divide-neutral-900">${rows}</tbody></table></div>`;
+  }
+
+  function esc(s){
+    const d = document.createElement('div');
+    d.textContent = s == null ? '' : s;
+    return d.innerHTML;
+  }
+
+  async function revokeShare(id){
+    if(!confirm('Revoke this link?')) return;
+    const j = await (await fetch(`/api/v1/shares/${id}`, {method:'DELETE'})).json();
+    if(j.ok && j.data.note) alert('Revoked.\n\n' + j.data.note + '.');
+    refreshShares();
+  }
+
+  async function rotatePassword(id){
+    if(!confirm('Give this machine a new screen password?\n\n' +
+                'Every saved noVNC link for it stops working, including any a guest ' +
+                'kept. The machine restarts — open windows are lost, files are not.')) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/rotate-password`, {method:'POST'})).json();
+    alert(j.ok ? 'Done — old links are dead.' : (j.error || 'failed'));
+    refreshShares();
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  refreshShares();
+  setInterval(refreshShares, 30000);
+
+  // --------------------------------------------------------------- audit
+  function filterAudit(target){
+    htmx.ajax('GET', '/partials/audit?target=' + encodeURIComponent(target || ''),
+              {target:'#audit', swap:'innerHTML'});
+  }
+  function pageAudit(page){
+    const sel = document.querySelector('#audit select');
+    htmx.ajax('GET', `/partials/audit?page=${page}&target=` +
+              encodeURIComponent(sel ? sel.value : ''),
+              {target:'#audit', swap:'innerHTML'});
+  }
+
+  // --------------------------------------------------------- sleep / wake
+  async function sleepComputer(id, name){
+    if(!confirm(`Put "${name}" to sleep?\n\n` +
+                'Its containers stop, so it stops using memory and CPU entirely. ' +
+                'Everything saved on the machine is kept — but the desktop session ' +
+                'ends, so open windows and unsaved work are lost.\n\n' +
+                'Click its picture to wake it again.')) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/sleep`, {method:'POST'})).json();
+    if(!j.ok) alert(j.error || 'could not sleep');
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#guards','refresh');
+  }
+
+  async function wakeComputer(id, name){
+    const j = await (await fetch(`/api/v1/computers/${id}/wake`, {method:'POST'})).json();
+    if(!j.ok) alert(j.error || 'could not wake');
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#guards','refresh');
+  }
+
+  // ---------------------------------------------------------- clipboard
+  // Copy/paste across the VNC boundary. noVNC's own clipboard is unreliable
+  // for anything outside latin-1, which makes Arabic impossible; this moves
+  // the text as UTF-8 through the machine's own X clipboard instead.
+  function openClipboard(id, name){
+    openModal('Clipboard — ' + name);
+    document.getElementById('modal-body').innerHTML = `
+      <textarea id="clip-text" rows="8" dir="auto"
+        class="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-sm mono"
+        placeholder="Type or paste here, then send it to the machine…"></textarea>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button onclick="clipSend(${id}, false)"
+          class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-1.5 rounded">
+          → put on machine's clipboard</button>
+        <button onclick="clipSend(${id}, true)"
+          title="also presses Ctrl+V in whatever window has focus"
+          class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-xs px-3 py-1.5 rounded">
+          → paste into focused window</button>
+        <button onclick="clipGet(${id})"
+          class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-1.5 rounded">
+          ← read machine's clipboard</button>
+      </div>
+      <div id="clip-note" class="text-xs text-neutral-500 mt-2">
+        Paste targets whatever window is focused on the machine — click into it first.
+      </div>`;
+  }
+
+  function clipNote(msg, bad){
+    const n = document.getElementById('clip-note');
+    if(!n) return;
+    n.textContent = msg;
+    n.className = 'text-xs mt-2 ' + (bad ? 'text-red-400' : 'text-emerald-400');
+  }
+
+  async function clipSend(id, paste){
+    const text = document.getElementById('clip-text').value;
+    if(!text){ clipNote('nothing to send', true); return; }
+    clipNote(paste ? 'pasting…' : 'sending…');
+    const j = await (await fetch(`/api/v1/computers/${id}/clipboard`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text, paste: paste ? '1' : '0'})
+    })).json();
+    clipNote(j.ok ? (paste ? `pasted ${j.data.bytes} bytes into the focused window`
+                           : `${j.data.bytes} bytes on the machine's clipboard`)
+                  : (j.error || 'failed'), !j.ok);
+  }
+
+  async function clipGet(id){
+    clipNote('reading…');
+    const j = await (await fetch(`/api/v1/computers/${id}/clipboard`)).json();
+    if(!j.ok){ clipNote(j.error || 'failed', true); return; }
+    document.getElementById('clip-text').value = j.data.text;
+    clipNote(j.data.text ? 'copied from the machine — select and copy it here'
+                         : "the machine's clipboard is empty");
+  }
+
+  async function restartComputer(id, name){
+    if(!confirm(`Recreate the containers for "${name}"?\n\n` +
+                'It keeps its name, port, snapshot and home directory — open ' +
+                'windows are lost, saved files are not.')) return;
+    const r = await fetch(`/api/v1/computers/${id}/restart`, {method: 'POST'});
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'restart failed');
+    htmx.trigger('#fleet-status','refresh');
+  }
+
+  async function snapshotComputer(id, name){
+    const snap = prompt(
+      `Save "${name}" as a reusable snapshot.\n\n` +
+      'New machines created from it start with everything installed here.\n\nSnapshot name:');
+    if(!snap) return;
+    const r = await fetch(`/api/v1/computers/${id}/snapshot`, {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name: snap.trim()})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'snapshot failed');
+    else refreshSnapshots();
+  }
+
+  // ---------------------------------------------------------- schedules
+  function syncSchedKind(){
+    const daily = document.getElementById('sched-kind').value === 'daily';
+    document.getElementById('sched-every').classList.toggle('hidden', daily);
+    document.getElementById('sched-at').classList.toggle('hidden', !daily);
+  }
+
+  async function addSchedule(e){
+    e.preventDefault();
+    const kind = document.getElementById('sched-kind').value;
+    const body = {
+      desktop: document.getElementById('sched-desktop').value,
+      description: document.getElementById('sched-desc').value.trim(),
+      kind,
+      every_minutes: document.getElementById('sched-every').value,
+      at_time: document.getElementById('sched-at').value,
+    };
+    const r = await fetch('/api/v1/schedules', {
+      method: 'POST', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    });
+    const j = await r.json();
+    if(!j.ok){ alert(j.error || 'failed'); return; }
+    document.getElementById('sched-desc').value = '';
+    htmx.trigger('#schedules', 'refresh');
+  }
+
+  async function toggleSchedule(id, enabled){
+    await fetch(`/api/v1/schedules/${id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({enabled: String(enabled)})
+    });
+    htmx.trigger('#schedules', 'refresh');
+  }
+
+  async function deleteSchedule(id){
+    if(!confirm('Remove this schedule?')) return;
+    await fetch(`/api/v1/schedules/${id}`, {method: 'DELETE'});
+    htmx.trigger('#schedules', 'refresh');
+  }
+
+  async function addComputer(e){
+    e.preventDefault();
+    const input = document.getElementById('new-computer-name');
+    const btn = document.getElementById('add-btn');
+    const name = input.value.trim();
+    if(!name) return;
+    const snapshot = document.getElementById('new-computer-snapshot').value;
+    btn.disabled = true; btn.textContent = 'creating…';
+    try {
+      const r = await fetch('/api/v1/computers', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({name, snapshot})
+      });
+      const j = await r.json();
+      if(!j.ok){ alert(j.error || 'failed to create'); }
+      else {
+        // A batch reports per-name failures without blocking the ones that worked.
+        if(j.data && j.data.errors && j.data.errors.length){
+          alert('Some machines were not created:\n' +
+                j.data.errors.map(e => `${e.name}: ${e.error}`).join('\n'));
+        }
+        input.value = ''; htmx.trigger('#fleet-status','refresh'); refreshTargets();
+      }
+    } catch(err){ alert(err); }
+    btn.disabled = false; btn.textContent = '+ add computer';
+  }
+
+  async function removeComputer(id, name){
+    if(!confirm(`Remove "${name}"?\n\nIts desktop and bridge containers are destroyed. Task history is kept.`)) return;
+    const r = await fetch('/api/v1/computers/' + id, { method: 'DELETE' });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed to remove');
+    htmx.trigger('#fleet-status','refresh'); refreshTargets();
+  }
+
+  async function renameComputer(id, current){
+    const name = prompt('Rename computer', current);
+    if(!name || name === current) return;
+    const r = await fetch('/api/v1/computers/' + id, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({name})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed to rename');
+    htmx.trigger('#fleet-status','refresh'); refreshTargets();
+  }
+
+  function toggleLive(btn){
+    const container = document.getElementById(btn.dataset.target);
+    if(!container) return;
+    if(container.dataset.loaded !== '1'){
+      const iframe = document.createElement('iframe');
+      iframe.src = btn.dataset.novncUrl;
+      iframe.style.cssText = 'width:100%;height:100%;border:0;';
+      container.appendChild(iframe);
+      container.dataset.loaded = '1';
+    }
+    container.classList.toggle('hidden');
+  }
+
+  // ------------------------------------------------------------- software
+  function openInventory(id, name){
+    openModal('Installed software — ' + name);
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-xs">inspecting the machine…</div>';
+    fetch('/partials/computers/' + id + '/inventory')
+      .then(r => r.text())
+      .then(html => { body.innerHTML = html; })
+      .catch(err => { body.innerHTML = '<div class="text-red-400 text-xs">' + err + '</div>'; });
+  }
+
+  // ------------------------------------------------------------- terminal
+  function openTerminal(id, name){
+    openModal('Terminal — ' + name);
+    document.getElementById('modal-body').innerHTML = `
+      <div class="space-y-3">
+        <div id="term-out" class="bg-black border border-neutral-800 rounded p-3 h-80 overflow-y-auto mono text-xs whitespace-pre-wrap text-neutral-300"
+        >Shell into the desktop container — runs as root in /home/cua, so you can\napt-get install extra software onto this machine.\n</div>
+        <form onsubmit="runCommand(event, ${id})" class="flex gap-2">
+          <span class="mono text-emerald-400 self-center text-sm">$</span>
+          <input id="term-in" autocomplete="off" autofocus placeholder="e.g. pip3 list | head -20"
+            class="flex-1 bg-neutral-950 border border-neutral-700 rounded px-3 py-2 text-sm mono">
+          <button type="submit" class="bg-neutral-800 hover:bg-neutral-700 px-4 py-2 rounded text-sm">run</button>
+        </form>
+        <div class="text-xs text-neutral-600">
+          Each command runs independently — <span class="mono">cd</span> does not persist between commands.
+          Use <span class="mono">cd /path &amp;&amp; cmd</span> instead.
+        </div>
+      </div>`;
+    setTimeout(() => document.getElementById('term-in')?.focus(), 50);
+  }
+
+  async function runCommand(e, id){
+    e.preventDefault();
+    const input = document.getElementById('term-in');
+    const out = document.getElementById('term-out');
+    const cmd = input.value.trim();
+    if(!cmd) return;
+    input.value = '';
+    out.textContent += '\n$ ' + cmd + '\n';
+    out.scrollTop = out.scrollHeight;
+    try {
+      const r = await fetch('/api/v1/computers/' + id + '/exec', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({command: cmd})
+      });
+      const j = await r.json();
+      if(!j.ok){ out.textContent += (j.error || 'command failed') + '\n'; }
+      else {
+        out.textContent += j.data.output;
+        if(j.data.exit_code !== 0) out.textContent += `\n[exit ${j.data.exit_code}]\n`;
+      }
+    } catch(err){ out.textContent += err + '\n'; }
+    out.scrollTop = out.scrollHeight;
+  }
+
+  // Deep links: /?open=terminal&computer=<id> or /?open=software&computer=<id>
+  // so you can jump straight to one machine's shell or software list.
+  (function openFromQuery(){
+    const q = new URLSearchParams(location.search);
+    const what = q.get('open'), id = parseInt(q.get('computer'), 10);
+    if(!what || !id) return;
+    fetch('/api/v1/computers').then(r => r.json()).then(j => {
+      const c = (j.data || []).find(x => x.id === id);
+      if(!c) return;
+      if(what === 'terminal') openTerminal(c.id, c.name);
+      else if(what === 'software') openInventory(c.id, c.name);
+    });
+  })();
+
+  // Full report for one task — the table has to truncate, and the result is
+  // the whole point of running the task.
+  async function openTask(id){
+    openModal('Task #' + id);
+    const body = document.getElementById('modal-body');
+    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
+    const j = await (await fetch('/api/v1/tasks/' + id)).json();
+    if(!j.ok){ body.innerHTML = '<div class="text-red-400 text-sm">' + j.error + '</div>'; return; }
+    const t = j.data;
+    const esc = v => String(v ?? '—').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+    let steps = '';
+    try {
+      const a = JSON.parse(t.actions || '[]');
+      if(a.length) steps = a.map(x =>
+        '<span class="bg-neutral-800 rounded px-1.5 py-0.5 mr-1 mb-1 inline-block">' + esc(x) + '</span>').join('');
+    } catch(_){}
+    const stat = {COMPLETED:'text-emerald-400', FAILED:'text-red-400',
+                  RUNNING:'text-amber-400', CANCELLED:'text-neutral-500'}[t.status] || '';
+    body.innerHTML = `
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-xs">
+        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
+          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">status</div>
+          <div class="${stat} font-semibold mt-0.5">${esc(t.status)}</div></div>
+        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
+          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">machine</div>
+          <div class="mono mt-0.5">${esc(t.desktop)}</div></div>
+        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
+          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">duration</div>
+          <div class="mono mt-0.5">${t.duration_seconds != null ? t.duration_seconds + 's' : '—'}</div></div>
+        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
+          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">cost</div>
+          <div class="mono mt-0.5">${t.cost_usd ? '$' + t.cost_usd.toFixed(4) : '—'}</div></div>
+      </div>
+      <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">task</div>
+      <div class="bg-neutral-950 border border-neutral-800 rounded p-3 text-sm mb-4">${esc(t.description)}</div>
+      ${steps ? '<div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">steps the agent took</div>' +
+                '<div class="text-[10px] mono mb-4">' + steps + '</div>' : ''}
+      <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">
+        ${t.status === 'FAILED' || t.status === 'CANCELLED' ? 'error' : 'result'}</div>
+      <div class="bg-neutral-950 border border-neutral-800 rounded p-3 text-sm whitespace-pre-wrap max-h-80 overflow-y-auto ${t.error ? 'text-red-400' : ''}">${esc(t.error || t.result_text)}</div>
+      <div class="mt-3 text-[10px] text-neutral-600 mono">created ${esc(t.created_at)} · updated ${esc(t.updated_at)}</div>`;
+  }
+
+  // ------------------------------------------------------------ analytics
+  let dailyChart = null;
+  function renderDailyChart(labels, counts, costs){
+    const canvas = document.getElementById('daily-chart');
+    if(!canvas) return;
+    if(dailyChart) dailyChart.destroy();
+    dailyChart = new Chart(canvas, {
+      type: 'bar',
+      data: { labels, datasets: [
+        // translucent bars + higher line order so the cost series stays readable
+            { label: 'tasks', data: counts, backgroundColor: 'rgba(245,158,11,0.7)',
+              yAxisID: 'y', order: 2 },
+        { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399',
+              backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3,
+              // visible marker so a single day still shows the cost point
+              pointRadius: 3, pointHoverRadius: 5, order: 1 }
+      ]},
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        scales: {
+          y:  { position: 'left',  ticks:{color:'#a3a3a3'}, grid:{color:'#262626'}, title:{display:true,text:'tasks',color:'#a3a3a3'} },
+          y1: { position: 'right', ticks:{color:'#a3a3a3'}, grid:{display:false},   title:{display:true,text:'USD',color:'#a3a3a3'} },
+          x:  { ticks:{color:'#a3a3a3'}, grid:{display:false} }
+        },
+        plugins: { legend: { labels: { color: '#d4d4d4' } } }
+      }
+    });
+  }
+</script>
+</body>
+</html>

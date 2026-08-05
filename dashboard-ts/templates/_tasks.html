@@ -1,0 +1,115 @@
+{#
+  page lives inside this form so the 4s poll (hx-include="#task-filters"),
+  the filter selects, and the pager all send the same state — otherwise
+  auto-refresh would yank you back to page 1.
+#}
+<form id="task-filters" class="flex items-center gap-2 mb-3 text-xs"
+      hx-get="/partials/tasks" hx-target="#task-log" hx-swap="innerHTML"
+      hx-trigger="change">
+  <input type="hidden" name="page" id="task-page" value="{{ page }}">
+  <select name="desktop" onchange="document.getElementById('task-page').value=1"
+          class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+    <option value="">all machines</option>
+    {% for n in names %}
+    <option value="{{ n }}" {{ 'selected' if n == sel_desktop }}>{{ n }}</option>
+    {% endfor %}
+  </select>
+  <select name="status" onchange="document.getElementById('task-page').value=1"
+          class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
+    {% for v, label in [['', 'any status'], ['ACTIVE', 'in flight'], ['COMPLETED', 'completed'],
+                        ['FAILED', 'failed'], ['CANCELLED', 'cancelled']] %}
+    <option value="{{ v }}" {{ 'selected' if v == sel_status }}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <span class="text-neutral-500">{{ total }} task{{ '' if total == 1 else 's' }}</span>
+</form>
+
+<div class="overflow-x-auto border border-neutral-800 rounded-lg">
+<table class="w-full text-xs">
+  <thead class="bg-neutral-900 text-neutral-500">
+    <tr class="text-left">
+      <th class="px-3 py-2 font-medium">#</th>
+      <th class="px-3 py-2 font-medium">desktop</th>
+      <th class="px-3 py-2 font-medium">task</th>
+      <th class="px-3 py-2 font-medium">status</th>
+      <th class="px-3 py-2 font-medium">result / error</th>
+      <th class="px-3 py-2 font-medium">cost</th>
+      <th class="px-3 py-2 font-medium">duration</th>
+      <th class="px-3 py-2 font-medium">updated</th>
+      <th class="px-3 py-2 font-medium"></th>
+    </tr>
+  </thead>
+  <tbody class="divide-y divide-neutral-900">
+    {% if tasks and tasks.length %}{% for t in tasks %}
+    <tr class="cursor-pointer hover:bg-neutral-800/40 {{ 'bg-neutral-900/40' if loop.index is odd else '' }}"
+        onclick="openTask({{ t.id }})" title="click for the full result">
+      <td class="px-3 py-2 mono text-neutral-500">{{ t.id }}</td>
+      <td class="px-3 py-2 mono">{{ t.desktop }}</td>
+      <td class="px-3 py-2 max-w-xs truncate" title="{{ t.description }}">{{ t.description }}</td>
+      <td class="px-3 py-2">
+        {% if t.status == 'COMPLETED' %}
+          <span class="text-emerald-400 font-semibold">completed</span>
+        {% elif t.status == 'FAILED' %}
+          <span class="text-red-400 font-semibold">failed</span>
+        {% elif t.status == 'CANCELLED' %}
+          <span class="text-neutral-500 font-semibold">cancelled</span>
+        {% elif t.status == 'RUNNING' %}
+          <span class="text-amber-400 font-semibold animate-pulse">
+            running{{ ' — ' + t.current_action if t.current_action else '...' }}
+          </span>
+        {% else %}
+          <span class="text-neutral-500 font-semibold">pending</span>
+        {% endif %}
+      </td>
+      <td class="px-3 py-2 max-w-sm truncate" title="{{ t.result_text or t.error or '' }}">
+        {% if t.status == 'FAILED' %}
+          <span class="text-red-400">{{ t.error }}</span>
+        {% else %}
+          {{ t.result_text or '—' }}
+        {% endif %}
+      </td>
+      <td class="px-3 py-2 mono text-neutral-500">
+        {{ '$%.4f'|format(t.cost_usd) if t.cost_usd else '—' }}
+      </td>
+      <td class="px-3 py-2 mono text-neutral-500">
+        {{ '%.1fs'|format(t.duration_seconds) if t.duration_seconds != null else '—' }}
+      </td>
+      <td class="px-3 py-2 mono text-neutral-600">{{ t.updated_at.replace('T',' ') }}</td>
+      <td class="px-3 py-2 whitespace-nowrap">
+        {% if t.status in ['PENDING', 'RUNNING'] %}
+        <button onclick="event.stopPropagation()"
+          hx-post="/api/v1/tasks/{{ t.id }}/cancel"
+          hx-swap="none"
+          hx-on::after-request="htmx.trigger('#task-log','refresh')"
+          class="text-xs bg-neutral-800 hover:bg-red-900/50 hover:text-red-300 px-2 py-1 rounded">
+          cancel
+        </button>
+        {% elif t.status == 'FAILED' %}
+        <button onclick="event.stopPropagation()"
+          hx-post="/api/v1/tasks/{{ t.id }}/retry"
+          hx-swap="none"
+          hx-on::after-request="htmx.trigger('#task-log','refresh'); htmx.trigger('#analytics','refresh')"
+          class="text-xs bg-neutral-800 hover:bg-amber-900/50 hover:text-amber-300 px-2 py-1 rounded">
+          retry
+        </button>
+        {% endif %}
+      </td>
+    </tr>
+    {% endfor %}{% else %}
+    <tr><td colspan="9" class="px-3 py-6 text-center text-neutral-600">no tasks yet</td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>
+
+{% if pages > 1 %}
+<div class="flex items-center justify-between mt-3 text-xs">
+  <span class="text-neutral-500">page {{ page }} of {{ pages }}</span>
+  <div class="flex gap-2">
+    <button {{ 'disabled' if page <= 1 }} onclick="gotoPage({{ page - 1 }})"
+      class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-3 py-1.5 rounded">← newer</button>
+    <button {{ 'disabled' if page >= pages }} onclick="gotoPage({{ page + 1 }})"
+      class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-3 py-1.5 rounded">older →</button>
+  </div>
+</div>
+{% endif %}
