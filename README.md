@@ -78,6 +78,22 @@ management + dashboard layer on top.
 - **Recover a broken machine** — if its containers die or are removed outside
   the dashboard, the tile offers **restart**, which recreates the pair in
   place and keeps the machine's name, port and snapshot.
+- **Copy and paste across the boundary** — **clip** on any tile moves text
+  both ways between your browser and that machine's clipboard, and can press
+  it straight into the focused window. This is also the only reliable way to
+  get **Arabic or any non-Latin text** onto a machine: typing goes through
+  keysym lookup, which silently drops most of those characters; the clipboard
+  carries bytes.
+- **Sleep the machines you aren't using** — **sleep** stops a machine so it
+  costs nothing, keeping everything saved on it. Clicking its picture wakes
+  it. RAM, not disk, is what limits how many machines you can run, so this is
+  usually the difference between eight machines and thirty. It can also
+  happen automatically after N idle minutes — off by default, because
+  sleeping ends the X session and open windows go with it.
+- **Per-machine limits** — each machine is capped on memory, CPU and process
+  count, so one runaway tab or a `while true` in someone's terminal can't
+  freeze the fleet. Hosts that can't apply cgroup limits (some nested-Docker
+  and LXC setups) are detected and run uncapped rather than failing.
 
 ```
                       ┌───────────────────────────┐

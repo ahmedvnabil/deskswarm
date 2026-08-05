@@ -180,6 +180,12 @@ def init_db():
     if "reserved" not in comp_cols:
         # A reserved machine is yours to drive by hand; agents keep off it.
         conn.execute("ALTER TABLE computers ADD COLUMN reserved INTEGER NOT NULL DEFAULT 0")
+    if "last_active_at" not in comp_cols:
+        # Last time a browser had the screen open or a task was running on it.
+        conn.execute("ALTER TABLE computers ADD COLUMN last_active_at TEXT")
+    if "no_suspend" not in comp_cols:
+        # Machines the idle sweeper must leave alone whatever the timeout says.
+        conn.execute("ALTER TABLE computers ADD COLUMN no_suspend INTEGER NOT NULL DEFAULT 0")
 
     existing = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
     for col, decl in (("current_action", "TEXT"), ("pid", "INTEGER"), ("started_at", "TEXT")):
@@ -224,14 +230,22 @@ def computer_view(comp: dict, with_state: bool = True) -> dict:
         "bridge_port": 8000,
         "created_at": comp["created_at"],
         "reserved": bool(comp["reserved"]),
+        "no_suspend": bool(comp["no_suspend"]),
+        "last_active_at": comp["last_active_at"],
         "bridge_ok": False,
+        "sleeping": False,
     }
     if with_state:
         try:
             view.update(fleet.container_state(comp["slug"]))
         except Exception as exc:  # noqa: BLE001
             view["error"] = str(exc)
-        view["bridge_ok"] = check_bridge(view)
+        view["sleeping"] = view.get("desktop_state") == "exited"
+        # Probing a stopped bridge just burns the full HTTP timeout, once per
+        # machine per refresh — on a wall of sleeping machines that alone made
+        # the page slower than its own poll interval.
+        if view.get("bridge_state") == "running":
+            view["bridge_ok"] = check_bridge(view)
     return view
 
 
@@ -603,15 +617,16 @@ def api_computers_rename(comp_id: int):
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
     payload = request.get_json(silent=True) or {}
 
-    # Same endpoint also flips the reserved flag, which carries no name.
-    if "reserved" in payload and "name" not in payload:
-        flag = 1 if str(payload["reserved"]).lower() in ("1", "true", "yes") else 0
-        conn = connect()
-        conn.execute("UPDATE computers SET reserved = ? WHERE id = ?", (flag, comp_id))
-        conn.commit()
-        conn.close()
-        return jsonify({"ok": True, "data": {"id": comp_id, "reserved": bool(flag)},
-                        "error": None})
+    # Same endpoint also flips the boolean flags, which carry no name.
+    for field in ("reserved", "no_suspend"):
+        if field in payload and "name" not in payload:
+            flag = 1 if str(payload[field]).lower() in ("1", "true", "yes") else 0
+            conn = connect()
+            conn.execute(f"UPDATE computers SET {field} = ? WHERE id = ?", (flag, comp_id))
+            conn.commit()
+            conn.close()
+            return jsonify({"ok": True, "data": {"id": comp_id, field: bool(flag)},
+                            "error": None})
 
     new_name = (payload.get("name") or "").strip()
     if not new_name:
@@ -652,6 +667,123 @@ def api_computer_restart(comp_id: int):
         return jsonify({"ok": False, "data": None,
                         "error": f"failed to restart: {exc}"}), 500
     return jsonify({"ok": True, "data": {"id": comp_id, "restarted": True}, "error": None})
+
+
+# --------------------------------------------------------------- sleep/wake
+
+IDLE_SUSPEND_MINUTES = int(os.environ.get("DESKSWARM_IDLE_SUSPEND_MINUTES", "0"))
+WAKE_TIMEOUT_SECONDS = float(os.environ.get("DESKSWARM_WAKE_TIMEOUT", "45"))
+
+
+def touch_active(comp_id: int) -> None:
+    conn = connect()
+    conn.execute("UPDATE computers SET last_active_at = ? WHERE id = ?", (now_iso(), comp_id))
+    conn.commit()
+    conn.close()
+
+
+def wake_and_wait(comp: dict, timeout: float = WAKE_TIMEOUT_SECONDS) -> bool:
+    """Start a sleeping machine and block until its bridge answers.
+
+    Callers need the machine actually usable, not merely started: a desktop
+    takes a few seconds to bring up X and the bridge a few more to attach. The
+    alternative — returning as soon as Docker says "started" — hands back a
+    machine whose screen is still black and whose first command fails.
+    """
+    fleet.resume_computer(comp["slug"])
+    touch_active(comp["id"])
+    deadline = time.monotonic() + timeout
+    view = {"bridge_host": fleet.bridge_container_name(comp["slug"]), "bridge_port": 8000}
+    while time.monotonic() < deadline:
+        if check_bridge(view):
+            return True
+        time.sleep(1.5)
+    return False
+
+
+@app.route("/api/v1/computers/<int:comp_id>/sleep", methods=["POST"])
+@require_token
+def api_computer_sleep(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    conn = connect()
+    busy = conn.execute(
+        "SELECT COUNT(*) AS n FROM tasks WHERE desktop = ? AND status IN ('PENDING','RUNNING')",
+        (comp["name"],),
+    ).fetchone()["n"]
+    conn.close()
+    if busy:
+        return jsonify({"ok": False, "data": None,
+                        "error": f"{comp['name']} has {busy} task(s) still running"}), 409
+    try:
+        fleet.suspend_computer(comp["slug"])
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"failed to sleep: {exc}"}), 500
+    return jsonify({"ok": True, "data": {"id": comp_id, "sleeping": True}, "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/wake", methods=["POST"])
+@require_token
+def api_computer_wake(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    try:
+        ready = wake_and_wait(comp)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": f"failed to wake: {exc}"}), 500
+    # Started but not yet answering is not an error — the screen will come up
+    # a moment later — so this reports readiness rather than failing.
+    return jsonify({"ok": True, "data": {"id": comp_id, "sleeping": False, "ready": ready},
+                    "error": None})
+
+
+# --------------------------------------------------------------- clipboard
+
+MAX_CLIPBOARD_KB = int(os.environ.get("DESKSWARM_MAX_CLIPBOARD_KB", "256"))
+
+
+@app.route("/api/v1/computers/<int:comp_id>/clipboard", methods=["GET"])
+def api_clipboard_get(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    try:
+        text = fleet.get_clipboard(comp["slug"])
+    except fleet.ClipboardUnavailable as exc:
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 503
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 500
+    return jsonify({"ok": True, "data": {"text": text}, "error": None})
+
+
+@app.route("/api/v1/computers/<int:comp_id>/clipboard", methods=["POST"])
+@require_token
+def api_clipboard_set(comp_id: int):
+    comp = get_computer(comp_id)
+    if not comp:
+        return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    payload = request.get_json(silent=True) or {}
+    text = payload.get("text")
+    if text is None:
+        return jsonify({"ok": False, "data": None, "error": "text is required"}), 400
+    text = str(text)
+    if len(text.encode("utf-8")) > MAX_CLIPBOARD_KB * 1024:
+        return jsonify({"ok": False, "data": None,
+                        "error": f"clipboard text over {MAX_CLIPBOARD_KB} KB"}), 413
+    # "paste" also presses Ctrl+V, which is what makes Arabic typing work at
+    # all — see fleet.paste_text.
+    press = str(payload.get("paste", "")).lower() in ("1", "true", "yes")
+    try:
+        (fleet.paste_text if press else fleet.set_clipboard)(comp["slug"], text)
+    except fleet.ClipboardUnavailable as exc:
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 503
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"ok": False, "data": None, "error": str(exc)}), 500
+    touch_active(comp_id)
+    return jsonify({"ok": True, "data": {"id": comp_id, "bytes": len(text.encode("utf-8")),
+                                         "pasted": press}, "error": None})
 
 
 @app.route("/api/v1/computers/<int:comp_id>", methods=["DELETE"])
@@ -855,6 +987,13 @@ def api_computer_screenshot(comp_id: int):
     comp = get_computer(comp_id)
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
+    # A sleeping machine has no screen to capture. Saying so immediately beats
+    # spending the bridge's full 12s timeout on every tile, every refresh.
+    try:
+        if fleet.container_state(comp["slug"]).get("desktop_state") == "exited":
+            return jsonify({"ok": False, "data": None, "error": "sleeping"}), 503
+    except Exception:  # noqa: BLE001
+        pass
     png = bridge_screenshot(computer_view(comp, with_state=False))
     if png is None:
         return jsonify({"ok": False, "data": None, "error": "screen unavailable"}), 503
@@ -1058,12 +1197,67 @@ def scheduler_tick() -> None:
     conn.close()
 
 
-def scheduler_loop() -> None:
-    while True:
+def idle_tick() -> None:
+    """Put machines nobody is watching to sleep.
+
+    Two things count as "in use": a browser with the screen open (an
+    established connection to websockify inside the desktop) and a task that
+    is pending or running. Anything else has been idle since last_active_at,
+    and once that is older than the timeout the machine is stopped.
+
+    Deliberately off by default. Sleeping frees the machine's memory but ends
+    its X session, so a surprise suspend costs someone their open windows —
+    that has to be a choice, not a default. Machines flagged no_suspend are
+    always skipped.
+    """
+    if IDLE_SUSPEND_MINUTES <= 0:
+        return
+    cutoff = datetime.now(timezone.utc) - timedelta(minutes=IDLE_SUSPEND_MINUTES)
+    conn = connect()
+    busy = {r["desktop"] for r in conn.execute(
+        "SELECT DISTINCT desktop FROM tasks WHERE status IN ('PENDING','RUNNING')")}
+    rows = [dict(r) for r in conn.execute(
+        "SELECT * FROM computers WHERE no_suspend = 0")]
+
+    for comp in rows:
+        if comp["name"] in busy:
+            conn.execute("UPDATE computers SET last_active_at = ? WHERE id = ?",
+                         (now_iso(), comp["id"]))
+            continue
+        watchers = fleet.vnc_watchers(comp["slug"])
+        if watchers is None:
+            continue                      # already asleep, or unreachable
+        if watchers > 0:
+            conn.execute("UPDATE computers SET last_active_at = ? WHERE id = ?",
+                         (now_iso(), comp["id"]))
+            continue
+        last = comp["last_active_at"]
+        if not last:
+            # Never seen active — start the clock now rather than suspending a
+            # machine the moment the feature is switched on.
+            conn.execute("UPDATE computers SET last_active_at = ? WHERE id = ?",
+                         (now_iso(), comp["id"]))
+            continue
         try:
-            scheduler_tick()
+            if datetime.fromisoformat(last) > cutoff:
+                continue
+        except ValueError:
+            continue
+        try:
+            fleet.suspend_computer(comp["slug"])
         except Exception:  # noqa: BLE001
             pass
+    conn.commit()
+    conn.close()
+
+
+def scheduler_loop() -> None:
+    while True:
+        for tick in (scheduler_tick, idle_tick):
+            try:
+                tick()
+            except Exception:  # noqa: BLE001
+                pass
         time.sleep(20)
 
 
@@ -1181,12 +1375,27 @@ def dispatch_task(target: str, description: str) -> list[int]:
     for comp in targets:
         task_id = create_task_row(comp["name"], description)
         created_ids.append(task_id)
-        threading.Thread(
-            target=run_task_worker,
-            args=(task_id, fleet.bridge_container_name(comp["slug"]), 8000, description),
-            daemon=True,
-        ).start()
+        start_task_thread(comp, task_id, description)
     return created_ids
+
+
+def start_task_thread(comp: dict, task_id: int, description: str) -> None:
+    """Run one task in the background, waking the machine first if it is asleep.
+
+    Waking takes seconds, so it belongs here rather than in dispatch_task —
+    the HTTP request that queued the task should not sit and wait for a
+    desktop to boot. A schedule naming a sleeping machine now works instead
+    of failing against a stopped bridge.
+    """
+    def runner():
+        try:
+            if fleet.container_state(comp["slug"]).get("desktop_state") == "exited":
+                wake_and_wait(comp)
+        except Exception:  # noqa: BLE001
+            pass
+        run_task_worker(task_id, fleet.bridge_container_name(comp["slug"]), 8000, description)
+
+    threading.Thread(target=runner, daemon=True).start()
 
 
 @app.route("/api/v1/tasks", methods=["POST"])

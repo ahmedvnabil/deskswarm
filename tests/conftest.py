@@ -34,10 +34,30 @@ def client(monkeypatch):
         fleet, "create_computer",
         lambda slug, port, password, image=None: created.__setitem__(
             slug, {"port": port, "image": image}))
-    monkeypatch.setattr(fleet, "destroy_computer", lambda slug: created.pop(slug, None))
+    monkeypatch.setattr(fleet, "destroy_computer",
+                        lambda slug, keep_home=False: created.pop(slug, None))
+
+    # Container state is what the app reads to decide "is this machine
+    # asleep", so tests drive it through this dict rather than Docker.
+    states: dict[str, str] = {}
     monkeypatch.setattr(
         fleet, "container_state",
-        lambda slug: {"desktop_state": "running", "bridge_state": "running"})
+        lambda slug: {"desktop_state": states.get(slug, "running"),
+                      "bridge_state": states.get(slug, "running")})
+    monkeypatch.setattr(fleet, "suspend_computer",
+                        lambda slug: states.__setitem__(slug, "exited"))
+    monkeypatch.setattr(fleet, "resume_computer",
+                        lambda slug: states.__setitem__(slug, "running"))
+    monkeypatch.setattr(fleet, "vnc_watchers", lambda slug: 0)
+
+    clipboards: dict[str, str] = {}
+    pasted: list[tuple[str, str]] = []
+    monkeypatch.setattr(fleet, "get_clipboard", lambda slug: clipboards.get(slug, ""))
+    monkeypatch.setattr(fleet, "set_clipboard",
+                        lambda slug, text: clipboards.__setitem__(slug, text))
+    monkeypatch.setattr(fleet, "paste_text",
+                        lambda slug, text: (clipboards.__setitem__(slug, text),
+                                            pasted.append((slug, text))))
 
     import app as app_module
 
@@ -56,5 +76,8 @@ def client(monkeypatch):
     c.created = created
     c.module = app_module
     c.dispatched = dispatched
+    c.states = states
+    c.clipboards = clipboards
+    c.pasted = pasted
     yield c
     tmp.cleanup()

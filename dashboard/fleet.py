@@ -10,10 +10,12 @@ Both are created at runtime through the Docker API (the dashboard mounts
 users add and remove machines from the UI.
 """
 
+import base64
 import io
 import os
 import re
 import secrets
+import shlex
 import tarfile
 import time
 from urllib.parse import quote
@@ -38,7 +40,19 @@ DISABLE_APPARMOR = os.environ.get("DESKSWARM_DISABLE_APPARMOR", "").lower() in (
 PERSIST_HOME = os.environ.get("DESKSWARM_PERSIST_HOME", "1").lower() in ("1", "true", "yes")
 HOME_PATH = "/home/cua"
 
+# Cap what one machine may take. Without these a single runaway tab or a
+# `while true` in someone's terminal starves every other machine and the
+# dashboard with it — the failure looks like "the whole fleet froze", which is
+# the hardest kind to diagnose. Set any of them to 0/"" to leave it unbounded.
+MACHINE_MEM_LIMIT = os.environ.get("DESKSWARM_MACHINE_MEM_LIMIT", "2g")
+MACHINE_CPUS = float(os.environ.get("DESKSWARM_MACHINE_CPUS", "2"))
+MACHINE_PIDS = int(os.environ.get("DESKSWARM_MACHINE_PIDS", "512"))
+BRIDGE_MEM_LIMIT = os.environ.get("DESKSWARM_BRIDGE_MEM_LIMIT", "512m")
+
 _client = None
+# None = not yet known. Some kernels and nested-container hosts refuse cgroup
+# limits outright; we find out from Docker rather than guessing.
+_limits_supported: bool | None = None
 
 
 def client() -> docker.DockerClient:
@@ -130,6 +144,50 @@ def novnc_url(port: int, password: str | None = None) -> str:
     return base
 
 
+def resource_limits(mem: str) -> dict:
+    """Docker kwargs capping one container's share of the host."""
+    limits: dict = {}
+    if mem:
+        limits["mem_limit"] = mem
+    if MACHINE_CPUS > 0:
+        limits["nano_cpus"] = int(MACHINE_CPUS * 1_000_000_000)
+    if MACHINE_PIDS > 0:
+        limits["pids_limit"] = MACHINE_PIDS
+    return limits
+
+
+# Docker phrases "this kernel can't do that" a dozen different ways; these are
+# the fragments common to all of them.
+_UNSUPPORTED_HINTS = ("cgroup", "memory limit", "pids limit", "not supported",
+                      "no such file or directory", "oom", "cpu cfs")
+
+
+def run_container(*args, limits: dict | None = None, **kwargs):
+    """containers.run, degrading gracefully when the host refuses limits.
+
+    A Proxmox LXC or an unprivileged nested Docker may not have the cgroup
+    controllers delegated. Refusing to start the machine at all would be worse
+    than running it unbounded, so we try once, learn, and stop asking.
+    """
+    global _limits_supported
+    limits = limits or {}
+    if limits and _limits_supported is not False:
+        try:
+            c = client().containers.run(*args, **kwargs, **limits)
+            _limits_supported = True
+            return c
+        except docker.errors.APIError as exc:
+            msg = str(exc).lower()
+            if not any(h in msg for h in _UNSUPPORTED_HINTS):
+                raise
+            _limits_supported = False
+    return client().containers.run(*args, **kwargs)
+
+
+def limits_supported() -> bool | None:
+    return _limits_supported
+
+
 def create_computer(slug: str, novnc_port: int, vnc_password: str,
                     image: str | None = None) -> None:
     """Start the desktop + bridge container pair for one computer.
@@ -152,7 +210,7 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str,
         # ownership — and only keeps it from then on.
         desktop_extra["volumes"] = {home_volume_name(slug): {"bind": HOME_PATH, "mode": "rw"}}
 
-    client().containers.run(
+    run_container(
         image or DESKTOP_IMAGE,
         name=desktop_container_name(slug),
         detach=True,
@@ -161,9 +219,10 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str,
         network=network,
         restart_policy={"Name": "unless-stopped"},
         labels={"deskswarm.role": "desktop", "deskswarm.slug": slug},
+        limits=resource_limits(MACHINE_MEM_LIMIT),
         **desktop_extra,
     )
-    client().containers.run(
+    run_container(
         BRIDGE_IMAGE,
         name=bridge_container_name(slug),
         detach=True,
@@ -176,6 +235,7 @@ def create_computer(slug: str, novnc_port: int, vnc_password: str,
         network=network,
         restart_policy={"Name": "unless-stopped"},
         labels={"deskswarm.role": "bridge", "deskswarm.slug": slug},
+        limits=resource_limits(BRIDGE_MEM_LIMIT),
         **extra,
     )
 
@@ -239,6 +299,69 @@ def container_state(slug: str) -> dict:
         except docker.errors.NotFound:
             pass
     return out
+
+
+# ------------------------------------------------------------ sleep / wake
+
+def suspend_computer(slug: str) -> None:
+    """Stop both containers, freeing their memory and CPU entirely.
+
+    This is `docker stop`, not `docker pause`: pausing keeps every page of RAM
+    resident, and RAM is the thing that runs out first. The cost is honest and
+    worth stating plainly — the X session ends, so open windows are lost. The
+    home volume and everything in it is untouched.
+
+    The bridge goes first so it isn't left retrying a VNC socket that just
+    disappeared.
+    """
+    for name in (bridge_container_name(slug), desktop_container_name(slug)):
+        try:
+            client().containers.get(name).stop(timeout=10)
+        except docker.errors.NotFound:
+            pass
+
+
+def resume_computer(slug: str) -> None:
+    """Start the pair back up — desktop first, so the bridge finds a VNC
+    server waiting rather than backing off."""
+    for name in (desktop_container_name(slug), bridge_container_name(slug)):
+        try:
+            client().containers.get(name).start()
+        except docker.errors.NotFound:
+            pass
+        except docker.errors.APIError as exc:
+            if "already started" not in str(exc).lower():
+                raise
+
+
+# websockify listens on 6901 inside the desktop; a browser watching the screen
+# shows up here as an established connection. Port 5901 is deliberately not
+# counted — the bridge holds that one open permanently, so it would make every
+# machine look busy forever.
+VNC_WATCHERS_SCRIPT = (
+    r"""awk 'NR>1 && $4=="01" {split($2,a,":"); if (a[2]=="1AF5") n++} END{print n+0}' """
+    r"""/proc/net/tcp 2>/dev/null || echo 0"""
+)
+
+
+def vnc_watchers(slug: str) -> int | None:
+    """How many browsers have this machine's screen open, or None if it is
+    asleep or unreachable.
+
+    Read straight from /proc/net/tcp because `ss` and `netstat` are not in
+    every desktop image, but /proc always is.
+    """
+    try:
+        c = client().containers.get(desktop_container_name(slug))
+        if c.status != "running":
+            return None
+        res = c.exec_run(["sh", "-c", VNC_WATCHERS_SCRIPT], demux=False)
+    except (docker.errors.NotFound, docker.errors.APIError):
+        return None
+    try:
+        return int((res.output or b"0").decode().strip() or 0)
+    except ValueError:
+        return None
 
 
 def exec_in_desktop(slug: str, command: str, timeout_note: str = "") -> dict:
@@ -334,6 +457,85 @@ def get_inventory(slug: str) -> dict:
 
 def random_vnc_password() -> str:
     return secrets.token_hex(8)
+
+
+# -------------------------------------------------------------- clipboard
+
+class ClipboardUnavailable(RuntimeError):
+    """The desktop image has no clipboard tooling and it could not be added."""
+
+
+# X selections belong to a live client, so xclip has to outlive the exec that
+# started it — hence setsid. Text moves base64-encoded in both directions:
+# the clipboard carries UTF-8 (Arabic, emoji, newlines, quotes) and base64 is
+# the only encoding that survives a shell command line untouched.
+_CLIP_ENV = "export DISPLAY=:1 XAUTHORITY=/home/cua/.Xauthority;"
+
+
+def _as_desktop_user(inner: str) -> str:
+    return f"su cua -c {shlex.quote(_CLIP_ENV + ' ' + inner)} </dev/null"
+
+
+def ensure_clipboard_tools(slug: str) -> None:
+    """Make sure xclip and xdotool exist, installing them if they don't.
+
+    The stock desktop image ships neither, and a container rebuild throws away
+    anything apt installed — so this is checked per call rather than once. The
+    check is a `command -v`, which costs milliseconds; the install only ever
+    runs on an image that lacks them. Snapshot the machine afterwards to make
+    it permanent.
+    """
+    probe = exec_in_desktop(slug, "command -v xclip >/dev/null && command -v xdotool >/dev/null")
+    if probe["exit_code"] == 0:
+        return
+    res = exec_in_desktop(
+        slug,
+        "export DEBIAN_FRONTEND=noninteractive; "
+        "apt-get update -qq && apt-get install -y -qq xclip xdotool",
+    )
+    if res["exit_code"] != 0:
+        raise ClipboardUnavailable(
+            "this machine has no xclip/xdotool and installing them failed "
+            f"(is it offline?): {res['output'][-300:].strip()}"
+        )
+
+
+def get_clipboard(slug: str) -> str:
+    ensure_clipboard_tools(slug)
+    res = exec_in_desktop(
+        slug, _as_desktop_user("xclip -selection clipboard -o 2>/dev/null | base64 -w0"))
+    if res["exit_code"] != 0:
+        raise ClipboardUnavailable(res["output"].strip() or "could not read the clipboard")
+    raw = res["output"].strip()
+    if not raw:
+        return ""
+    return base64.b64decode(raw).decode("utf-8", errors="replace")
+
+
+def set_clipboard(slug: str, text: str) -> None:
+    ensure_clipboard_tools(slug)
+    payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+    res = exec_in_desktop(
+        slug,
+        _as_desktop_user(
+            f"printf %s {payload} | base64 -d | setsid xclip -selection clipboard -i"),
+    )
+    if res["exit_code"] != 0:
+        raise ClipboardUnavailable(res["output"].strip() or "could not set the clipboard")
+
+
+def paste_text(slug: str, text: str) -> None:
+    """Put text on the clipboard and press Ctrl+V in the focused window.
+
+    This is also the only dependable way to get Arabic (or any non-Latin text)
+    into a desktop: xdotool's `type` goes through keysym lookup, which has no
+    mapping for most of these characters and silently drops them. The
+    clipboard carries bytes, so nothing is lost.
+    """
+    set_clipboard(slug, text)
+    res = exec_in_desktop(slug, _as_desktop_user("xdotool key --clearmodifiers ctrl+v"))
+    if res["exit_code"] != 0:
+        raise ClipboardUnavailable(res["output"].strip() or "could not send Ctrl+V")
 
 
 # ------------------------------------------------------------------ files

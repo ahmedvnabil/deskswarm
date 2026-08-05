@@ -20,6 +20,23 @@
   its `alt` text over the machine's name.
 
 ### Added
+- A persistent home for every machine — a named volume on `/home/cua`, seeded
+  from the image so a new machine still gets its skeleton and ownership. A
+  restart no longer throws away what you were doing; only deleting the machine
+  removes it.
+- Files in and out: upload to any machine (owned by the desktop user, not
+  root), browse its home, and download a file or a whole directory.
+- Copy and paste between the browser and a machine, with an option to press
+  the text into the focused window. This is what makes Arabic and other
+  non-Latin input work at all — keysym-based typing silently drops most of
+  those characters.
+- Sleep and wake, manual or after N idle minutes (off by default). A sleeping
+  machine costs no memory or CPU and keeps its files; its X session does not
+  survive, so this is opt-in. Clicking a sleeping machine — or dispatching a
+  task to it — wakes it first.
+- Per-machine memory, CPU and PID caps, so one machine cannot starve the rest.
+  Hosts without the cgroup controllers delegated are detected on the first
+  machine started and run uncapped rather than refusing to start anything.
 - Guards for the failures that accumulate quietly: a daily cost cap, memory
   admission control, disk thresholds with a safe space reclaim, and a breaker
   that pauses dispatch after repeated failures.
@@ -44,3 +61,6 @@
   and a bridge probe, which was serial and did not scale.
 - Bridge health probes use `requests` instead of spawning a `curl` per machine
   per refresh.
+- Stopped machines are no longer probed or screenshotted. Each one previously
+  burned a full HTTP timeout per tile per refresh, which on a wall of sleeping
+  machines took longer than the refresh interval itself.

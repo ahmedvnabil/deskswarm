@@ -12,17 +12,30 @@
   {% for c in computers %}
   <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900
        {%- if c.active_task %} border-amber-500/50
+       {%- elif c.sleeping %} border-neutral-800
        {%- elif not c.bridge_ok %} border-red-500/40
        {%- elif c.reserved %} border-sky-500/40
        {%- else %} border-neutral-800{% endif %}"
        data-name="{{ c.name|e }}" data-id="{{ c.id }}"
-       data-state="{{ 'busy' if c.active_task else ('idle' if c.bridge_ok else 'down') }}"
-       data-reserved="{{ 1 if c.reserved else 0 }}">
+       data-state="{{ 'busy' if c.active_task else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) }}"
+       data-reserved="{{ 1 if c.reserved else 0 }}"
+       data-sleeping="{{ 1 if c.sleeping else 0 }}">
 
     {# Click the picture to open a real interactive session for this machine. #}
     <div class="aspect-[16/10] bg-black relative cursor-pointer"
          onclick="openLive({{ c.id }}, '{{ c.name|e }}', '{{ c.novnc_url }}')">
-      {% if c.bridge_ok %}
+      {% if c.sleeping %}
+      {# Stopped on purpose: no screen to show, and no bridge to ask. The tile
+         stays clickable — openLive wakes it first. #}
+      <div class="absolute inset-0 flex items-center justify-center text-center bg-neutral-950">
+        <div>
+          <div class="text-neutral-500 text-lg leading-none">☾</div>
+          <div class="text-[10px] text-neutral-500 mt-1">sleeping · 0 MB</div>
+          <button onclick="event.stopPropagation(); wakeComputer({{ c.id }}, '{{ c.name|e }}')"
+            class="mt-2 bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-1 rounded">wake</button>
+        </div>
+      </div>
+      {% elif c.bridge_ok %}
       {# src is rendered server-side with a token that only ticks every few
          seconds: the picture loads on first paint, the 5s partial swap reuses
          the cached URL (so no flicker), and the token change pulls a fresh
@@ -53,6 +66,7 @@
              value="{{ c.name|e }}" onclick="event.stopPropagation(); syncPicks()">
       <span class="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0
         {%- if c.active_task %} bg-amber-400 animate-pulse
+        {%- elif c.sleeping %} bg-neutral-600
         {%- elif c.bridge_ok %} bg-emerald-500
         {%- else %} bg-red-500{% endif %}"></span>
       <span class="text-[11px] font-semibold truncate drop-shadow">{{ c.name }}</span>
@@ -71,13 +85,14 @@
       <div class="text-[10px] text-neutral-300 truncate">#{{ c.active_task.id }} {{ c.active_task.description }}</div>
       {% else %}
       <div class="text-[10px] mono text-neutral-400">
-        {{ 'idle' if c.bridge_ok else 'offline' }} · :{{ c.novnc_port }}
+        {{ 'sleeping' if c.sleeping else ('idle' if c.bridge_ok else 'offline') }} · :{{ c.novnc_port }}
       </div>
       {% endif %}
     </div>
 
-    <!-- hover actions -->
-    <div class="absolute top-7 right-1.5 flex flex-col gap-1 opacity-0 group-hover:opacity-100 transition">
+    {# Hover actions. Two columns: eight buttons in one column ran taller than
+       the tile at the small wall size and spilled over the status line. #}
+    <div class="absolute top-7 right-1.5 grid grid-cols-2 gap-1 opacity-0 group-hover:opacity-100 transition">
       <button onclick="event.stopPropagation(); openTerminal({{ c.id }}, '{{ c.name|e }}')"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">shell</button>
       <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
@@ -85,6 +100,9 @@
       <button onclick="event.stopPropagation(); openFiles({{ c.id }}, '{{ c.name|e }}')"
         title="put files on this machine, or take them off"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">files</button>
+      <button onclick="event.stopPropagation(); openClipboard({{ c.id }}, '{{ c.name|e }}')"
+        title="copy and paste between here and this machine"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">clip</button>
       <button onclick="event.stopPropagation(); snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">snap</button>
       <button onclick="event.stopPropagation(); renameComputer({{ c.id }}, '{{ c.name|e }}')"
@@ -93,6 +111,10 @@
         title="{{ 'let agents use this machine again' if c.reserved else 'reserve for yourself — agents will skip it' }}"
         class="{{ 'bg-sky-600/80 hover:bg-sky-600' if c.reserved else 'bg-neutral-900/90 hover:bg-neutral-800' }} text-[10px] px-2 py-1 rounded">
         {{ 'unreserve' if c.reserved else 'reserve' }}</button>
+      <button onclick="event.stopPropagation(); {{ 'wakeComputer' if c.sleeping else 'sleepComputer' }}({{ c.id }}, '{{ c.name|e }}')"
+        title="{{ 'start it back up' if c.sleeping else 'stop it and free its memory — files are kept, open windows are not' }}"
+        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">
+        {{ 'wake' if c.sleeping else 'sleep' }}</button>
     </div>
   </div>
   {% endfor %}

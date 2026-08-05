@@ -41,6 +41,7 @@
           <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
           <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1">busy</button>
           <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">idle</button>
+          <button type="button" onclick="setWallState('asleep')" data-chip="asleep" class="wall-chip bg-neutral-800 rounded px-2 py-1">asleep</button>
           <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">down</button>
           <span class="text-neutral-700">|</span>
           <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
@@ -272,8 +273,26 @@
     htmx.trigger('#analytics','refresh');
   }
 
-  // Full interactive session for one machine.
-  function openLive(id, name, url){
+  // Full interactive session for one machine. A sleeping machine is woken
+  // first — clicking its picture should just work, not report an error.
+  async function openLive(id, name, url){
+    const tile = document.querySelector('.wall-tile[data-id="' + id + '"]');
+    if(tile && tile.dataset.sleeping === '1'){
+      openModal('Waking — ' + name);
+      document.getElementById('modal-body').innerHTML =
+        '<div class="text-sm text-neutral-300">starting the desktop…</div>' +
+        '<div class="text-xs text-neutral-500 mt-1">A cold desktop takes a few ' +
+        'seconds to bring up X and attach its bridge.</div>';
+      const j = await (await fetch('/api/v1/computers/' + id + '/wake',
+                                   {method:'POST'})).json();
+      htmx.trigger('#fleet-status','refresh');
+      if(!j.ok){
+        document.getElementById('modal-body').innerHTML =
+          '<div class="text-sm text-red-400"></div>';
+        document.querySelector('#modal-body div').textContent = j.error || 'wake failed';
+        return;
+      }
+    }
     openModal('Live — ' + name);
     document.getElementById('modal-body').innerHTML =
       '<div class="bg-black rounded overflow-hidden" style="aspect-ratio:16/10">' +
@@ -364,6 +383,82 @@
     if(!j.ok) alert(j.error || 'failed');
     htmx.trigger('#fleet-status','refresh');
     syncPicks();
+  }
+
+  // --------------------------------------------------------- sleep / wake
+  async function sleepComputer(id, name){
+    if(!confirm(`Put "${name}" to sleep?\n\n` +
+                'Its containers stop, so it stops using memory and CPU entirely. ' +
+                'Everything saved on the machine is kept — but the desktop session ' +
+                'ends, so open windows and unsaved work are lost.\n\n' +
+                'Click its picture to wake it again.')) return;
+    const j = await (await fetch(`/api/v1/computers/${id}/sleep`, {method:'POST'})).json();
+    if(!j.ok) alert(j.error || 'could not sleep');
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#guards','refresh');
+  }
+
+  async function wakeComputer(id, name){
+    const j = await (await fetch(`/api/v1/computers/${id}/wake`, {method:'POST'})).json();
+    if(!j.ok) alert(j.error || 'could not wake');
+    htmx.trigger('#fleet-status','refresh');
+    htmx.trigger('#guards','refresh');
+  }
+
+  // ---------------------------------------------------------- clipboard
+  // Copy/paste across the VNC boundary. noVNC's own clipboard is unreliable
+  // for anything outside latin-1, which makes Arabic impossible; this moves
+  // the text as UTF-8 through the machine's own X clipboard instead.
+  function openClipboard(id, name){
+    openModal('Clipboard — ' + name);
+    document.getElementById('modal-body').innerHTML = `
+      <textarea id="clip-text" rows="8" dir="auto"
+        class="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-sm mono"
+        placeholder="Type or paste here, then send it to the machine…"></textarea>
+      <div class="flex flex-wrap gap-2 mt-2">
+        <button onclick="clipSend(${id}, false)"
+          class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-1.5 rounded">
+          → put on machine's clipboard</button>
+        <button onclick="clipSend(${id}, true)"
+          title="also presses Ctrl+V in whatever window has focus"
+          class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-xs px-3 py-1.5 rounded">
+          → paste into focused window</button>
+        <button onclick="clipGet(${id})"
+          class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-1.5 rounded">
+          ← read machine's clipboard</button>
+      </div>
+      <div id="clip-note" class="text-xs text-neutral-500 mt-2">
+        Paste targets whatever window is focused on the machine — click into it first.
+      </div>`;
+  }
+
+  function clipNote(msg, bad){
+    const n = document.getElementById('clip-note');
+    if(!n) return;
+    n.textContent = msg;
+    n.className = 'text-xs mt-2 ' + (bad ? 'text-red-400' : 'text-emerald-400');
+  }
+
+  async function clipSend(id, paste){
+    const text = document.getElementById('clip-text').value;
+    if(!text){ clipNote('nothing to send', true); return; }
+    clipNote(paste ? 'pasting…' : 'sending…');
+    const j = await (await fetch(`/api/v1/computers/${id}/clipboard`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({text, paste: paste ? '1' : '0'})
+    })).json();
+    clipNote(j.ok ? (paste ? `pasted ${j.data.bytes} bytes into the focused window`
+                           : `${j.data.bytes} bytes on the machine's clipboard`)
+                  : (j.error || 'failed'), !j.ok);
+  }
+
+  async function clipGet(id){
+    clipNote('reading…');
+    const j = await (await fetch(`/api/v1/computers/${id}/clipboard`)).json();
+    if(!j.ok){ clipNote(j.error || 'failed', true); return; }
+    document.getElementById('clip-text').value = j.data.text;
+    clipNote(j.data.text ? 'copied from the machine — select and copy it here'
+                         : "the machine's clipboard is empty");
   }
 
   async function restartComputer(id, name){

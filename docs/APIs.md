@@ -59,6 +59,10 @@ stored in the database, not in `docker-compose.yml`.
       "bridge_ok": true,
       "desktop_state": "running",
       "bridge_state": "running",
+      "sleeping": false,
+      "reserved": false,
+      "no_suspend": false,
+      "last_active_at": "2026-08-05T18:02:11+00:00",
       "created_at": "2026-08-05T04:20:51+00:00"
     }
   ],
@@ -92,8 +96,11 @@ to start the containers.
 
 ### `PATCH /api/v1/computers/<id>`
 
-Renames a computer — **body**: `{ "name": "new-name" }` — or reserves it —
-**body**: `{ "reserved": "1" }` / `{ "reserved": "0" }`.
+Renames a computer — **body**: `{ "name": "new-name" }` — or flips one of its
+flags: `{ "reserved": "1" }` / `{ "no_suspend": "1" }` (and `"0"` to clear).
+
+`no_suspend` exempts the machine from automatic idle suspend; manual
+sleep/wake still work.
 
 A reserved machine is one you drive by hand. `POST /api/v1/tasks` with
 `"desktop": "all"` skips it, as do fleet-wide schedules, so a broadcast can't
@@ -105,6 +112,44 @@ Only the display name changes — the containers keep their original slug, so
 in-flight tasks are unaffected. Existing task history is relabelled to match.
 
 **Errors**: `404` unknown id, `400` missing name, `409` name already taken.
+
+### `POST /api/v1/computers/<id>/sleep`
+
+Stops both containers. The machine gives back all of its memory and CPU and
+keeps its home volume, name, port and snapshot.
+
+```json
+{ "ok": true, "data": { "id": 3, "sleeping": true }, "error": null }
+```
+
+Sleeping ends the desktop's X session, so **open windows and unsaved work are
+lost** — saved files are not. Refused with `409` while a task is pending or
+running on the machine.
+
+### `POST /api/v1/computers/<id>/wake`
+
+Starts a sleeping machine and waits for its bridge to answer, up to
+`DESKSWARM_WAKE_TIMEOUT` seconds.
+
+```json
+{ "ok": true, "data": { "id": 3, "sleeping": false, "ready": true }, "error": null }
+```
+
+`ready: false` means it started but the desktop was still coming up — the
+screen will work a moment later. That is not an error.
+
+Waking is automatic when you click a sleeping machine on the wall, and when a
+task or schedule targets one, so this is only needed for scripting.
+
+### Sleeping automatically
+
+Set `DESKSWARM_IDLE_SUSPEND_MINUTES` to suspend machines nobody is using. A
+machine counts as in use while a browser has its screen open (an established
+connection to its noVNC port) or a task is pending/running on it. Machines
+with `no_suspend` set are always skipped.
+
+It is `0` — off — by default, because a surprise suspend costs someone their
+open windows.
 
 ### `DELETE /api/v1/computers/<id>`
 
@@ -134,6 +179,36 @@ finish with `chown -R cua:cua /home/cua`.
 
 Each call is a separate `docker exec`, so shell state (including `cd`) does
 not carry over between commands.
+
+### `GET /api/v1/computers/<id>/clipboard`
+
+Reads the machine's X clipboard.
+
+```json
+{ "ok": true, "data": { "text": "whatever was copied over there" }, "error": null }
+```
+
+### `POST /api/v1/computers/<id>/clipboard`
+
+Writes it. **Body**: `{ "text": "…", "paste": "1" }`
+
+With `paste`, the text is also pressed into the focused window with Ctrl+V.
+That is the dependable way to get **Arabic or any non-Latin text** onto a
+machine: typing goes through xdotool's keysym lookup, which has no mapping for
+most of those characters and silently drops them — the clipboard carries
+bytes, so nothing is lost.
+
+```json
+{ "ok": true, "data": { "id": 3, "bytes": 25, "pasted": true }, "error": null }
+```
+
+Both directions need `xclip` (and `xdotool` for `paste`) on the machine. If
+they're missing the dashboard installs them, which takes a few seconds the
+first time — snapshot the machine afterwards to make it permanent, since a
+container rebuild drops anything apt installed.
+
+**Errors**: `400` no `text`, `413` over `DESKSWARM_MAX_CLIPBOARD_KB`,
+`503` no clipboard tooling and it couldn't be installed (offline machine).
 
 ### `GET /api/v1/computers/<id>/inventory`
 
