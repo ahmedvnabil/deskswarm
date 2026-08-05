@@ -92,7 +92,14 @@ to start the containers.
 
 ### `PATCH /api/v1/computers/<id>`
 
-Renames a computer. **Body**: `{ "name": "new-name" }`.
+Renames a computer — **body**: `{ "name": "new-name" }` — or reserves it —
+**body**: `{ "reserved": "1" }` / `{ "reserved": "0" }`.
+
+A reserved machine is one you drive by hand. `POST /api/v1/tasks` with
+`"desktop": "all"` skips it, as do fleet-wide schedules, so a broadcast can't
+take the keyboard while you are using it. Naming it directly still dispatches
+there. If every machine is reserved, a fleet-wide dispatch returns `400`
+rather than silently doing nothing.
 
 Only the display name changes — the containers keep their original slug, so
 in-flight tasks are unaffected. Existing task history is relabelled to match.

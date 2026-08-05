@@ -71,6 +71,10 @@ management + dashboard layer on top.
   chart, a per-machine breakdown, and CSV export. Click any row in the task
   log for the full report: every step the agent took, the untruncated result
   or error, duration and cost.
+- **Reserve a machine for yourself** — mark one **yours** and fleet-wide
+  dispatches and schedules skip it, so a broadcast can't grab the keyboard
+  while you're working in it. Naming it explicitly still runs there; that's a
+  deliberate choice rather than an accident.
 - **Recover a broken machine** — if its containers die or are removed outside
   the dashboard, the tile offers **restart**, which recreates the pair in
   place and keeps the machine's name, port and snapshot.

@@ -176,6 +176,9 @@ def init_db():
     comp_cols = {row[1] for row in conn.execute("PRAGMA table_info(computers)")}
     if "image" not in comp_cols:
         conn.execute("ALTER TABLE computers ADD COLUMN image TEXT")
+    if "reserved" not in comp_cols:
+        # A reserved machine is yours to drive by hand; agents keep off it.
+        conn.execute("ALTER TABLE computers ADD COLUMN reserved INTEGER NOT NULL DEFAULT 0")
 
     existing = {row[1] for row in conn.execute("PRAGMA table_info(tasks)")}
     for col, decl in (("current_action", "TEXT"), ("pid", "INTEGER"), ("started_at", "TEXT")):
@@ -219,6 +222,7 @@ def computer_view(comp: dict, with_state: bool = True) -> dict:
         "bridge_host": fleet.bridge_container_name(comp["slug"]),
         "bridge_port": 8000,
         "created_at": comp["created_at"],
+        "reserved": bool(comp["reserved"]),
         "bridge_ok": False,
     }
     if with_state:
@@ -592,6 +596,17 @@ def api_computers_rename(comp_id: int):
     if not comp:
         return jsonify({"ok": False, "data": None, "error": "not found"}), 404
     payload = request.get_json(silent=True) or {}
+
+    # Same endpoint also flips the reserved flag, which carries no name.
+    if "reserved" in payload and "name" not in payload:
+        flag = 1 if str(payload["reserved"]).lower() in ("1", "true", "yes") else 0
+        conn = connect()
+        conn.execute("UPDATE computers SET reserved = ? WHERE id = ?", (flag, comp_id))
+        conn.commit()
+        conn.close()
+        return jsonify({"ok": True, "data": {"id": comp_id, "reserved": bool(flag)},
+                        "error": None})
+
     new_name = (payload.get("name") or "").strip()
     if not new_name:
         return jsonify({"ok": False, "data": None, "error": "name is required"}), 400
@@ -1007,9 +1022,18 @@ def dispatch_task(target: str, description: str) -> list[int]:
     if not computers:
         raise ValueError("no computers in the fleet — add one first")
 
-    targets = computers if target == "all" else [c for c in computers if c["name"] == target]
-    if not targets:
-        raise ValueError(f"unknown computer '{target}'")
+    if target == "all":
+        # "Whole fleet" means every machine an agent is allowed to touch.
+        # A reserved machine is one you are working on by hand, so a broadcast
+        # must not grab its keyboard out from under you. Naming it explicitly
+        # still works — that is a deliberate choice rather than a side effect.
+        targets = [c for c in computers if not c["reserved"]]
+        if not targets:
+            raise ValueError("every machine is reserved — un-reserve one, or name a target")
+    else:
+        targets = [c for c in computers if c["name"] == target]
+        if not targets:
+            raise ValueError(f"unknown computer '{target}'")
 
     created_ids = []
     for comp in targets:

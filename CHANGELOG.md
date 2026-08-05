@@ -20,6 +20,7 @@
   its `alt` text over the machine's name.
 
 ### Added
+- Reserve a machine for yourself; fleet-wide dispatch and schedules skip it.
 - Per-machine restart, so a machine whose containers died can be recovered in
   place instead of deleted and recreated.
 - Click a row in the task log for the full report — every step the agent took,

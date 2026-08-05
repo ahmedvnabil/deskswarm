@@ -220,9 +220,13 @@
       scope.className = 'text-xs text-amber-400 shrink-0 w-32';
       btn.textContent = 'Run on ' + picked.size;
     } else {
-      scope.textContent = 'whole fleet';
+      // "Whole fleet" skips reserved machines, so say how many that really is.
+      const tiles = document.querySelectorAll('.wall-tile');
+      const free = [...tiles].filter(t => t.dataset.reserved === '0').length;
+      const held = tiles.length - free;
+      scope.textContent = held ? `fleet (${free}, ${held} yours)` : 'whole fleet';
       scope.className = 'text-xs text-neutral-500 shrink-0 w-32';
-      btn.textContent = 'Run';
+      btn.textContent = free ? 'Run on ' + free : 'Run';
     }
   }
 
@@ -305,6 +309,17 @@
     } catch(_){}
   }
   refreshSnapshots();
+
+  async function toggleReserved(id, on){
+    const r = await fetch(`/api/v1/computers/${id}`, {
+      method: 'PATCH', headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({reserved: String(on)})
+    });
+    const j = await r.json();
+    if(!j.ok) alert(j.error || 'failed');
+    htmx.trigger('#fleet-status','refresh');
+    syncPicks();
+  }
 
   async function restartComputer(id, name){
     if(!confirm(`Recreate the containers for "${name}"?\n\n` +
