@@ -13,6 +13,7 @@ users add and remove machines from the UI.
 import os
 import re
 import secrets
+from urllib.parse import quote
 from pathlib import Path
 
 import docker
@@ -101,8 +102,18 @@ def next_novnc_port(reserved: set[int]) -> int:
     return port
 
 
-def novnc_url(port: int) -> str:
-    return f"http://{PUBLIC_HOST}:{port}/vnc.html"
+def novnc_url(port: int, password: str | None = None) -> str:
+    """Link to a machine's screen.
+
+    Each machine gets its own random VNC password, so a bare /vnc.html link
+    would just prompt for a secret the user has no way to know. Passing it as
+    autoconnect params makes "screen" work in one click. The password is only
+    as protected as the dashboard itself, which already mounts docker.sock.
+    """
+    base = f"http://{PUBLIC_HOST}:{port}/vnc.html"
+    if password:
+        return f"{base}?autoconnect=true&resize=scale&password={quote(password)}"
+    return base
 
 
 def create_computer(slug: str, novnc_port: int, vnc_password: str,

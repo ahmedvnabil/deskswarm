@@ -4,57 +4,61 @@
   <div class="text-neutral-600 text-xs">Add one above — it boots a full XFCE desktop plus its agent bridge.</div>
 </div>
 {% else %}
-<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+<div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-3">
   {% for c in computers %}
-  <div class="bg-neutral-900 border border-neutral-800 rounded-lg overflow-hidden flex flex-col">
+  <div class="bg-neutral-900 border rounded-lg overflow-hidden flex flex-col
+    {{ 'border-amber-500/40' if c.active_task else 'border-neutral-800' }}">
 
-    <div class="px-4 py-3 flex items-start justify-between gap-2">
-      <div class="min-w-0">
-        <div class="flex items-center gap-2">
-          <span class="h-2.5 w-2.5 rounded-full shrink-0
+    <div class="px-3 pt-3 pb-2">
+      <div class="flex items-start justify-between gap-2">
+        <div class="flex items-center gap-2 min-w-0">
+          <span class="h-2 w-2 rounded-full shrink-0
             {%- if c.active_task %} bg-amber-400 animate-pulse
             {%- elif c.bridge_ok %} bg-emerald-500
             {%- elif c.desktop_state == 'running' %} bg-amber-500
             {%- else %} bg-red-500{% endif %}"></span>
-          <span class="font-semibold truncate">{{ c.name }}</span>
+          <span class="font-semibold text-sm truncate">{{ c.name }}</span>
         </div>
-        <div class="text-xs mt-1 mono truncate
-          {{ 'text-amber-400' if c.active_task else 'text-neutral-500' }}">
-          {% if c.active_task %}
-            busy — {{ c.active_task.current_action or c.active_task.status|lower }}
-          {% elif c.bridge_ok %}idle
-          {% else %}desktop:{{ c.desktop_state }} · bridge:{{ c.bridge_state }}{% endif %}
-          · :{{ c.novnc_port }}
-        </div>
-        {% if c.active_task %}
-        <div class="text-xs text-neutral-500 mt-1 truncate" title="{{ c.active_task.description }}">
-          #{{ c.active_task.id }} {{ c.active_task.description }}
-        </div>
-        {% endif %}
+        <button onclick="removeComputer({{ c.id }}, '{{ c.name|e }}')" title="remove"
+          class="text-neutral-600 hover:text-red-400 leading-none shrink-0 text-sm">✕</button>
       </div>
-      <button onclick="removeComputer({{ c.id }}, '{{ c.name|e }}')"
-        title="remove this computer"
-        class="text-xs text-neutral-600 hover:text-red-400 px-1.5 py-1 rounded shrink-0">✕</button>
+
+      <div class="mt-1 text-[11px] mono truncate
+        {{ 'text-amber-400' if c.active_task else 'text-neutral-500' }}">
+        {%- if c.active_task -%}
+          {{ c.active_task.current_action or c.active_task.status|lower }}
+        {%- elif c.bridge_ok -%}idle
+        {%- else -%}{{ c.desktop_state }}/{{ c.bridge_state }}{%- endif -%}
+        <span class="text-neutral-600"> · :{{ c.novnc_port }}</span>
+      </div>
+
+      {% if c.active_task %}
+      <div class="mt-1 text-[11px] text-neutral-500 truncate" title="{{ c.active_task.description }}">
+        #{{ c.active_task.id }} {{ c.active_task.description }}
+      </div>
+      {% endif %}
     </div>
 
-    <div class="px-4 pb-3 flex flex-wrap gap-1.5">
-      <button onclick="toggleLive(this)"
+    {# Equal-width grid instead of wrapping flex, so every card is the same
+       height however long its name is. #}
+    <div class="grid grid-cols-5 gap-px bg-neutral-800 border-t border-neutral-800 mt-auto">
+      <button onclick="toggleLive(this)" title="show the live screen inline"
         data-novnc-url="{{ c.novnc_url }}" data-target="live-{{ c.id }}"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">screen</button>
-      <button onclick="openTerminal({{ c.id }}, '{{ c.name|e }}')"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">terminal</button>
-      <button onclick="openInventory({{ c.id }}, '{{ c.name|e }}')"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">software</button>
-      <button onclick="renameComputer({{ c.id }}, '{{ c.name|e }}')"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">rename</button>
-      <button onclick="snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
-        title="save this machine as a reusable template"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">snapshot</button>
-      <a href="{{ c.novnc_url }}" target="_blank"
-        class="text-xs bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1.5 rounded">↗</a>
+        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">screen</button>
+      <button onclick="openTerminal({{ c.id }}, '{{ c.name|e }}')" title="root shell on this machine"
+        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">shell</button>
+      <button onclick="openInventory({{ c.id }}, '{{ c.name|e }}')" title="installed software"
+        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">apps</button>
+      <button onclick="snapshotComputer({{ c.id }}, '{{ c.name|e }}')" title="save as a reusable snapshot"
+        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">snap</button>
+      <button onclick="renameComputer({{ c.id }}, '{{ c.name|e }}')" title="rename"
+        class="bg-neutral-900 hover:bg-neutral-800 text-[11px] py-2">name</button>
     </div>
 
-    <div id="live-{{ c.id }}" class="hidden bg-black" style="aspect-ratio: 16/10;"></div>
+    <div id="live-{{ c.id }}" class="hidden bg-black relative" style="aspect-ratio: 16/10;">
+      <a href="{{ c.novnc_url }}" target="_blank" title="open full size in a new tab"
+        class="absolute top-1 right-1 z-10 bg-neutral-900/80 hover:bg-neutral-800 text-[11px] px-2 py-1 rounded">↗</a>
+    </div>
   </div>
   {% endfor %}
 </div>

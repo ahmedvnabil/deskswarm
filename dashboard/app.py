@@ -170,7 +170,8 @@ def computer_view(comp: dict, with_state: bool = True) -> dict:
         "name": comp["name"],
         "slug": comp["slug"],
         "novnc_port": comp["novnc_port"],
-        "novnc_url": fleet.novnc_url(comp["novnc_port"]),
+        "novnc_url": fleet.novnc_url(comp["novnc_port"], comp["vnc_password"]),
+        "vnc_password": comp["vnc_password"],
         "bridge_host": fleet.bridge_container_name(comp["slug"]),
         "bridge_port": 8000,
         "created_at": comp["created_at"],
@@ -583,7 +584,8 @@ def partial_inventory(comp_id: int):
         inv = fleet.get_inventory(comp["slug"])
     except Exception as exc:  # noqa: BLE001
         inv = {"error": str(exc)}
-    return render_template("_inventory.html", comp=comp, inv=inv)
+    return render_template("_inventory.html", comp=comp, inv=inv,
+                           vnc_password=comp["vnc_password"])
 
 
 @app.route("/api/v1/computers/<int:comp_id>/exec", methods=["POST"])
