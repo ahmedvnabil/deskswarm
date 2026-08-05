@@ -1,19 +1,29 @@
+# Fixed project name so the network is 'deskswarm_default' whatever the
+# directory is called — a GitHub zip unpacks to deskswarm-main, and a
+# hard-coded network name would then point at one that doesn't exist.
+name: deskswarm
+
 services:
 
   dashboard:
     build: ./dashboard
     environment:
       PORT: 7000
-      DESKSWARM_MODEL: ${DESKSWARM_MODEL}
+      # Only needed for agent tasks — machines, screens, files, clipboard,
+      # sleep/wake, backups and shares all work without any model at all.
+      DESKSWARM_MODEL: ${DESKSWARM_MODEL:-}
       DESKSWARM_API_BASE: ${DESKSWARM_API_BASE:-}
       DESKSWARM_API_KEY: ${DESKSWARM_API_KEY:-}
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
-      # How the browser reaches the noVNC ports published on this host.
-      DESKSWARM_PUBLIC_HOST: ${DESKSWARM_PUBLIC_HOST:-localhost}
+      # Leave empty: screen links follow whatever hostname you opened the
+      # dashboard with. Only set it if that differs (a reverse proxy).
+      DESKSWARM_PUBLIC_HOST: ${DESKSWARM_PUBLIC_HOST:-}
       DESKSWARM_NOVNC_PORT_BASE: ${DESKSWARM_NOVNC_PORT_BASE:-6901}
       # Set to 1 on hosts that can't apply AppArmor profiles (Proxmox LXC).
       DESKSWARM_DISABLE_APPARMOR: ${DESKSWARM_DISABLE_APPARMOR:-}
-      DESKSWARM_NETWORK: ${DESKSWARM_NETWORK:-deskswarm_default}
+      # Leave empty: the dashboard detects the network it is on. Only set
+      # this if you attach it to a network of your own.
+      DESKSWARM_NETWORK: ${DESKSWARM_NETWORK:-}
       # Rows per page in the task log, and the ceiling on one {1..N} batch.
       DESKSWARM_PAGE_SIZE: ${DESKSWARM_PAGE_SIZE:-25}
       # Seconds a wall screenshot is cached before a fresh frame is pulled.

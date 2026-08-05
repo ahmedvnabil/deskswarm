@@ -265,13 +265,27 @@ def get_computer_by_name(name: str) -> dict | None:
     return dict(row) if row else None
 
 
-def computer_view(comp: dict, with_state: bool = True) -> dict:
+def browser_host() -> str | None:
+    """The hostname the browser used to reach us.
+
+    The machines' screens are published on this host's ports, so the link to
+    them has to name a host the *browser* can reach. Deriving it from the
+    request means opening the dashboard at a LAN address just works, instead
+    of showing black screens until someone finds DESKSWARM_PUBLIC_HOST.
+    """
+    if not has_request_context():
+        return None
+    return request.host.rsplit(":", 1)[0] or None
+
+
+def computer_view(comp: dict, with_state: bool = True, host: str | None = None) -> dict:
     view = {
         "id": comp["id"],
         "name": comp["name"],
         "slug": comp["slug"],
         "novnc_port": comp["novnc_port"],
-        "novnc_url": fleet.novnc_url(comp["novnc_port"], comp["vnc_password"]),
+        "novnc_url": fleet.novnc_url(comp["novnc_port"], comp["vnc_password"],
+                                     host=host or browser_host()),
         "vnc_password": comp["vnc_password"],
         "bridge_host": fleet.bridge_container_name(comp["slug"]),
         "bridge_port": 8000,
@@ -313,8 +327,11 @@ def computer_views(comps: list[dict]) -> list[dict]:
     """
     if not comps:
         return []
+    # Resolved here, not inside the workers: a thread has no request context,
+    # so asking for it there would silently fall back to localhost.
+    host = browser_host()
     with ThreadPoolExecutor(max_workers=min(16, len(comps))) as pool:
-        return list(pool.map(computer_view, comps))
+        return list(pool.map(lambda c: computer_view(c, host=host), comps))
 
 
 def budgeted_machine_count() -> int:

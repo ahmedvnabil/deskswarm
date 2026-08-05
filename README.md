@@ -6,25 +6,58 @@
 [![CI](https://github.com/ahmedvnabil/deskswarm/actions/workflows/ci.yml/badge.svg)](https://github.com/ahmedvnabil/deskswarm/actions/workflows/ci.yml)
 [![Upstream bug filed](https://img.shields.io/badge/upstream%20bug-trycua%2Fcua%20%232869-red)](https://github.com/trycua/cua/issues/2869)
 
-**Self-hosted fleet of AI-controlled desktops, with a dashboard to dispatch
-tasks and see what's happening.**
+**Self-hosted Linux desktops in your browser. Spin one up in a second, work
+in it, share it with one person, hand it to an AI agent — or all four.**
 
-deskswarm spins up N full Linux desktops (real XFCE sessions, not headless
-browsers) in Docker, wires each one up to an AI computer-use agent, and gives
-you a single dashboard to send natural-language tasks to one desktop — or the
-whole fleet in parallel — and watch the results, costs, and history.
+deskswarm runs full XFCE desktops in Docker and gives you one dashboard to
+manage them: a wall of live screens, files in and out, copy-paste that works,
+sleep the ones you're not using, back them up, and share a single machine with
+someone without giving them the rest.
 
-Built on top of [cua](https://github.com/trycua/cua) (Apache-2.0), the
-open-source computer-use SDK. deskswarm is the orchestration + fleet
-management + dashboard layer on top.
+They're also computer-use ready — each machine has an agent bridge built on
+[cua](https://github.com/trycua/cua) — but **that part is optional**. Nothing
+below needs an API key.
 
 <p align="center">
-  <img src="docs/screenshots/dashboard.png" alt="deskswarm wall — every machine shown as its live screen, with the busy one outlined amber" width="820">
+  <img src="docs/screenshots/tour.gif" alt="Adding a machine, opening its files, sharing it with one person, and putting it to sleep — all from the wall" width="820">
 </p>
 
 <p align="center">
-  <sub>Every machine's screen, live. Amber = an agent is working (here it has opened a terminal and typed a command), red = the machine is down.</sub>
+  <sub>Real recording: add a machine, browse its files, share it with one
+  person, sleep it, wake it. No API key involved.</sub>
 </p>
+
+## Run it
+
+Docker and Docker Compose. Nothing else, no configuration:
+
+```bash
+git clone https://github.com/ahmedvnabil/deskswarm.git
+cd deskswarm
+docker compose up -d --build
+```
+
+Open **http://localhost:7861**, type a name, hit **+ add**. That's a real
+Linux desktop, in your browser, about a second later. (The first one also
+builds the agent bridge, so give that one a minute.)
+
+Opening the dashboard from another device on your network works too — screen
+links follow whatever hostname you used, so `http://192.168.1.50:7861` needs
+no extra setting.
+
+There's a `Makefile` if you prefer: `make up`, `make logs`, `make check`,
+`make backup`, `make doctor`.
+
+### If something doesn't work
+
+| symptom | cause | fix |
+|---|---|---|
+| machines never start, Docker logs mention AppArmor | Docker nested in a Proxmox/LXC container | `DESKSWARM_DISABLE_APPARMOR=1` in `.env`, and `lxc.apparmor.profile: unconfined` on the container |
+| tiles show "bridge down" for a minute after the first add | the bridge image is still building | wait, then use **restart** on the tile |
+| screens are black from another device | a reverse proxy rewrote the host | set `DESKSWARM_PUBLIC_HOST` to the address the browser uses |
+| "not enough memory" but the host looks free | the dashboard is under an LXC/VM memory cap it can't see | set `DESKSWARM_MEMORY_BUDGET_MB` to the real budget |
+
+`make doctor` checks all of these.
 
 ## Features
 
@@ -175,23 +208,21 @@ Good fits:
 - A cheap way to try computer-use agents without committing to a cloud
   provider's hosted sandbox
 
-## Quickstart
+## Adding an AI agent (optional)
 
-Requires Docker and Docker Compose.
+Everything above works without one. If you also want to dispatch tasks in
+natural language — "open the browser and download this month's invoices" —
+give it a model:
 
 ```bash
-git clone https://github.com/ahmedvnabil/deskswarm.git
-cd deskswarm
 cp .env.example .env
-# edit .env — at minimum set DESKSWARM_MODEL / DESKSWARM_API_KEY
-docker compose up -d --build
+# set DESKSWARM_MODEL and DESKSWARM_API_KEY
+docker compose up -d
 ```
 
-Open `http://localhost:7861`. The fleet starts empty — type a name and hit
-**+ add computer** to boot your first machine (the first one also builds the
-bridge image, so give it a minute; later ones take about a second). Then send
-it a task and watch its status go `pending → running (screenshot) → completed`
-live.
+Then type a task at the bottom of the wall, aim it at one machine or the whole
+fleet, and watch each one's status go `pending → running (screenshot) →
+completed` live.
 
 ## Configuring a model
 

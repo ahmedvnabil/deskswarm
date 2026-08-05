@@ -28,7 +28,11 @@ BRIDGE_IMAGE = os.environ.get("DESKSWARM_BRIDGE_IMAGE", "deskswarm-bridge:latest
 BRIDGE_CONTEXT = os.environ.get("DESKSWARM_BRIDGE_CONTEXT", "/bridge-src")
 CONTAINER_PREFIX = os.environ.get("DESKSWARM_CONTAINER_PREFIX", "deskswarm-dyn")
 NETWORK_NAME = os.environ.get("DESKSWARM_NETWORK", "")
-PUBLIC_HOST = os.environ.get("DESKSWARM_PUBLIC_HOST", "localhost")
+# Empty means "whatever hostname the browser used to reach the dashboard",
+# which is right far more often than any fixed value — someone opening
+# http://192.168.1.50:7861 from a laptop should get working screens
+# without first discovering a setting.
+PUBLIC_HOST = os.environ.get("DESKSWARM_PUBLIC_HOST", "")
 NOVNC_PORT_BASE = int(os.environ.get("DESKSWARM_NOVNC_PORT_BASE", "6901"))
 # Proxmox LXC and some nested-Docker hosts can't apply AppArmor profiles.
 DISABLE_APPARMOR = os.environ.get("DESKSWARM_DISABLE_APPARMOR", "").lower() in ("1", "true", "yes")
@@ -130,7 +134,7 @@ def next_novnc_port(reserved: set[int]) -> int:
     return port
 
 
-def novnc_url(port: int, password: str | None = None) -> str:
+def novnc_url(port: int, password: str | None = None, host: str | None = None) -> str:
     """Link to a machine's screen.
 
     Each machine gets its own random VNC password, so a bare /vnc.html link
@@ -138,7 +142,7 @@ def novnc_url(port: int, password: str | None = None) -> str:
     autoconnect params makes "screen" work in one click. The password is only
     as protected as the dashboard itself, which already mounts docker.sock.
     """
-    base = f"http://{PUBLIC_HOST}:{port}/vnc.html"
+    base = f"http://{PUBLIC_HOST or host or 'localhost'}:{port}/vnc.html"
     if password:
         return f"{base}?autoconnect=true&resize=scale&password={quote(password)}"
     return base
