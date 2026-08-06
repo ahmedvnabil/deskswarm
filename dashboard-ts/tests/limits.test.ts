@@ -131,3 +131,29 @@ test("an image already present is not pulled again", async () => {
   await fleet.runContainer({ name: "x", Image: "img" });
   expect(pulled).toEqual([]);
 });
+
+test("exec does not ask docker to upgrade the connection", async () => {
+  // `hijack: true` makes dockerode send Upgrade: tcp; Docker answers 101, and
+  // dockerode does not count 101 as success for exec start. It then reports
+  // the whole framed stream as an error message. Every exec-backed feature —
+  // terminal, files, clipboard, inventory — failed exactly that way on the
+  // first real server.
+  const engine = await import("../src/providers/docker-engine");
+  const src = engine.execInContainer.toString();
+  expect(src).not.toContain("hijack");
+});
+
+test("the frame headers are stripped from exec output", () => {
+  // Docker prefixes each chunk with [type][000][size:4BE]. Leaving them in is
+  // what "Opip3|pip" and ")7.6Gi" in the inventory were.
+  const frame = (type: number, text: string) => {
+    const body = Buffer.from(text);
+    const head = Buffer.alloc(8);
+    head[0] = type;
+    head.writeUInt32BE(body.length, 4);
+    return Buffer.concat([head, body]);
+  };
+  const raw = Buffer.concat([frame(1, "hello "), frame(2, "world")]);
+  const { demultiplex } = require("../src/providers/docker-engine");
+  expect(demultiplex(raw)).toBe("hello world");
+});

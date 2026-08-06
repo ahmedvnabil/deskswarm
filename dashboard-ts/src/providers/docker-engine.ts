@@ -76,7 +76,16 @@ export async function execInContainer(
       ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`)
       : undefined,
   });
-  const stream = await exec.start({ hijack: true, stdin: false });
+  // No hijack. With it dockerode sends `Upgrade: tcp`, Docker answers 101,
+  // and dockerode's accepted status codes for exec start do not include 101 —
+  // so it treats the upgrade as an error and buffers the framed stream into
+  // the message. Every exec-backed feature failed that way: the terminal, the
+  // file browser, the clipboard and the inventory all returned
+  // "(HTTP code 101) unexpected" with the real output visible inside it.
+  //
+  // Without hijack Docker answers 200 with the same multiplexed stream, which
+  // is all a one-shot command needs.
+  const stream = await exec.start({});
   const raw = await collect(stream as unknown as NodeJS.ReadableStream);
   const info = await exec.inspect();
   return { exit_code: info.ExitCode ?? null, output: demultiplex(raw) };

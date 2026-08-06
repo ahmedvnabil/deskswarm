@@ -37,24 +37,31 @@ async function readPassword(prompt: string): Promise<string> {
   }
   process.stdout.write(prompt);
   process.stdin.setRawMode(true);
-  let value = "";
+  const bytes: number[] = [];
   for await (const chunk of process.stdin) {
-    for (const byte of chunk as Uint8Array) {
+    // Normalised through Buffer first. A chunk arrives as a string when an
+    // encoding is set on the stream, and iterating a string yields characters,
+    // not bytes — String.fromCharCode on those produced a mangled password
+    // that the command then reported as successfully set.
+    for (const byte of Buffer.from(chunk as any)) {
       if (byte === 13 || byte === 10) {
         process.stdin.setRawMode(false);
         process.stdout.write("\n");
-        return value;
+        return Buffer.from(bytes).toString("utf8");
       }
       if (byte === 3) {
         process.stdin.setRawMode(false);
+        process.stdout.write("\n");
         process.exit(130);
       }
-      if (byte === 127) value = value.slice(0, -1);
-      else value += String.fromCharCode(byte);
+      if (byte === 4 && bytes.length === 0) continue; // stray EOT from a pty
+      if (byte === 127 || byte === 8) bytes.pop();
+      else bytes.push(byte);
     }
   }
   process.stdin.setRawMode(false);
-  return value;
+  // Collected as bytes and decoded once, so a non-ASCII password survives.
+  return Buffer.from(bytes).toString("utf8");
 }
 
 function usage(): never {
@@ -88,6 +95,10 @@ try {
       if (!argument) usage();
       const password = await readPassword(`password for ${argument}: `);
       const user = await auth.createUser(argument, password);
+      if (!(await auth.verifyPassword(user.username, password))) {
+        console.error("error: the user was created but the password does not verify.");
+        process.exit(1);
+      }
       console.log(`added '${user.username}'`);
       break;
     }
@@ -96,6 +107,17 @@ try {
       if (!argument) usage();
       const password = await readPassword(`new password for ${argument}: `);
       await auth.setPassword(argument, password);
+      // Read it back and check. A command that changes a credential has to
+      // prove it did: this one once reported success while storing a mangled
+      // value, which is the worst possible outcome — the old password kept
+      // working and nobody knew the new one.
+      if (!(await auth.verifyPassword(argument, password))) {
+        console.error(
+          "error: the password was written but does not verify. Nothing to " +
+            "trust here — set it again with DESKSWARM_NEW_PASSWORD.",
+        );
+        process.exit(1);
+      }
       console.log(`changed the password for '${argument}' and signed its sessions out`);
       break;
     }
