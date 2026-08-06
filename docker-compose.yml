@@ -22,6 +22,21 @@ services:
       # dashboard with. Only set it if that differs (a reverse proxy).
       DESKSWARM_PUBLIC_HOST: ${DESKSWARM_PUBLIC_HOST:-}
       DESKSWARM_NOVNC_PORT_BASE: ${DESKSWARM_NOVNC_PORT_BASE:-6901}
+      # Which interface a machine's screen is published on. Empty publishes it
+      # on all of them, which is right on a LAN. Set to 127.0.0.1 on a public
+      # host — ufw does not govern Docker's published ports, so binding is the
+      # control that actually keeps them off the internet.
+      DESKSWARM_SCREEN_BIND: ${DESKSWARM_SCREEN_BIND:-}
+      # Reach screens through the dashboard's own origin at /screen/<port>/
+      # rather than at host:port. Needed on an HTTPS site: a browser refuses an
+      # http:// frame inside an https:// page.
+      DESKSWARM_SCREEN_PROXY: ${DESKSWARM_SCREEN_PROXY:-}
+      # Session length, and the login lockout.
+      DESKSWARM_SESSION_HOURS: ${DESKSWARM_SESSION_HOURS:-336}
+      DESKSWARM_LOGIN_ATTEMPTS: ${DESKSWARM_LOGIN_ATTEMPTS:-8}
+      DESKSWARM_LOGIN_LOCKOUT_MINUTES: ${DESKSWARM_LOGIN_LOCKOUT_MINUTES:-15}
+      DESKSWARM_ADMIN_USER: ${DESKSWARM_ADMIN_USER:-}
+      DESKSWARM_ADMIN_PASSWORD: ${DESKSWARM_ADMIN_PASSWORD:-}
       # Set to 1 on hosts that can't apply AppArmor profiles (Proxmox LXC).
       DESKSWARM_DISABLE_APPARMOR: ${DESKSWARM_DISABLE_APPARMOR:-}
       # Leave empty: the dashboard detects the network it is on. Only set
