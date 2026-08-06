@@ -44,7 +44,12 @@
       <img class="wall-shot absolute inset-0 w-full h-full object-cover
                   {{ '' if c.active_task else 'opacity-60 group-hover:opacity-90' }}"
            src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
-           alt="" loading="lazy">
+           {# Not lazy. The wall replaces its own DOM every five seconds, and a
+              lazy image is only fetched after a layout pass decides it is near
+              the viewport — which never happens, because the element is gone
+              before that. Every tile is the content of this page, so there is
+              nothing to defer anyway. #}
+           alt="">
       {% else %}
       <div class="absolute inset-0 flex items-center justify-center text-center">
         <div>

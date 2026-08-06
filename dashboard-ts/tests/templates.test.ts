@@ -177,3 +177,14 @@ test("every partial route answers", async () => {
     expect(`${path} -> ${r.status}`).toBe(`${path} -> 200`);
   }
 });
+
+test("the wall's tiles are not lazy", () => {
+  // The wall replaces its own DOM every five seconds. A lazy image is fetched
+  // only after a layout pass decides it is near the viewport, and the element
+  // is gone before that — so every tile stayed blank, on every browser, in
+  // both the Flask original and this port. Nothing to defer either: the tiles
+  // are the page.
+  const html = render("_fleet.html", contexts["_fleet.html"][0] as any);
+  expect(html).toContain("/screenshot?t=");
+  expect(html).not.toContain('loading="lazy"');
+});
