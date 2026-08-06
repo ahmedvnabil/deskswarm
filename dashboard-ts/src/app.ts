@@ -26,8 +26,11 @@ export function createApp() {
 
   const app = new Hono<Env>();
 
-  app.use("*", blockCrossSite);
+  // writeAudit first: it wraps the rest, so a request blocked below still
+  // leaves a line. The other order — which this had — meant the one category
+  // of request most worth recording was the only one that vanished silently.
   app.use("*", writeAudit);
+  app.use("*", blockCrossSite);
   // After the audit hook so a refused sign-in still leaves a line, and before
   // every router so nothing can be reached without a person or a token.
   app.use("*", requireSession);

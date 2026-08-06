@@ -57,3 +57,38 @@ test("a form-encoded body cannot supply parameters", async () => {
   expect(r.status).toBe(400);
   expect(r.json.error).toContain("command is required");
 });
+
+test("a blocked cross-site request still leaves an audit line", async () => {
+  // It short-circuited before the audit hook ran, so the one category of
+  // request most worth recording was the only one that vanished silently.
+  await post("/api/v1/computers", { json: { name: "x" }, headers: EVIL });
+  const rows = (await get("/api/v1/audit")).json.data;
+  const blocked = rows.find((r: any) => r.status === 403);
+  expect(blocked).toBeTruthy();
+  expect(blocked.action).toBe("POST /api/v1/computers");
+  expect(blocked.ok).toBe(0);
+});
+
+test("a proxy that rewrites Host does not make the real site look foreign", async () => {
+  // nginx and Traefik can be configured to replace Host with the upstream
+  // address; then every form post from the site itself is refused.
+  const r = await post("/api/v1/computers", {
+    json: { name: "behind-a-proxy" },
+    headers: {
+      host: "127.0.0.1:7861",
+      "x-forwarded-host": "swarm.example.com",
+      Origin: "https://swarm.example.com",
+    },
+  });
+  expect(r.status).toBe(201);
+});
+
+test("a forged X-Forwarded-Host does not open the door", async () => {
+  // A browser cannot set it on a simple request, but nothing is lost by
+  // checking that a mismatch is still a mismatch.
+  const r = await post("/api/v1/computers", {
+    json: { name: "forged" },
+    headers: { "x-forwarded-host": "evil.example", Origin: "https://other.example" },
+  });
+  expect(r.status).toBe(403);
+});

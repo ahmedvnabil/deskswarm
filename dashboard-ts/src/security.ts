@@ -96,7 +96,15 @@ export const blockCrossSite: MiddlewareHandler<Env> = async (c, next) => {
   } catch {
     return fail(c, "cross-site request blocked", 403);
   }
-  if (host !== c.req.header("host")) {
+  // Compared against the forwarded host as well as Host. Caddy preserves the
+  // original Host, but nginx and Traefik can be configured to replace it with
+  // the upstream address, and then every form post from the real site looks
+  // foreign. This is not a hole: a browser making a cross-site "simple
+  // request" — the whole thing this defends against — cannot set
+  // X-Forwarded-Host, because it is not a CORS-safelisted header. Anything
+  // that *can* set it sends no Origin and was already allowed through.
+  const forwarded = (c.req.header("x-forwarded-host") || "").split(",")[0].trim();
+  if (host !== c.req.header("host") && host !== forwarded) {
     return fail(c, "cross-site request blocked", 403);
   }
   return next();
