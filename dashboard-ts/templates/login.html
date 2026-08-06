@@ -4,7 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<meta name="referrer" content="no-referrer">
+<!-- same-origin, not no-referrer: no-referrer makes the browser send
+     Origin: null on this page's own form post, which the cross-site check
+     then refuses — so nobody could sign in from a browser at all. This keeps
+     the privacy intent (nothing leaks to another site) and lets the form
+     identify itself to us. -->
+<meta name="referrer" content="same-origin">
 <title>sign in — deskswarm</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <style>

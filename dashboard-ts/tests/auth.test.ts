@@ -227,3 +227,24 @@ test("a signed-in person is named in the audit trail", async () => {
   const rows = (await get("/api/v1/audit")).json.data;
   expect(rows[0].actor).toBe(TEST_USER);
 });
+
+test("the login page does not null its own Origin", async () => {
+  // `no-referrer` makes a browser send `Origin: null` on the page's own form
+  // post, which the cross-site check refuses — so the login page locked
+  // everyone out of the login. The tests missed it because they post with an
+  // explicit, matching Origin; a real browser found it in minutes.
+  const page = await anon("/login", { headers: { accept: "text/html" } });
+  expect(page.text).not.toContain('content="no-referrer"');
+  expect(page.text).toContain('content="same-origin"');
+});
+
+test("a null Origin is still refused", async () => {
+  // Fixing the page is the fix; accepting `null` is not. It is what a
+  // sandboxed iframe and a cross-origin redirect both send.
+  const r = await anon("/login", {
+    method: "POST",
+    headers: { Origin: "null", "content-type": "application/x-www-form-urlencoded" },
+    body: form({ username: TEST_USER, password: TEST_PASSWORD }),
+  });
+  expect(r.status).toBe(403);
+});
