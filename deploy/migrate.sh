@@ -75,6 +75,21 @@ if [ "$MODE" = "export" ]; then
     du -h "$WORK/volumes/$vol.tar.gz" | cut -f1
   done
 
+  log "snapshot images"
+  # A machine created from a snapshot names an image that exists only in this
+  # host's store. Leaving them behind means those machines cannot be rebuilt on
+  # arrival — the first run of this discovered that the hard way, with seven of
+  # eight machines failing on "pull access denied for deskswarm-dyn-snapshot".
+  SNAPS="$(docker images --format '{{.Repository}}:{{.Tag}}' | grep '^deskswarm-dyn-snapshot:' || true)"
+  if [ -n "$SNAPS" ]; then
+    # Saved together, so layers they share are stored once.
+    # shellcheck disable=SC2086
+    docker save $SNAPS | gzip -1 > "$WORK/snapshots.tar.gz"
+    echo "    $(echo "$SNAPS" | wc -l | tr -d ' ') image(s), $(du -h "$WORK/snapshots.tar.gz" | cut -f1)"
+  else
+    echo "    none"
+  fi
+
   log "backups and settings"
   # The data volume carries the stored backups; the database inside it is the
   # live one, and the consistent copy above replaces it on the way in.
@@ -117,6 +132,11 @@ elif [ "$MODE" = "import" ]; then
   log "backups"
   docker volume rm "$DATA_VOLUME" >/dev/null 2>&1 || true
   vol_in "$DATA_VOLUME" "$WORK/volumes"
+
+  if [ -f "$WORK/snapshots.tar.gz" ]; then
+    log "snapshot images"
+    gunzip -c "$WORK/snapshots.tar.gz" | docker load | sed 's/^/    /'
+  fi
 
   log "database"
   # Written after the data volume is back, so it replaces the live database
