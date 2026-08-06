@@ -24,26 +24,21 @@
 #   * Caddy terminates TLS in front of it and is the only thing on 80/443
 #   * the firewall allows 22, 80 and 443, and nothing else
 #
-# The machines' screens are the awkward part. A tile links to the machine's own
-# noVNC on 6901+, and on a public box that means opening a port range whose
-# only protection is each machine's random VNC password. This script leaves
-# those ports CLOSED. Two ways to see a screen with them closed:
+# The machines' screens go through the same proxy, at /screen/<port>/, and
+# their ports are bound to 127.0.0.1 so nothing is published to the internet.
 #
-#   * the wall works — it polls stills through the dashboard, which is
-#     authenticated, and so do share links
-#   * for full keyboard and mouse, tunnel: ssh -L 6901:127.0.0.1:6901 root@<ip>
-#
-# Set OPEN_SCREEN_PORTS=yes to open 6901-6950 anyway. It is a real trade and
-# the script will not make it for you.
+# That binding is the control that works. ufw alone is not: Docker writes its
+# own iptables rules ahead of ufw's, so a published port answers from the
+# internet even while `ufw status` says only 22, 80 and 443 are open. This was
+# found the hard way on this very script — eight machine screens were
+# reachable from outside while the firewall claimed otherwise.
 # ---------------------------------------------------------------------------
 
 set -euo pipefail
 
 DOMAIN="${DESKSWARM_DOMAIN:-}"
-OPEN_SCREEN_PORTS="${OPEN_SCREEN_PORTS:-no}"
 REPO="${DESKSWARM_REPO:-https://github.com/ahmedvnabil/deskswarm.git}"
 DIR="/opt/deskswarm"
-SCREEN_PORTS="6901:6950"
 
 log() { printf '\n\033[1m==> %s\033[0m\n' "$*"; }
 
@@ -63,12 +58,9 @@ ufw default allow outgoing >/dev/null
 ufw allow 22/tcp    comment 'ssh'      >/dev/null
 ufw allow 80/tcp    comment 'http'     >/dev/null
 ufw allow 443/tcp   comment 'https'    >/dev/null
-if [ "$OPEN_SCREEN_PORTS" = "yes" ]; then
-  ufw allow "${SCREEN_PORTS}/tcp" comment 'novnc screens' >/dev/null
-  echo "    screen ports ${SCREEN_PORTS} are OPEN — each machine's random VNC"
-  echo "    password is the only thing in front of them"
-fi
 ufw --force enable >/dev/null
+echo "    note: ufw does not govern Docker's published ports — the screens are"
+echo "    kept off the internet by binding them to 127.0.0.1, not by this."
 ufw status numbered | sed 's/^/    /'
 
 log "ssh: keys only"
@@ -115,6 +107,12 @@ DASHBOARD_TOKEN=${API_TOKEN}
 # Screen links have to name the address the *browser* uses.
 DESKSWARM_PUBLIC_HOST=${DOMAIN}
 
+# Screens are published on loopback and reached through the proxy, so no
+# machine port is open and an https page can frame them without the browser
+# refusing the mixed content.
+DESKSWARM_SCREEN_BIND=127.0.0.1
+DESKSWARM_SCREEN_PROXY=1
+
 # Measured: a machine is ~400 MB idle and past 600 MB with a browser open.
 # Leave the guard a real number rather than letting it read the host's.
 DESKSWARM_MEMORY_BUDGET_MB=$(( $(awk '/MemTotal/ {print int($2/1024)}' /proc/meminfo) - 1024 ))
@@ -137,6 +135,17 @@ if [ -n "$DOMAIN" ]; then
   cat > /etc/caddy/Caddyfile <<EOF
 ${DOMAIN} {
     encode zstd gzip
+
+    # A machine's screen, on the dashboard's own origin. noVNC needs its
+    # websocket through the same path, which is why the dashboard hands out
+    # ?path=screen/<port>/websockify. The range is deliberate: only the ports
+    # deskswarm assigns to machines are reachable, and only from here.
+    @screen path_regexp screen ^/screen/(69[0-9]{2})/(.*)$
+    handle @screen {
+        uri strip_prefix /screen/{re.screen.1}
+        reverse_proxy 127.0.0.1:{re.screen.1}
+    }
+
     # The dashboard is on loopback; this is the only way in from outside.
     reverse_proxy 127.0.0.1:7861
 }

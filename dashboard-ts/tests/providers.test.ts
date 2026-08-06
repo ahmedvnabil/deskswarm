@@ -110,3 +110,24 @@ test("a snapshot records the backend whose store holds the image", async () => {
   const rows = all<{ provider: string }>("SELECT provider FROM snapshots");
   expect(rows.map((r) => r.provider)).toEqual(["docker"]);
 });
+
+test("a screen link is proxied when the setting says so", () => {
+  // A browser refuses an http:// frame inside an https:// page, so on a public
+  // host the screen has to come through the dashboard's own origin. Relative,
+  // so the same build works on a LAN over http and on a domain over https.
+  process.env.DESKSWARM_SCREEN_PROXY = "1";
+  const url = realFleet.novncUrl(6903, "s3cret");
+  expect(url).toStartWith("/screen/6903/vnc.html?");
+  // Without `path` the page loads and the screen stays black — noVNC's
+  // websocket would go to the origin root instead of through the proxy.
+  expect(url).toContain("path=screen/6903/websockify");
+  expect(url).toContain("password=s3cret");
+  delete process.env.DESKSWARM_SCREEN_PROXY;
+});
+
+test("without it, the link is the direct host:port it always was", () => {
+  const url = realFleet.novncUrl(6903, "s3cret", "192.168.1.50");
+  expect(url).toBe(
+    "http://192.168.1.50:6903/vnc.html?autoconnect=true&resize=scale&password=s3cret",
+  );
+});

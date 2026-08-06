@@ -47,6 +47,20 @@ const NETWORK_NAME = env("DESKSWARM_NETWORK");
 // which is right far more often than any fixed value.
 const PUBLIC_HOST = env("DESKSWARM_PUBLIC_HOST");
 const NOVNC_PORT_BASE = envInt("DESKSWARM_NOVNC_PORT_BASE", 6901);
+// Which interface a machine's screen is published on. Empty means every one,
+// which is the historical behaviour and right on a LAN. Set to 127.0.0.1 on a
+// public host and put a proxy in front — see SCREEN_PROXY below.
+//
+// This matters more than it looks: Docker writes its own iptables rules ahead
+// of ufw's, so a published port is reachable from the internet even when the
+// firewall says only 22, 80 and 443 are open. Binding is the control that
+// actually works.
+const screenBind = () => env("DESKSWARM_SCREEN_BIND");
+// When set, screens are reached through the dashboard's own origin at
+// /screen/<port>/ instead of at host:port. That is what makes them work on an
+// HTTPS site — a browser refuses an http:// frame inside an https:// page —
+// and it means no screen port has to be open at all.
+const screenProxy = () => envBool("DESKSWARM_SCREEN_PROXY");
 // Proxmox LXC and some nested-Docker hosts can't apply AppArmor profiles.
 const DISABLE_APPARMOR = envBool("DESKSWARM_DISABLE_APPARMOR");
 
@@ -200,11 +214,21 @@ export function novncUrl(
   password?: string | null,
   host?: string | null,
 ): string {
-  const base = `http://${PUBLIC_HOST || host || "localhost"}:${port}/vnc.html`;
-  if (password) {
-    return `${base}?autoconnect=true&resize=scale&password=${encodeURIComponent(password)}`;
+  const query = (extra = "") =>
+    password
+      ? `?autoconnect=true&resize=scale&password=${encodeURIComponent(password)}${extra}`
+      : extra
+        ? `?${extra.slice(1)}`
+        : "";
+
+  if (screenProxy()) {
+    // Relative on purpose: it inherits the page's scheme and host, so the
+    // same build works on http://192.168.1.50:7861 and on https://a.example
+    // without being told which it is. `path` moves noVNC's websocket through
+    // the proxy too — without it the page loads and the screen stays black.
+    return `/screen/${port}/vnc.html${query(`&path=screen/${port}/websockify`)}`;
   }
-  return base;
+  return `http://${PUBLIC_HOST || host || "localhost"}:${port}/vnc.html${query()}`;
 }
 
 interface Limits {
@@ -303,7 +327,13 @@ export async function createComputer(
       ExposedPorts: { "6901/tcp": {} },
       Labels: { "deskswarm.role": "desktop", "deskswarm.slug": slug },
       HostConfig: {
-        PortBindings: { "6901/tcp": [{ HostPort: String(novncPort) }] },
+        PortBindings: {
+          "6901/tcp": [
+            screenBind()
+              ? { HostIp: screenBind(), HostPort: String(novncPort) }
+              : { HostPort: String(novncPort) },
+          ],
+        },
         NetworkMode: network,
         RestartPolicy: { Name: "unless-stopped" },
         Binds: binds,
