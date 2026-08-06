@@ -6,7 +6,6 @@
 <title>deskswarm — fleet control</title>
 <script src="https://cdn.tailwindcss.com"></script>
 <script src="https://unpkg.com/htmx.org@1.9.12"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
 <style>
   body { font-family: ui-sans-serif, system-ui, sans-serif; }
   .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; }
@@ -16,7 +15,7 @@
   <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-20 backdrop-blur">
     <div class="flex items-center gap-3">
       <span class="text-lg font-bold text-amber-400">deskswarm</span>
-      <span class="text-xs text-neutral-500 mono">self-hosted computer-use agent fleet</span>
+      <span class="text-xs text-neutral-500 mono">self-hosted Linux desktops, one MCP endpoint each</span>
     </div>
     <div class="flex items-center gap-4 text-xs text-neutral-500">
       <a href="https://github.com/ahmedvnabil/deskswarm" target="_blank" class="hover:text-amber-400">GitHub</a>
@@ -30,11 +29,11 @@
     </div>
   </header>
 
-  <main class="max-w-[1800px] mx-auto p-6 pb-24 space-y-8">
+  <main class="max-w-[1800px] mx-auto p-6 pb-12 space-y-8">
 
-    {# Resource and cost guards. These sit at the top because the failures
-       they catch are the quiet kind — a disk filling, a schedule burning
-       money — that nothing else announces. #}
+    {# Resource guards. These sit at the top because the failures they catch
+       are the quiet kind — a disk filling, memory running out one machine at
+       a time — that nothing else announces. #}
     <div id="guards" hx-get="/partials/guards" hx-trigger="load, every 15s, refresh"
          hx-swap="innerHTML" class="-mb-4"></div>
 
@@ -45,7 +44,7 @@
           <input id="wall-filter" oninput="applyWallFilter()" placeholder="filter…"
             class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 w-40">
           <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
-          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1">busy</button>
+          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1" title="an MCP client is working in it">in use</button>
           <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">idle</button>
           <button type="button" onclick="setWallState('asleep')" data-chip="asleep" class="wall-chip bg-neutral-800 rounded px-2 py-1">asleep</button>
           <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">down</button>
@@ -74,61 +73,30 @@
 
 
     <section>
-      <div class="flex items-center justify-between mb-3 gap-4 flex-wrap">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Schedules</h2>
-        <form onsubmit="addSchedule(event)" class="flex items-center gap-2 flex-wrap justify-end text-sm">
-          <select id="sched-desktop" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
-            <option value="all">whole fleet</option>
-            {% for c in computers %}<option value="{{ c.name }}">{{ c.name }}</option>{% endfor %}
-          </select>
-          <input id="sched-desc" required placeholder="task to repeat…"
-            class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 w-72">
-          <select id="sched-kind" onchange="syncSchedKind()"
-            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
-            <option value="interval">every…</option>
-            <option value="daily">daily at…</option>
-          </select>
-          <input id="sched-every" type="number" min="1" value="60" title="minutes"
-            class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5 w-20">
-          <input id="sched-at" type="time" value="09:00" class="hidden bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5">
-          <button type="submit" class="bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">+ schedule</button>
-        </form>
+      <div class="flex items-center justify-between mb-3">
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Live activity</h2>
+        <span class="text-xs text-neutral-600">every call an outside client makes</span>
       </div>
-      <div id="schedules" hx-get="/partials/schedules" hx-trigger="load, every 15s, refresh" hx-swap="innerHTML">
+      {# hx-include carries the machine filter (rendered inside this div) into
+         the poll, so auto-refresh doesn't reset it. #}
+      <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 4s, refresh"
+           hx-swap="innerHTML" hx-include="#activity-filters">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
     </section>
 
     <section>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Analytics</h2>
-        <span class="text-xs text-neutral-600">refreshes every 10s</span>
+        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">MCP keys</h2>
+        <span class="text-xs text-neutral-600">one machine each · revocable</span>
       </div>
-      <div id="analytics" hx-get="/partials/analytics" hx-trigger="load, every 10s, refresh" hx-swap="innerHTML">
-        <div class="text-neutral-600 text-sm">loading...</div>
-      </div>
-    </section>
-
-    <section>
-      <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Task log / reports</h2>
-        <div class="flex items-center gap-3">
-          <a href="/api/v1/tasks/export.csv" class="text-xs bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded">export CSV</a>
-          <span class="text-xs text-neutral-600">refreshes every 4s</span>
-        </div>
-      </div>
-      {# hx-include carries the filter selects (rendered inside this div) into
-         the 4s poll, so auto-refresh doesn't reset the user's filter. #}
-      <div id="task-log" hx-get="/partials/tasks" hx-trigger="load, every 4s, refresh"
-           hx-swap="innerHTML" hx-include="#task-filters">
-        <div class="text-neutral-600 text-sm">loading...</div>
-      </div>
+      <div id="keys"><div class="text-neutral-600 text-sm">loading...</div></div>
     </section>
 
     <section>
       <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Shared links</h2>
-        <span class="text-xs text-neutral-600">one machine each · revocable</span>
+        <span class="text-xs text-neutral-600">a screen for a person, not a key for a program</span>
       </div>
       <div id="shares"><div class="text-neutral-600 text-sm">loading...</div></div>
     </section>
@@ -145,18 +113,6 @@
     </section>
 
   </main>
-
-  <!-- -------------------------------------------------------- broadcast -->
-  <div class="fixed bottom-0 inset-x-0 z-20 border-t border-neutral-800 bg-neutral-900/95 backdrop-blur px-6 py-2.5">
-    <form onsubmit="broadcast(event)" class="max-w-[1800px] mx-auto flex items-center gap-3">
-      <span id="broadcast-scope" class="text-xs text-neutral-500 shrink-0 w-32">whole fleet</span>
-      <input id="broadcast-desc" required
-        class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-sm"
-        placeholder="task for the fleet — or tick machines on the wall to target them…">
-      <button type="submit" id="broadcast-btn"
-        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-5 py-2 rounded text-sm">Run</button>
-    </form>
-  </div>
 
   <!-- ------------------------------------------------------------ modal -->
   <div id="modal" class="hidden fixed inset-0 z-30 bg-black/70 backdrop-blur-sm p-4 sm:p-8 overflow-y-auto"
@@ -192,10 +148,10 @@
   // Pager: set the hidden page field, then let the filter form re-fetch, so
   // paging goes through the same request shape as the poll and the filters.
   function gotoPage(n){
-    const f = document.getElementById('task-page');
+    const f = document.getElementById('activity-page');
     if(!f) return;
     f.value = n;
-    htmx.trigger('#task-filters', 'change');
+    htmx.trigger('#activity-filters', 'change');
   }
 
   // =============================================================== the wall
@@ -203,8 +159,7 @@
   // one stream per machine does not scale. Clicking a tile opens the real
   // interactive session for that one machine.
 
-  const picked    = new Set();  // machine names ticked for a broadcast
-  let   wallState = '';     // '', 'busy', 'idle', 'down'
+  let wallState = '';     // '', 'busy', 'idle', 'asleep', 'down'
 
   const SIZES = {
     sm: 'grid-cols-4 md:grid-cols-6 2xl:grid-cols-8',
@@ -242,27 +197,7 @@
     });
   }
 
-  function syncPicks(){
-    picked.clear();
-    document.querySelectorAll('.wall-pick:checked').forEach(c => picked.add(c.value));
-    const scope = document.getElementById('broadcast-scope');
-    const btn   = document.getElementById('broadcast-btn');
-    if(picked.size){
-      scope.textContent = picked.size + ' selected';
-      scope.className = 'text-xs text-amber-400 shrink-0 w-32';
-      btn.textContent = 'Run on ' + picked.size;
-    } else {
-      // "Whole fleet" skips reserved machines, so say how many that really is.
-      const tiles = document.querySelectorAll('.wall-tile');
-      const free = [...tiles].filter(t => t.dataset.reserved === '0').length;
-      const held = tiles.length - free;
-      scope.textContent = held ? `fleet (${free}, ${held} yours)` : 'whole fleet';
-      scope.className = 'text-xs text-neutral-500 shrink-0 w-32';
-      btn.textContent = free ? 'Run on ' + free : 'Run';
-    }
-  }
-
-  // The wall re-renders every 5s; re-apply size, filter, ticks and pictures.
+  // The wall re-renders every 5s; re-apply size and filter afterwards.
   document.body.addEventListener('htmx:afterSwap', e => {
     if(e.detail.target.id !== 'fleet-status') return;
     // The template already renders the default (md) columns, so this only
@@ -273,30 +208,8 @@
       b.className = 'wall-size rounded px-2 py-1 ' +
         (b.dataset.size === 'md' ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
     });
-    document.querySelectorAll('.wall-pick').forEach(c => {
-      if(picked.has(c.value)) c.checked = true;
-    });
-    syncPicks();
     applyWallFilter();
   });
-
-  async function broadcast(e){
-    e.preventDefault();
-    const input = document.getElementById('broadcast-desc');
-    const description = input.value.trim();
-    if(!description) return;
-    const targets = picked.size ? [...picked] : ['all'];
-    for(const t of targets){
-      await fetch('/api/v1/tasks', {
-        method: 'POST', headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({desktop: t, description})
-      });
-    }
-    input.value = '';
-    htmx.trigger('#fleet-status','refresh');
-    htmx.trigger('#task-log','refresh');
-    htmx.trigger('#analytics','refresh');
-  }
 
   // Full interactive session for one machine. A sleeping machine is woken
   // first — clicking its picture should just work, not report an error.
@@ -327,24 +240,6 @@
   }
 
   // ------------------------------------------------------- fleet actions
-  // Rebuilds the task-target dropdown from the JSON API, preserving the
-  // current selection where possible.
-  async function refreshTargets(){
-    try {
-      const r = await fetch('/api/v1/computers');
-      const j = await r.json();
-      if(!j.ok) return;
-      const sel = document.getElementById('task-target');
-      const prev = sel.value;
-      sel.innerHTML = '';
-      const all = new Option('whole fleet (parallel)', 'all');
-      sel.add(all);
-      for(const c of j.data) sel.add(new Option(c.name, c.name));
-      sel.value = [...sel.options].some(o => o.value === prev) ? prev : 'all';
-    } catch(_){}
-  }
-  setInterval(refreshTargets, 15000);
-
   async function refreshSnapshots(){
     try {
       const r = await fetch('/api/v1/snapshots');
@@ -723,46 +618,87 @@
     else refreshSnapshots();
   }
 
-  // ---------------------------------------------------------- schedules
-  function syncSchedKind(){
-    const daily = document.getElementById('sched-kind').value === 'daily';
-    document.getElementById('sched-every').classList.toggle('hidden', daily);
-    document.getElementById('sched-at').classList.toggle('hidden', !daily);
+  // --------------------------------------------------------------- keys
+  // A key is the whole of a client's access to one machine, so the panel that
+  // issues one also shows the command that turns it into a working client —
+  // the step between "I have a key" and "it works" is where people give up.
+
+  function openAccess(id, name){
+    openModal('Access — ' + name);
+    document.getElementById('modal-body').innerHTML =
+      '<div class="text-neutral-600 text-sm">loading…</div>';
+    htmx.ajax('GET', '/partials/computers/' + id + '/access', '#modal-body');
   }
 
-  async function addSchedule(e){
-    e.preventDefault();
-    const kind = document.getElementById('sched-kind').value;
-    const body = {
-      desktop: document.getElementById('sched-desktop').value,
-      description: document.getElementById('sched-desc').value.trim(),
-      kind,
-      every_minutes: document.getElementById('sched-every').value,
-      at_time: document.getElementById('sched-at').value,
-    };
-    const r = await fetch('/api/v1/schedules', {
+  async function createKey(id){
+    const label = (document.getElementById('key-label').value || '').trim();
+    const days  = document.getElementById('key-days').value;
+    const r = await fetch('/api/v1/computers/' + id + '/keys', {
       method: 'POST', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
+      body: JSON.stringify({label, days: Number(days)})
     });
     const j = await r.json();
     if(!j.ok){ alert(j.error || 'failed'); return; }
-    document.getElementById('sched-desc').value = '';
-    htmx.trigger('#schedules', 'refresh');
+    htmx.ajax('GET', '/partials/computers/' + id + '/access', '#modal-body');
+    refreshKeys();
   }
 
-  async function toggleSchedule(id, enabled){
-    await fetch(`/api/v1/schedules/${id}`, {
-      method: 'PATCH', headers: {'Content-Type':'application/json'},
-      body: JSON.stringify({enabled: String(enabled)})
-    });
-    htmx.trigger('#schedules', 'refresh');
+  async function revokeKey(id, label, compId){
+    if(!confirm('Revoke the key "' + label + '"?\n\n' +
+                'Any client using it stops working on its next call.')) return;
+    await fetch('/api/v1/keys/' + id, {method: 'DELETE'});
+    if(compId) htmx.ajax('GET', '/partials/computers/' + compId + '/access', '#modal-body');
+    refreshKeys();
   }
 
-  async function deleteSchedule(id){
-    if(!confirm('Remove this schedule?')) return;
-    await fetch(`/api/v1/schedules/${id}`, {method: 'DELETE'});
-    htmx.trigger('#schedules', 'refresh');
+  // Falls back to a prompt: navigator.clipboard needs a secure context, and
+  // plenty of people run this over plain http on a LAN.
+  async function copyText(text, btn){
+    try {
+      await navigator.clipboard.writeText(text);
+      if(btn){ const was = btn.textContent; btn.textContent = 'copied'; setTimeout(() => btn.textContent = was, 1200); }
+    } catch(_) {
+      window.prompt('Copy this:', text);
+    }
   }
+
+  async function refreshKeys(){
+    const box = document.getElementById('keys');
+    if(!box) return;
+    const j = await (await fetch('/api/v1/keys')).json();
+    if(!j.ok) return;
+    if(!j.data.length){
+      box.innerHTML = '<div class="text-neutral-600 text-sm">No keys yet — open a machine\'s ' +
+        '<span class="text-neutral-400">access</span> panel to issue one.</div>';
+      return;
+    }
+    const rows = j.data.map(k => {
+      const dead = k.status !== 'live';
+      return '<tr class="border-t border-neutral-800' + (dead ? ' opacity-40' : '') + '">' +
+        '<td class="py-1.5 pr-3 mono">' + esc(k.computer || '—') + '</td>' +
+        '<td class="py-1.5 pr-3">' + esc(k.label) + '</td>' +
+        '<td class="py-1.5 pr-3">' + esc(k.status) + '</td>' +
+        '<td class="py-1.5 pr-3 mono text-neutral-500">' + k.calls + '</td>' +
+        '<td class="py-1.5 pr-3 mono text-neutral-500">' + esc(k.last_tool || '—') + '</td>' +
+        '<td class="py-1.5 pr-3 mono text-neutral-500">' + esc(k.last_used_at || 'never') + '</td>' +
+        '<td class="py-1.5 pr-3 mono text-neutral-500">' + esc(k.expires_at || 'no expiry') + '</td>' +
+        '<td class="py-1.5 text-right">' + (dead ? '' :
+          '<button class="text-red-400 hover:text-red-300" onclick="revokeKey(' + k.id +
+          ', ' + JSON.stringify(k.label) + ')">revoke</button>') + '</td></tr>';
+    }).join('');
+    box.innerHTML =
+      '<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="text-neutral-500">' +
+      '<tr><th class="text-left font-medium pb-1">machine</th>' +
+      '<th class="text-left font-medium pb-1">label</th>' +
+      '<th class="text-left font-medium pb-1">status</th>' +
+      '<th class="text-left font-medium pb-1">calls</th>' +
+      '<th class="text-left font-medium pb-1">last tool</th>' +
+      '<th class="text-left font-medium pb-1">last used</th>' +
+      '<th class="text-left font-medium pb-1">expires</th>' +
+      '<th></th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+  refreshKeys();
+  setInterval(refreshKeys, 15000);
 
   async function addComputer(e){
     e.preventDefault();
@@ -894,77 +830,6 @@
     });
   })();
 
-  // Full report for one task — the table has to truncate, and the result is
-  // the whole point of running the task.
-  async function openTask(id){
-    openModal('Task #' + id);
-    const body = document.getElementById('modal-body');
-    body.innerHTML = '<div class="text-neutral-500 text-sm">loading…</div>';
-    const j = await (await fetch('/api/v1/tasks/' + id)).json();
-    if(!j.ok){ body.innerHTML = '<div class="text-red-400 text-sm">' + j.error + '</div>'; return; }
-    const t = j.data;
-    const esc = v => String(v ?? '—').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
-    let steps = '';
-    try {
-      const a = JSON.parse(t.actions || '[]');
-      if(a.length) steps = a.map(x =>
-        '<span class="bg-neutral-800 rounded px-1.5 py-0.5 mr-1 mb-1 inline-block">' + esc(x) + '</span>').join('');
-    } catch(_){}
-    const stat = {COMPLETED:'text-emerald-400', FAILED:'text-red-400',
-                  RUNNING:'text-amber-400', CANCELLED:'text-neutral-500'}[t.status] || '';
-    body.innerHTML = `
-      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4 text-xs">
-        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
-          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">status</div>
-          <div class="${stat} font-semibold mt-0.5">${esc(t.status)}</div></div>
-        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
-          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">machine</div>
-          <div class="mono mt-0.5">${esc(t.desktop)}</div></div>
-        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
-          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">duration</div>
-          <div class="mono mt-0.5">${t.duration_seconds != null ? t.duration_seconds + 's' : '—'}</div></div>
-        <div class="bg-neutral-950 border border-neutral-800 rounded p-2.5">
-          <div class="text-neutral-500 uppercase tracking-wide text-[10px]">cost</div>
-          <div class="mono mt-0.5">${t.cost_usd ? '$' + t.cost_usd.toFixed(4) : '—'}</div></div>
-      </div>
-      <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">task</div>
-      <div class="bg-neutral-950 border border-neutral-800 rounded p-3 text-sm mb-4">${esc(t.description)}</div>
-      ${steps ? '<div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">steps the agent took</div>' +
-                '<div class="text-[10px] mono mb-4">' + steps + '</div>' : ''}
-      <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">
-        ${t.status === 'FAILED' || t.status === 'CANCELLED' ? 'error' : 'result'}</div>
-      <div class="bg-neutral-950 border border-neutral-800 rounded p-3 text-sm whitespace-pre-wrap max-h-80 overflow-y-auto ${t.error ? 'text-red-400' : ''}">${esc(t.error || t.result_text)}</div>
-      <div class="mt-3 text-[10px] text-neutral-600 mono">created ${esc(t.created_at)} · updated ${esc(t.updated_at)}</div>`;
-  }
-
-  // ------------------------------------------------------------ analytics
-  let dailyChart = null;
-  function renderDailyChart(labels, counts, costs){
-    const canvas = document.getElementById('daily-chart');
-    if(!canvas) return;
-    if(dailyChart) dailyChart.destroy();
-    dailyChart = new Chart(canvas, {
-      type: 'bar',
-      data: { labels, datasets: [
-        // translucent bars + higher line order so the cost series stays readable
-            { label: 'tasks', data: counts, backgroundColor: 'rgba(245,158,11,0.7)',
-              yAxisID: 'y', order: 2 },
-        { label: 'cost (USD)', data: costs, type: 'line', borderColor: '#34d399',
-              backgroundColor: '#34d399', yAxisID: 'y1', tension: 0.3,
-              // visible marker so a single day still shows the cost point
-              pointRadius: 3, pointHoverRadius: 5, order: 1 }
-      ]},
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        scales: {
-          y:  { position: 'left',  ticks:{color:'#a3a3a3'}, grid:{color:'#262626'}, title:{display:true,text:'tasks',color:'#a3a3a3'} },
-          y1: { position: 'right', ticks:{color:'#a3a3a3'}, grid:{display:false},   title:{display:true,text:'USD',color:'#a3a3a3'} },
-          x:  { ticks:{color:'#a3a3a3'}, grid:{display:false} }
-        },
-        plugins: { legend: { labels: { color: '#d4d4d4' } } }
-      }
-    });
-  }
 </script>
 </body>
 </html>

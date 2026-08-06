@@ -17,16 +17,23 @@ export const SESSION_COOKIE = "deskswarm_session";
 /**
  * Paths that answer without a session, and why each one has to.
  *
- *   /health    the container healthcheck, and anything watching from outside
- *   /login     the way in
- *   /s/<token> a share is a link you hand to someone who has no account —
- *              putting it behind the login would delete the feature
+ *   /health      the container healthcheck, and anything watching from outside
+ *   /login       the way in
+ *   /s/<token>   a share is a link you hand to someone who has no account —
+ *                putting it behind the login would delete the feature
+ *   /mcp/<slug>  an MCP client holds a key for one machine and has no session
+ *                to offer. Not unauthenticated: the route does its own bearer
+ *                check against mcp_keys, and a key names exactly one machine.
+ *                Left inside the cross-site check on purpose — MCP's own
+ *                transport spec asks servers to validate Origin, and a real
+ *                client sends none at all.
  */
 const PUBLIC = (path: string): boolean =>
   path === "/health" ||
   path === "/login" ||
   path === "/logout" ||
-  path.startsWith("/s/");
+  path.startsWith("/s/") ||
+  path.startsWith("/mcp/");
 
 const readCookie = (header: string | undefined, name: string): string | null => {
   for (const part of (header ?? "").split(";")) {

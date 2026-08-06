@@ -7,16 +7,21 @@
 [![Upstream bug filed](https://img.shields.io/badge/upstream%20bug-trycua%2Fcua%20%232869-red)](https://github.com/trycua/cua/issues/2869)
 
 **Self-hosted Linux desktops in your browser. Spin one up in a second, work
-in it, share it with one person, hand it to an AI agent — or all four.**
+in it, share it with one person, hand one to an AI agent over MCP — or all
+four.**
 
 deskswarm runs full XFCE desktops in Docker and gives you one dashboard to
 manage them: a wall of live screens, files in and out, copy-paste that works,
 sleep the ones you're not using, back them up, and share a single machine with
 someone without giving them the rest.
 
-They're also computer-use ready — each machine has an agent bridge built on
-[cua](https://github.com/trycua/cua) — but **that part is optional**. Nothing
-below needs an API key.
+Every machine also has **its own MCP endpoint**. Issue a key, point Claude
+Code (or any MCP client) at it, and that client gets the machine's screen,
+keyboard, root shell and home directory — one machine per key, revocable, and
+every call it makes shows up on the wall while it works.
+
+deskswarm brings the computer; your client brings the model. There is no API
+key to give deskswarm, because it never calls one.
 
 <p align="center">
   <img src="docs/screenshots/tour.gif" alt="Adding a machine, opening its files, sharing it with one person, and putting it to sleep — all from the wall" width="820">
@@ -24,7 +29,7 @@ below needs an API key.
 
 <p align="center">
   <sub>Real recording: add a machine, browse its files, share it with one
-  person, sleep it, wake it. No API key involved.</sub>
+  person, sleep it, wake it.</sub>
 </p>
 
 ## Run it
@@ -57,7 +62,7 @@ for `/health`, then opens the dashboard in its own window with no browser
 chrome and no Terminal. Drag it to the Dock and that's the whole workflow.
 
 It builds the image on first launch and after you edit anything under
-`dashboard/`; otherwise it reattaches to the running container instead of
+`dashboard-ts/`; otherwise it reattaches to the running container instead of
 restarting it. If port 7861 is taken by something else it moves to the next
 free one. Machines still run as Linux containers under your Docker runtime —
 the app is the control panel, not the swarm.
@@ -108,36 +113,29 @@ down to them.
 - **Software inventory** — one click shows a machine's OS, kernel, runtimes
   (Python/Node/Go/…), installed apps, package count, and disk/RAM.
 - **A wall of live screens** — the fleet is shown as its actual screens, not
-  a list. You see what every agent is doing at a glance; a working machine is
-  outlined amber with its current step and task, a broken one is red. Tiles
-  poll a cached still (a live VNC stream per machine would not scale), and
-  clicking one opens a real interactive session for that machine.
-- **Filter, resize, and broadcast** — filter the wall by name or by
-  busy/idle/down, switch tile size S/M/L, tick machines to aim a task at
-  them, or leave nothing ticked to run on the whole fleet.
-- **Control** — dispatch a task to one computer or the whole fleet in
-  parallel; **cancel** a running task (kills the agent process cleanly);
-  **retry** a failed one with one click.
-- **Filter and page the task log** by machine and by status (in-flight /
-  completed / failed / cancelled) — the log stays readable once the fleet
-  grows and history piles up.
-- **Schedules** — repeat a task every N minutes or daily at a set UTC time,
-  on one machine or the whole fleet. Pause and resume from the table.
-- **Live progress, not just a final answer** — while a task runs, the log
-  shows the agent's *current step* (`screenshot`, `left_click`, `type_text`,
-  ...), updated after every turn.
+  a list. You see what is happening in every machine at a glance; one an
+  outside client is working in is outlined amber and captioned with the last
+  tool it called, a broken one is red. Tiles poll a cached still (a live VNC
+  stream per machine would not scale), and clicking one opens a real
+  interactive session for that machine.
+- **Filter and resize** — filter the wall by name or by in-use/idle/asleep/
+  down, and switch tile size S/M/L.
+- **An MCP endpoint per machine** — issue a key from a machine's **access**
+  panel and paste the `claude mcp add` command it hands you. The client gets
+  that machine's screen, keyboard, root shell, home directory and clipboard —
+  and only that machine's.
+- **Live activity** — every call an outside client makes, with which client,
+  which machine, which tool and whether it worked. Contents are counted, not
+  recorded.
 - **Live control** — click any tile for a full keyboard-and-mouse session on
   that machine. Each machine has its own VNC password and the dashboard
   connects for you (the password is in the machine's apps panel if you'd
   rather open noVNC directly).
-- **Analytics & reports** — success rate, cost, average duration, a per-day
-  chart, a per-machine breakdown, and CSV export. Click any row in the task
-  log for the full report: every step the agent took, the untruncated result
-  or error, duration and cost.
-- **Reserve a machine for yourself** — mark one **yours** and fleet-wide
-  dispatches and schedules skip it, so a broadcast can't grab the keyboard
-  while you're working in it. Naming it explicitly still runs there; that's a
-  deliberate choice rather than an accident.
+- **Reserve a machine for yourself** — mark one **yours** and no key can be
+  issued for it, so no client can grab the keyboard while you're working in
+  it. Keys already issued keep working: reserving is not a revoke, and
+  silently breaking a client someone wired up last week would be the bigger
+  surprise.
 - **Recover a broken machine** — if its containers die or are removed outside
   the dashboard, the tile offers **restart**, which recreates the pair in
   place and keeps the machine's name, port and snapshot.
@@ -178,15 +176,16 @@ down to them.
   only ever counted.
 
 ```
-                      ┌───────────────────────────┐
-  you ───────────────►│         dashboard         │
-                      │  Flask · HTMX · SQLite    │
-                      │  + Docker API (creates    │
-                      │    and destroys machines) │
-                      └────────────┬──────────────┘
-                                   │
-        ┌──────────────────────────┼──────────────────────────┐
-        ▼                          ▼                          ▼
+  you ────────────────┐
+  (browser)           │   ┌───────────────────────────┐
+                      └──►│         dashboard         │
+  your MCP client ───────►│  Bun · Hono · HTMX ·SQLite│
+  /mcp/<machine>          │  + Docker API (creates    │
+  + one key               │    and destroys machines) │
+                          └────────────┬──────────────┘
+                                       │
+        ┌──────────────────────────────┼──────────────────────┐
+        ▼                              ▼                      ▼
 ┌───────────────┐          ┌───────────────┐          ┌───────────────┐
 │  computer A   │          │  computer B   │          │  computer C   │
 │ ┌───────────┐ │          │ ┌───────────┐ │          │ ┌───────────┐ │
@@ -234,7 +233,7 @@ browser — and thirty of them if you want, on a box with 8 GB of RAM, because
 the ones you aren't using can sleep.
 
 Good fits:
-- A clean machine per task, client or experiment — no clutter, no leftovers
+- A clean machine per job, client or experiment — no clutter, no leftovers
 - Trying something you don't want on your own computer
 - Handing one machine to someone else for an afternoon without giving them
   your network
@@ -244,8 +243,8 @@ Good fits:
 And, if you want it, the agent side:
 
 - Most "AI browser agent" tools give the model a browser tab. deskswarm gives
-  it a **whole desktop**, and lets you run several in parallel with a real
-  task history instead of a chat log you scroll through
+  it a **whole desktop**, over MCP, from the client you already use — and lets
+  you run several in parallel while watching each one work
 - A cheap way to try computer-use agents without committing to a cloud
   provider's hosted sandbox
 
@@ -254,53 +253,67 @@ And, if you want it, the agent side:
 </p>
 
 <p align="center">
-  <sub>The wall with an agent working: amber is a machine mid-task, showing its
-  current step; red is a machine that is down.</sub>
+  <sub>The wall with a client working: amber is a machine an outside agent is
+  in, captioned with the last tool it called; red is a machine that is down.</sub>
 </p>
 
-## Adding an AI agent (optional)
+## Handing a machine to an AI agent
 
-Everything above works without one. If you also want to dispatch tasks in
-natural language — "open the browser and download this month's invoices" —
-give it a model:
+deskswarm does not run agents. It hands you a machine and gets out of the way:
+every machine has its own **MCP endpoint**, and you point whatever client you
+already use at it — Claude Code, Claude Desktop, anything speaking the
+protocol. The client brings the model; deskswarm brings the computer.
 
-```bash
-cp .env.example .env
-# set DESKSWARM_MODEL and DESKSWARM_API_KEY
-docker compose up -d
-```
-
-Then type a task at the bottom of the wall, aim it at one machine or the whole
-fleet, and watch each one's status go `pending → running (screenshot) →
-completed` live.
-
-## Configuring a model
-
-deskswarm uses [cua](https://github.com/trycua/cua)'s Agent SDK, which is
-built on LiteLLM — so `DESKSWARM_MODEL` accepts any LiteLLM model string.
-`.env.example` documents four setups:
-
-- **Anthropic API key** (recommended — most reliably tested path)
-- **OpenAI API key**
-- **Any OpenAI-compatible proxy** (LiteLLM proxy, internal gateway, etc.)
-- **Local Ollama** (experimental, see below)
-
-### Local models (experimental)
-
-Running fully local is possible but not the default, because cua's generic
-vision-model loop pulls in `qwen-agent` → `torch` (multi-GB) for tool-call
-prompt formatting. If you want it:
+Open a machine's **access** panel, issue a key, and paste the command it hands
+you:
 
 ```bash
-# inside dashboard/Dockerfile, add:
-RUN pip install --no-cache-dir "cua-agent[qwen]" torch
+claude mcp add --transport http research-01 \
+  https://swarm.example.com/mcp/research-01 \
+  --header "Authorization: Bearer dsk_..."
 ```
 
-Then set `DESKSWARM_MODEL=ollama_chat/qwen3.5:9b` (or another
-vision+tool-calling capable model) and `DESKSWARM_API_BASE` to your Ollama
-host. Models without both vision and tool-calling support will fail or
-silently misbehave — check `cua_agent/loops/model_types.csv` in the installed
-package for what's natively supported.
+That is the whole setup. There is no model to configure and no API key to give
+deskswarm, because it never calls one.
+
+### What the client gets
+
+The machine's screen (`screenshot`, `click`, `drag`, `type_text`, `hotkey`,
+`launch_app`, …), a root `shell`, its home directory (`list_files`,
+`read_file`, `write_file`) and its clipboard. `inventory` tells the agent what
+is already installed before it assumes.
+
+Two details worth knowing:
+
+- **`type_text` handles Arabic and other non-Latin text** by routing it
+  through the clipboard. The keyboard path goes through keysym lookup, which
+  drops those characters silently — this is the difference between text
+  appearing and an empty window with no error.
+- **A sleeping machine wakes on the first call.** An outside client has no
+  wake button, so without this a machine that dozed off would just stop
+  answering. It is what makes idle-suspend safe to leave on.
+
+### One machine, not the fleet
+
+A key names one machine when it is issued and cannot be widened afterwards.
+Point a client at another machine's URL with it and the call is refused,
+loudly, rather than quietly driving the machine the key was for. Give one
+agent `coder-1` and another `research-01` and neither can reach the other's.
+
+Revoking is complete — the key is the only way in over MCP, so the next call
+fails. That is unlike a `control` share, where the guest's browser already
+holds the screen password.
+
+### Watching it work
+
+You are not handing a machine off blind. The wall outlines a machine amber
+while a client is working in it and captions the tile with the last tool that
+ran and how long ago; the **live activity** table logs every call — which
+client, which machine, which tool, and whether it worked. Click any tile for a
+real keyboard-and-mouse session in the same machine while the agent is in it.
+
+Contents are not recorded: the shell command is, because that is the point,
+but typed text, clipboard contents and file bodies are only ever counted.
 
 ## Scaling the fleet
 
@@ -310,24 +323,30 @@ an `agent-{1..10}` range to create a batch; `DESKSWARM_MAX_BULK_CREATE`
 (default 25) caps one batch.
 
 Sizing: each desktop is a full XFCE session, so budget roughly 0.5–1 GB RAM
-per idle machine plus whatever its tasks need. `DESKSWARM_NOVNC_PORT_BASE`
-sets where port allocation starts (default 6901).
+per idle machine plus whatever is actually being done in it — a machine with a
+browser open goes well past that. `DESKSWARM_NOVNC_PORT_BASE` sets where port
+allocation starts (default 6901).
 
 If you open the dashboard from another device, set `DESKSWARM_PUBLIC_HOST`
 to this host's LAN IP — it's what the embedded live screens are linked to.
 
 ## API
 
-See [`docs/APIs.md`](docs/APIs.md) — computer CRUD (create, rename, delete,
-**exec**, **inventory**), task CRUD (create, list, detail, **cancel**,
-**retry**), live **analytics**, and **CSV export**, all under `/api/v1/*`
-with optional bearer-token auth.
+Two of them, and they are deliberately separate.
+
+[`docs/APIs.md`](docs/APIs.md) covers the dashboard's own JSON API under
+`/api/v1/*` — computer CRUD (create, rename, delete, **exec**, **inventory**),
+backups, shares, **MCP keys**, and the audit trail with CSV export — behind
+your session or `DASHBOARD_TOKEN`.
+
+The per-machine MCP endpoints at `/mcp/<slug>` are the other one, and an MCP
+key reaches only those. Neither credential works on the other side.
 
 ## Known issues
 
 `cua-computer-server`'s VNC backend has two upstream bugs that will silently
-break screenshots (agent reports a "black screen" that isn't real) if you're
-integrating cua yourself outside this repo. deskswarm works around both —
+break screenshots (a "black screen" that isn't real) if you're integrating cua
+yourself outside this repo. deskswarm works around both —
 full writeup in [`docs/UPSTREAM_CUA_BUG.md`](docs/UPSTREAM_CUA_BUG.md).
 
 ## Security
@@ -354,7 +373,7 @@ version:
   admin surface, not an app you share a link to.
 - Cross-site state-changing requests are rejected (this was an exploitable
   path to root command execution before it was fixed; see `SECURITY.md`).
-- Don't put secrets in task descriptions — they are stored in history and sent
+- Don't put secrets where an agent will read them back — they are sent
   to your model provider.
 
 ### Reproducibility
@@ -381,31 +400,34 @@ Docker, an agent, or a desktop.
 
 - **desktop-N**: [`trycua/xfce-cua`](https://hub.docker.com/r/trycua/xfce-cua) — a real XFCE session over VNC/noVNC.
 - **bridge-N**: `cua-computer-server` in VNC-backend mode, translating REST/WS calls into VNC input events + screenshots. See `bridge/`.
-- **dashboard**: Flask + HTMX + Chart.js + SQLite (WAL mode). Mounts the Docker socket and creates/destroys the container pairs itself (`dashboard/fleet.py`); the fleet lives in the `computers` table, not in compose. Each task runs as an isolated subprocess (`dashboard/run_task.py`) using cua's `Computer` + `ComputerAgent` SDKs, so unrelated tasks never share agent state. The subprocess writes its `current_action` back to SQLite after every agent turn — that's what makes progress visible before the task finishes. Cancelling a task sends `SIGTERM` to that subprocess's PID.
+- **dashboard**: Bun + Hono + HTMX + SQLite (WAL mode). Mounts the Docker socket and creates/destroys the container pairs itself (`src/providers/docker.ts`); the fleet lives in the `computers` table, not in compose. It carries no model SDK and makes no outbound model calls — an MCP client connects *in*, and each `tools/call` is one HTTP request translated into a bridge command or a `docker exec`. There is nothing long-running to interrupt, which is why a restart costs a connected client at most one failed call.
 
 ### Where things live
 
-`dashboard/` is layered so that nothing imports upwards; `fleet.py` is the only
-module that talks to Docker.
+`dashboard-ts/src` is layered so that nothing imports upwards; the provider is
+the only thing that talks to Docker.
 
 ```
-app.py          build the app, attach hooks, mount blueprints, start the loop
-settings.py     every environment-derived setting, in one place
-db.py           where the database is        schema.py    tables + migrations
-security.py     cross-site check, audit hook, token check
-fleet.py        the only module that talks to Docker
-machines.py     machine queries, views, creation, sleep/wake
-tasks.py        task rows, the worker, dispatch, analytics
-screens.py      cached stills          scheduler.py  schedules, idle, nightly
-guards.py       cost / memory / disk / failure limits
-backups.py      archive a home and put it back
-shares.py       links that reach one machine     audit.py   who did what
-routes/         system machines files snapshots tasks schedules backups
-                shares audit — one blueprint each
+server.ts       start the housekeeping loop and listen
+app.ts          middleware, then one router per slice of the URL space
+settings.ts     every environment-derived setting, in one place
+db.ts           where the database is        schema.ts    tables + migrations
+security.ts     cross-site check, audit hook, session and token checks
+providers/      the only modules that talk to Docker
+machines.ts     machine queries, views, creation, sleep/wake
+bridge.ts       one command to a machine's bridge, and the reply parsed
+screens.ts      cached stills       housekeeping.ts  idle, nightly backup
+mcp/keys.ts     a key: one machine, revocable
+mcp/tools.ts    what a key can do — the advertised list and the handlers
+mcp/activity.ts what the outside clients are doing right now
+guards.ts       memory / disk limits
+backups.ts      archive a home and put it back
+shares.ts       links that reach one machine     audit.ts   who did what
+routes/         system machines files snapshots backups shares keys mcp
+                audit — one router each
 ```
 
-`app.py` was 1,900 lines until these boundaries were made explicit; the
-`url_map` is unchanged by the split, and there are no import cycles.
+There are no import cycles.
 
 ## Credits
 

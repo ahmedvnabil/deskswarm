@@ -11,13 +11,13 @@
 <div id="wall-grid" class="grid gap-3 grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
   {% for c in computers %}
   <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900
-       {%- if c.active_task %} border-amber-500/50
+       {%- if c.activity %} border-amber-500/50
        {%- elif c.sleeping %} border-neutral-800
        {%- elif not c.bridge_ok %} border-red-500/40
        {%- elif c.reserved %} border-sky-500/40
        {%- else %} border-neutral-800{% endif %}"
        data-name="{{ c.name|e }}" data-id="{{ c.id }}"
-       data-state="{{ 'busy' if c.active_task else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) }}"
+       data-state="{{ 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) }}"
        data-reserved="{{ 1 if c.reserved else 0 }}"
        data-sleeping="{{ 1 if c.sleeping else 0 }}">
 
@@ -42,7 +42,7 @@
          frame. alt is empty so a failed frame never paints text over the
          overlay. #}
       <img class="wall-shot absolute inset-0 w-full h-full object-cover
-                  {{ '' if c.active_task else 'opacity-60 group-hover:opacity-90' }}"
+                  {{ '' if c.activity else 'opacity-60 group-hover:opacity-90' }}"
            src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
            {# Not lazy. The wall replaces its own DOM every five seconds, and a
               lazy image is only fetched after a layout pass decides it is near
@@ -67,16 +67,14 @@
 
     <!-- top overlay: selection + name + status -->
     <div class="absolute top-0 inset-x-0 px-2 py-1.5 flex items-start gap-1.5 pointer-events-none">
-      <input type="checkbox" class="wall-pick accent-amber-500 mt-0.5 pointer-events-auto cursor-pointer"
-             value="{{ c.name|e }}" onclick="event.stopPropagation(); syncPicks()">
       <span class="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0
-        {%- if c.active_task %} bg-amber-400 animate-pulse
+        {%- if c.activity %} bg-amber-400 animate-pulse
         {%- elif c.sleeping %} bg-neutral-600
         {%- elif c.bridge_ok %} bg-emerald-500
         {%- else %} bg-red-500{% endif %}"></span>
       <span class="text-[11px] font-semibold truncate drop-shadow">{{ c.name }}</span>
       {% if c.reserved %}
-      <span title="reserved for you — fleet-wide tasks skip this machine"
+      <span title="reserved for you — keys cannot be issued for it while it is"
         class="text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded px-1 py-px shrink-0">yours</span>
       {% endif %}
       <button class="ml-auto pointer-events-auto text-neutral-400 hover:text-red-400 text-xs leading-none"
@@ -85,9 +83,12 @@
 
     <!-- bottom overlay: what it's doing -->
     <div class="absolute bottom-0 inset-x-0 px-2 py-1.5 pointer-events-none">
-      {% if c.active_task %}
-      <div class="text-[10px] mono text-amber-300 truncate">{{ c.active_task.current_action or 'starting' }}</div>
-      <div class="text-[10px] text-neutral-300 truncate">#{{ c.active_task.id }} {{ c.active_task.description }}</div>
+      {% if c.activity %}
+      {# What the outside client did last, and how long ago. This is the whole
+         of "watch it work" for a machine nobody is looking at directly. #}
+      <div class="text-[10px] mono {{ 'text-amber-300' if c.activity.ok else 'text-red-400' }} truncate">
+        {{ c.activity.tool }} · {{ c.activity.seconds_ago }}s ago</div>
+      <div class="text-[10px] text-neutral-300 truncate">{{ c.activity.label }}</div>
       {% else %}
       <div class="text-[10px] mono text-neutral-400">
         {{ 'sleeping' if c.sleeping else ('idle' if c.bridge_ok else 'offline') }} · :{{ c.novnc_port }}
@@ -113,7 +114,7 @@
       <button onclick="event.stopPropagation(); renameComputer({{ c.id }}, '{{ c.name|e }}')"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">name</button>
       <button onclick="event.stopPropagation(); toggleReserved({{ c.id }}, {{ 0 if c.reserved else 1 }})"
-        title="{{ 'let agents use this machine again' if c.reserved else 'reserve for yourself — agents will skip it' }}"
+        title="{{ 'allow keys for this machine again' if c.reserved else 'reserve for yourself — no new keys can be issued for it' }}"
         class="{{ 'bg-sky-600/80 hover:bg-sky-600' if c.reserved else 'bg-neutral-900/90 hover:bg-neutral-800' }} text-[10px] px-2 py-1 rounded">
         {{ 'unreserve' if c.reserved else 'reserve' }}</button>
       <button onclick="event.stopPropagation(); openBackups({{ c.id }}, '{{ c.name|e }}')"
@@ -122,6 +123,9 @@
       <button onclick="event.stopPropagation(); openShare({{ c.id }}, '{{ c.name|e }}')"
         title="give someone a link to this machine only"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">share</button>
+      <button onclick="event.stopPropagation(); openAccess({{ c.id }}, '{{ c.name|e }}')"
+        title="its MCP endpoint and the keys that reach it"
+        class="bg-amber-600/80 hover:bg-amber-600 text-neutral-950 font-semibold text-[10px] px-2 py-1 rounded">access</button>
       <button onclick="event.stopPropagation(); {{ 'wakeComputer' if c.sleeping else 'sleepComputer' }}({{ c.id }}, '{{ c.name|e }}')"
         title="{{ 'start it back up' if c.sleeping else 'stop it and free its memory — files are kept, open windows are not' }}"
         class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">

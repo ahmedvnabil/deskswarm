@@ -1,0 +1,60 @@
+{# Every call an outside client made, newest first.
+   Reads the audit table rather than the in-memory ring, so it survives a
+   restart and is the same record the audit log below shows — filtered to the
+   MCP actors, because this panel is about the machines rather than about
+   someone clicking around the dashboard. #}
+
+<form id="activity-filters" hx-get="/partials/activity" hx-target="#activity"
+      hx-trigger="change" hx-swap="innerHTML"
+      class="flex items-center gap-2 mb-3 text-xs flex-wrap">
+  <select name="machine" class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1">
+    <option value="">every machine</option>
+    {% for c in computers %}
+    <option value="{{ c.name }}" {{ 'selected' if c.name == machine else '' }}>{{ c.name }}</option>
+    {% endfor %}
+  </select>
+  {# Reset to page 1 whenever the filter changes; gotoPage sets it directly. #}
+  <input type="hidden" name="page" id="activity-page" value="1">
+  <span class="ml-auto text-neutral-600">page {{ page }} / {{ pages }}</span>
+  <button type="button" onclick="gotoPage({{ page - 1 }})" {{ 'disabled' if page <= 1 else '' }}
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">prev</button>
+  <button type="button" onclick="gotoPage({{ page + 1 }})" {{ 'disabled' if page >= pages else '' }}
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">next</button>
+</form>
+
+<div class="overflow-x-auto">
+<table class="w-full text-xs">
+  <thead class="text-neutral-500 border-b border-neutral-800">
+    <tr class="text-left">
+      <th class="py-1.5 pr-3 font-medium">when</th>
+      <th class="py-1.5 pr-3 font-medium">client</th>
+      <th class="py-1.5 pr-3 font-medium">machine</th>
+      <th class="py-1.5 pr-3 font-medium">tool</th>
+      <th class="py-1.5 pr-3 font-medium">detail</th>
+      <th class="py-1.5 font-medium">•</th>
+    </tr>
+  </thead>
+  <tbody class="divide-y divide-neutral-900">
+    {% if rows and rows.length %}{% for r in rows %}
+    <tr class="hover:bg-neutral-800/40 {{ '' if r.ok else 'text-red-300' }}">
+      <td class="py-1.5 pr-3 mono text-neutral-500 whitespace-nowrap">{{ r.at.slice(5, 19)|replace('T',' ') }}</td>
+      <td class="py-1.5 pr-3 whitespace-nowrap">
+        <span class="text-amber-300">{{ r.actor.slice(4) }}</span>
+        {% if r.source_ip %}<span class="mono text-neutral-700">{{ r.source_ip }}</span>{% endif %}
+      </td>
+      <td class="py-1.5 pr-3 mono">{{ r.target or '' }}</td>
+      {# 'MCP screenshot' -> 'screenshot'; the prefix is what the filter matched. #}
+      <td class="py-1.5 pr-3 mono text-neutral-300">{{ r.action.slice(4) }}</td>
+      <td class="py-1.5 pr-3 text-neutral-500 truncate max-w-[28rem]">{{ r.detail or '' }}</td>
+      <td class="py-1.5 mono {{ 'text-neutral-600' if r.ok else 'text-red-400' }}">{{ 'ok' if r.ok else 'failed' }}</td>
+    </tr>
+    {% endfor %}{% else %}
+    <tr><td colspan="6" class="py-6 text-center text-neutral-600">
+      No client has called a machine yet. Issue a key from a machine's
+      <span class="text-neutral-400">access</span> panel, point your MCP client at it,
+      and every call it makes shows up here.
+    </td></tr>
+    {% endif %}
+  </tbody>
+</table>
+</div>

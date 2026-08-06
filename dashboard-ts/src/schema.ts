@@ -1,5 +1,5 @@
 /**
- * Tables, and the additive migrations that carry an existing database forward.
+ * Tables, and the migrations that carry an existing database forward.
  *
  * The column checks are the same PRAGMA-then-ALTER the Python version used,
  * but they are safe here in a way they were not there: gunicorn ran two worker
@@ -12,6 +12,7 @@ import { getDb, all } from "./db";
 import * as audit from "./audit";
 import * as auth from "./auth";
 import * as shares from "./shares";
+import * as keys from "./mcp/keys";
 
 function columns(table: string): Set<string> {
   return new Set(
@@ -19,26 +20,24 @@ function columns(table: string): Set<string> {
   );
 }
 
+/**
+ * Drop what the agent-task layer left behind.
+ *
+ * deskswarm used to dispatch agent sessions itself, and kept a row per task
+ * and per schedule. Machines are now driven from outside over MCP, so nothing
+ * reads either table — and leaving them would keep a dead schema, a dead
+ * `cost_usd` column and a table full of old prompts around for ever.
+ *
+ * Idempotent, so a fresh database and an upgraded one end up identical.
+ */
+function dropAgentTables(): void {
+  const db = getDb();
+  db.exec("DROP TABLE IF EXISTS tasks");
+  db.exec("DROP TABLE IF EXISTS schedules");
+}
+
 export function initDb(): void {
   const db = getDb();
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS tasks (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      desktop TEXT NOT NULL,
-      description TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'PENDING',
-      current_action TEXT,
-      result_text TEXT,
-      actions TEXT,
-      cost_usd REAL,
-      error TEXT,
-      pid INTEGER,
-      started_at TEXT,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS computers (
@@ -61,34 +60,19 @@ export function initDb(): void {
     )
   `);
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS schedules (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      desktop TEXT NOT NULL,
-      description TEXT NOT NULL,
-      kind TEXT NOT NULL,              -- 'interval' | 'daily'
-      every_minutes INTEGER,           -- for kind='interval'
-      at_time TEXT,                    -- 'HH:MM' UTC, for kind='daily'
-      enabled INTEGER NOT NULL DEFAULT 1,
-      next_run_at TEXT NOT NULL,
-      last_run_at TEXT,
-      run_count INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL
-    )
-  `);
-
   const comp = columns("computers");
   if (!comp.has("image")) {
     db.exec("ALTER TABLE computers ADD COLUMN image TEXT");
   }
   if (!comp.has("reserved")) {
-    // A reserved machine is yours to drive by hand; agents keep off it.
+    // A reserved machine is yours to drive by hand; MCP keys for it are
+    // refused, so a client that has one cannot take the keyboard from you.
     db.exec(
       "ALTER TABLE computers ADD COLUMN reserved INTEGER NOT NULL DEFAULT 0",
     );
   }
   if (!comp.has("last_active_at")) {
-    // Last time a browser had the screen open or a task was running on it.
+    // Last time a browser had the screen open or an MCP client touched it.
     db.exec("ALTER TABLE computers ADD COLUMN last_active_at TEXT");
   }
   if (!comp.has("no_suspend")) {
@@ -108,6 +92,7 @@ export function initDb(): void {
   audit.init();
   auth.init();
   shares.init();
+  keys.init();
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
@@ -122,14 +107,5 @@ export function initDb(): void {
     );
   }
 
-  const task = columns("tasks");
-  for (const [col, decl] of [
-    ["current_action", "TEXT"],
-    ["pid", "INTEGER"],
-    ["started_at", "TEXT"],
-  ] as const) {
-    if (!task.has(col)) {
-      db.exec(`ALTER TABLE tasks ADD COLUMN ${col} ${decl}`);
-    }
-  }
+  dropAgentTables();
 }

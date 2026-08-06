@@ -60,7 +60,7 @@ export interface ComputerView {
   desktop_state?: string;
   bridge_state?: string;
   error?: string;
-  active_task?: unknown;
+  activity?: unknown;
 }
 
 export async function computerView(

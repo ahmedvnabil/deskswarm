@@ -2,6 +2,61 @@
 
 ## Unreleased
 
+### Changed — deskswarm hands out computers instead of running agents
+
+deskswarm no longer drives agent sessions itself. Each machine now exposes its
+own **MCP endpoint** at `/mcp/<slug>`, reached with a key issued from that
+machine's access panel, and you point whatever MCP client you already use at
+it. The client brings the model; deskswarm brings the computer.
+
+**Added**
+
+- Per-machine MCP endpoints (Streamable HTTP, stateless): `initialize`,
+  `tools/list`, `tools/call`, `ping`.
+- Per-machine keys — `POST /api/v1/computers/<id>/keys`, `GET /api/v1/keys`,
+  `DELETE /api/v1/keys/<id>`. A key names one machine at issue and cannot be
+  widened; revoking is complete. Deleting a machine deletes its keys.
+- A tool surface covering the whole machine: screen (`screenshot`, `click`,
+  `double_click`, `move_mouse`, `drag`, `scroll`, `type_text`, `press_key`,
+  `hotkey`, `launch_app`, `screen_size`), `shell` as root, the home directory
+  (`list_files`, `read_file`, `write_file`), the clipboard, and `inventory`.
+- `type_text` routes non-Latin text (Arabic, Chinese, emoji) through the
+  clipboard automatically. The keyboard path drops those characters silently,
+  so this is the difference between text appearing and an empty window.
+- A sleeping machine wakes on the first MCP call that needs it — an outside
+  client has no wake button. `DESKSWARM_MCP_AUTO_WAKE` turns it off.
+- Live monitoring: the wall outlines a machine an outside client is working in
+  and captions it with the last tool called; `/partials/activity` logs every
+  call with client, machine, tool and result. Contents are counted, not kept.
+- `GET /mcp/<slug>/info` — keyless discovery of a machine's protocol versions
+  and tool names.
+
+**Removed**
+
+- Tasks, schedules, analytics, cost tracking, the failure breaker and the
+  `run_task.py` worker. The `tasks` and `schedules` tables are dropped on
+  first start — **back up `fleet.db` before upgrading if you want that
+  history**.
+- `DESKSWARM_MODEL`, `DESKSWARM_API_KEY`, `DESKSWARM_API_BASE`,
+  `DESKSWARM_TASK_TIMEOUT`, `DESKSWARM_MAX_CONCURRENT_TASKS`,
+  `DESKSWARM_DAILY_COST_LIMIT`, `DESKSWARM_FAILURE_BREAKER`,
+  `DESKSWARM_BREAKER_COOLDOWN_MIN`. deskswarm makes no outbound model calls,
+  so there is no key to give it.
+- The cua agent SDK venv from the dashboard image — about 300 MB, and Python
+  with it. The bridge still uses `cua-computer-server`, unchanged.
+- The legacy Flask dashboard (`dashboard/`) and its pytest suite: it shared one
+  database with this one and expects tables that no longer exist. CI now builds
+  and tests `dashboard-ts`.
+
+**Changed**
+
+- A **reserved** machine now refuses to issue keys, rather than being skipped
+  by fleet-wide dispatch. Keys already issued keep working.
+- Sleep returns `409` if an MCP client has called the machine recently;
+  `?force=1` overrides.
+- The idle sweeper counts a recent MCP call as "in use", as it used to count a
+  running task.
+
 ### Security
 - Reject cross-site state-changing requests. Mutating endpoints previously
   accepted form-encoded bodies, which let any web page a user visited run a

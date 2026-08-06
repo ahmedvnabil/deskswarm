@@ -2,7 +2,7 @@
  * The application: middleware, then one router per slice of the URL space.
  *
  * Kept apart from server.ts so tests can drive `app.fetch(...)` without a
- * listening socket, a scheduler thread, or a port to collide on.
+ * listening socket or a port to collide on.
  */
 
 import { Hono } from "hono";
@@ -15,10 +15,10 @@ import { system } from "./routes/system";
 import { machines } from "./routes/machines";
 import { files } from "./routes/files";
 import { snapshots } from "./routes/snapshots";
-import { tasks } from "./routes/tasks";
-import { schedules } from "./routes/schedules";
 import { backupRoutes } from "./routes/backups";
 import { shares } from "./routes/shares";
+import { keyRoutes } from "./routes/keys";
+import { mcpRoutes } from "./routes/mcp";
 import { auditRoutes } from "./routes/audit";
 
 export function createApp() {
@@ -42,10 +42,10 @@ export function createApp() {
     machines,
     files,
     snapshots,
-    tasks,
-    schedules,
     backupRoutes,
     shares,
+    keyRoutes,
+    mcpRoutes,
     auditRoutes,
   ]) {
     app.route("/", router);

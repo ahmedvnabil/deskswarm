@@ -62,17 +62,6 @@ describe("batch names", () => {
   });
 });
 
-test("a task needs a fleet", async () => {
-  const r = await post("/api/v1/tasks", { json: { description: "do a thing" } });
-  expect(r.status).toBe(400);
-  expect(r.json.error).toContain("no computers");
-});
-
-test("a task rejects an unknown machine", async () => {
-  await addMachine("real");
-  expect((await post("/api/v1/tasks", { json: { desktop: "imaginary", description: "x" } })).status).toBe(400);
-});
-
 test("a snapshot name must be free", async () => {
   const cid = (await addMachine("src")).json.data.id;
   expect((await post(`/api/v1/computers/${cid}/snapshot`, { json: { name: "snap" } })).status).toBe(201);

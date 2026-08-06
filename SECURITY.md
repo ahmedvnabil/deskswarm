@@ -26,8 +26,13 @@ it is still arbitrary code execution somewhere you care about.
   anyone who can reach the port.
 - **Keep it off the public internet.** There is no TLS and no rate limiting.
   Put it behind a reverse proxy, a VPN, or a firewall.
-- **Do not put secrets in task descriptions.** They are stored in the task
-  history in plain text and sent to your model provider.
+- **An MCP key is the machine.** It carries a root shell, the screen and the
+  home directory of the machine it names — and nothing else, which is the
+  point. Issue one per client, give it an expiry, and revoke it when the
+  client is done. Revoking is complete: the next call fails.
+- **Do not leave secrets where an agent will read them back.** Anything on the
+  machine's screen, clipboard or filesystem can end up in the context of
+  whatever model your client is running.
 - Machine VNC passwords are random per machine, but they appear in the
   `novnc_url` query string so the dashboard can connect for you. Anyone who
   can read the dashboard can read those.

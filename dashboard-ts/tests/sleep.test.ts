@@ -2,14 +2,24 @@
  * Sleeping frees a machine's memory; waking brings it back.
  *
  * The rules that matter here are the ones that protect work in progress: a
- * machine running a task must not be suspended, and a machine someone is
- * watching must not be either.
+ * machine an outside client is working in must not be suspended, and a machine
+ * someone is watching must not be either.
  */
 import { beforeEach, expect, test } from "bun:test";
-import { addMachine, created, get, patch, post, reset, world } from "./harness";
+import {
+  addMachine,
+  callTool,
+  created,
+  get,
+  issueKey,
+  patch,
+  post,
+  reset,
+  world,
+} from "./harness";
 import { run } from "../src/db";
 import { nowIso } from "../src/settings";
-import { idleTick } from "../src/scheduler";
+import { idleTick } from "../src/housekeeping";
 import { budgetedMachineCount } from "../src/machines";
 
 beforeEach(reset);
@@ -53,13 +63,24 @@ test("a sleeping machine reports no screen", async () => {
   expect(r.json.error).toBe("sleeping");
 });
 
-test("sleep is refused while a task is running", async () => {
+test("sleep is refused while a client is working in it", async () => {
   const id = await add();
-  await post("/api/v1/tasks", { json: { desktop: "m1", description: "work" } });
+  const token = (await issueKey(id)).json.data.token;
+  await callTool("m1", token, "screenshot");
   const r = await post(`/api/v1/computers/${id}/sleep`);
   expect(r.status).toBe(409);
-  expect(r.json.error).toContain("running");
+  expect(r.json.error).toContain("MCP client");
   expect((await view(id)).sleeping).toBe(false);
+});
+
+test("sleep can be forced past a working client", async () => {
+  // A warning rather than a lock: the client may equally be a script that
+  // wandered off, and there has to be a way to stop the machine.
+  const id = await add();
+  const token = (await issueKey(id)).json.data.token;
+  await callTool("m1", token, "screenshot");
+  expect((await post(`/api/v1/computers/${id}/sleep?force=1`)).status).toBe(200);
+  expect((await view(id)).sleeping).toBe(true);
 });
 
 test("the idle sweep is off by default", async () => {
@@ -92,11 +113,14 @@ test("the idle sweep spares a watched machine", async () => {
   expect((await view(id)).sleeping).toBe(false);
 });
 
-test("the idle sweep spares a busy machine", async () => {
+test("the idle sweep spares a machine a client just called", async () => {
+  // Suspending it mid-session would pull the desktop out from under an agent
+  // that is halfway through something, and it has no way to ask for it back.
   process.env.DESKSWARM_IDLE_SUSPEND_MINUTES = "30";
   const id = await add();
+  const token = (await issueKey(id)).json.data.token;
   stale(id, 120);
-  await post("/api/v1/tasks", { json: { desktop: "m1", description: "long job" } });
+  await callTool("m1", token, "screenshot");
   await idleTick();
   expect((await view(id)).sleeping).toBe(false);
 });
@@ -153,17 +177,15 @@ test("a healthy wake does not recreate", async () => {
   expect(data).toEqual({ id, sleeping: false, ready: true, recreated: false });
 });
 
-test("a task wakes a sleeping target", async () => {
-  // A schedule naming a sleeping machine should work, not fail.
+test("an MCP call wakes a sleeping machine", async () => {
+  // An outside client has no wake button, so a machine that dozed off would
+  // simply stop answering with nothing the client could do about it.
   const id = await add();
+  const token = (await issueKey(id)).json.data.token;
   await post(`/api/v1/computers/${id}/sleep`);
   expect((await view(id)).sleeping).toBe(true);
 
-  const r = await post("/api/v1/tasks", { json: { desktop: "m1", description: "after hours" } });
-  expect(r.status).toBe(201);
-  // startTask wakes before handing off to the runner; the runner itself is the
-  // only part the test seam skips.
-  const { lastStarted } = await import("../src/tasks");
-  await lastStarted();
+  const r = await callTool("m1", token, "screenshot");
+  expect(r.result.isError).toBeUndefined();
   expect((await view(id)).sleeping).toBe(false);
 });

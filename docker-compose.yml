@@ -6,17 +6,10 @@ name: deskswarm
 services:
 
   dashboard:
-    # The Bun/Hono dashboard. The original Flask one is still in ./dashboard —
-    # point this at it to switch back; the database and every container it
-    # manages are the same.
+    # The Bun/Hono dashboard.
     build: ./dashboard-ts
     environment:
       PORT: 7000
-      # Only needed for agent tasks — machines, screens, files, clipboard,
-      # sleep/wake, backups and shares all work without any model at all.
-      DESKSWARM_MODEL: ${DESKSWARM_MODEL:-}
-      DESKSWARM_API_BASE: ${DESKSWARM_API_BASE:-}
-      DESKSWARM_API_KEY: ${DESKSWARM_API_KEY:-}
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
       # Leave empty: screen links follow whatever hostname you opened the
       # dashboard with. Only set it if that differs (a reverse proxy).
@@ -42,15 +35,23 @@ services:
       # Leave empty: the dashboard detects the network it is on. Only set
       # this if you attach it to a network of your own.
       DESKSWARM_NETWORK: ${DESKSWARM_NETWORK:-}
-      # Rows per page in the task log, and the ceiling on one {1..N} batch.
+      # Rows per page in the activity log, and the ceiling on one {1..N} batch.
       DESKSWARM_PAGE_SIZE: ${DESKSWARM_PAGE_SIZE:-25}
       # Seconds a wall screenshot is cached before a fresh frame is pulled.
       DESKSWARM_SHOT_TTL: ${DESKSWARM_SHOT_TTL:-6}
       DESKSWARM_MAX_BULK_CREATE: ${DESKSWARM_MAX_BULK_CREATE:-25}
-      DESKSWARM_TASK_TIMEOUT: ${DESKSWARM_TASK_TIMEOUT:-300}
-      DESKSWARM_MAX_CONCURRENT_TASKS: ${DESKSWARM_MAX_CONCURRENT_TASKS:-8}
+      # MCP — one endpoint per machine, driven by an outside client.
+      DESKSWARM_MCP_TIMEOUT: ${DESKSWARM_MCP_TIMEOUT:-120}
+      DESKSWARM_MCP_AUTO_WAKE: ${DESKSWARM_MCP_AUTO_WAKE:-1}
+      # Only set this when the MCP client reaches the dashboard at a different
+      # address than the browser does. Empty derives it from the request.
+      DESKSWARM_MCP_PUBLIC_ORIGIN: ${DESKSWARM_MCP_PUBLIC_ORIGIN:-}
+      DESKSWARM_MCP_KEY_DEFAULT_DAYS: ${DESKSWARM_MCP_KEY_DEFAULT_DAYS:-30}
+      DESKSWARM_MCP_KEY_MAX_DAYS: ${DESKSWARM_MCP_KEY_MAX_DAYS:-365}
+      # Seconds after a call that a machine still counts as "in use" — the
+      # wall's live outline, and what the idle sweeper keeps off.
+      DESKSWARM_LIVE_WINDOW: ${DESKSWARM_LIVE_WINDOW:-90}
       # Guards — see .env.example for what each one catches.
-      DESKSWARM_DAILY_COST_LIMIT: ${DESKSWARM_DAILY_COST_LIMIT:-0}
       DESKSWARM_MACHINE_MB: ${DESKSWARM_MACHINE_MB:-400}
       DESKSWARM_MIN_FREE_MB: ${DESKSWARM_MIN_FREE_MB:-512}
       DESKSWARM_MEMORY_BUDGET_MB: ${DESKSWARM_MEMORY_BUDGET_MB:-0}
@@ -58,8 +59,6 @@ services:
       DESKSWARM_MAX_UPLOAD_MB: ${DESKSWARM_MAX_UPLOAD_MB:-64}
       DESKSWARM_MIN_FREE_DISK_GB: ${DESKSWARM_MIN_FREE_DISK_GB:-5}
       DESKSWARM_LOW_DISK_WARN_GB: ${DESKSWARM_LOW_DISK_WARN_GB:-15}
-      DESKSWARM_FAILURE_BREAKER: ${DESKSWARM_FAILURE_BREAKER:-5}
-      DESKSWARM_BREAKER_COOLDOWN_MIN: ${DESKSWARM_BREAKER_COOLDOWN_MIN:-10}
       # Per-machine caps, so one runaway machine can't starve the rest.
       DESKSWARM_MACHINE_MEM_LIMIT: ${DESKSWARM_MACHINE_MEM_LIMIT:-2g}
       DESKSWARM_MACHINE_CPUS: ${DESKSWARM_MACHINE_CPUS:-2}

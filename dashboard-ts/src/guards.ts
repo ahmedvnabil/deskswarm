@@ -1,11 +1,9 @@
 /**
  * Guards against the failures that accumulate quietly.
  *
- * deskswarm already recovers from *process* failures: containers restart,
- * tasks orphaned by a restart get failed, a stuck agent hits its timeout. What
- * it had no answer for was the slow kind — a disk filling with snapshots,
- * memory running out one machine at a time, a schedule quietly burning money,
- * or every task failing because the model provider is down.
+ * Containers restart and a wedged machine can be recreated in place. What
+ * deskswarm had no answer for was the slow kind — a disk filling with
+ * snapshots, memory running out one machine at a time.
  *
  * Every guard is a plain function returning [ok, message] so the caller decides
  * whether to refuse or merely warn, and each can be switched off with an env
@@ -13,8 +11,8 @@
  */
 
 import { readFileSync, statfsSync } from "node:fs";
-import { all, one } from "./db";
-import { envFloat, envInt, parseIso } from "./settings";
+import { busyMachines } from "./mcp/activity";
+import { envFloat, envInt } from "./settings";
 
 export type Check = [ok: boolean, message: string];
 
@@ -26,19 +24,14 @@ export type Check = [ok: boolean, message: string];
  * process per configuration.
  */
 export const limits = {
-  // 0 disables the cap. Deliberately off by default: a limit that surprises
-  // someone mid-run is worse than no limit, so it should be a choice.
-  dailyCostLimit: () => envFloat("DESKSWARM_DAILY_COST_LIMIT", 0),
   // A machine is two containers and both cost real memory. Measured on an idle
-  // fleet: the desktop runs 200-235 MB and the bridge another 145-190 MB.
+  // fleet: the desktop runs 200-235 MB and the bridge another 145-190 MB. A
+  // machine an MCP client is actually working in costs considerably more, so
+  // this is a floor, not a forecast — see DESKSWARM_MEMORY_BUDGET_MB.
   machineMb: () => envInt("DESKSWARM_MACHINE_MB", 400),
   minFreeMb: () => envInt("DESKSWARM_MIN_FREE_MB", 512),
   minFreeDiskGb: () => envFloat("DESKSWARM_MIN_FREE_DISK_GB", 5),
   lowDiskWarnGb: () => envFloat("DESKSWARM_LOW_DISK_WARN_GB", 15),
-  // If this many tasks in a row have failed, something systemic is wrong —
-  // usually the model provider — and dispatching more just spends money.
-  failureBreaker: () => envInt("DESKSWARM_FAILURE_BREAKER", 5),
-  breakerCooldownMin: () => envInt("DESKSWARM_BREAKER_COOLDOWN_MIN", 10),
   // An explicit budget in MB for the whole fleet. Needed more often than it
   // looks: when the dashboard runs in Docker inside an LXC or a VM with a
   // memory cap, /proc/meminfo shows the *outer host's* memory and the
@@ -63,29 +56,6 @@ const round = (n: number, places: number) => {
   const f = 10 ** places;
   return Math.round(n * f) / f;
 };
-
-// ------------------------------------------------------------------- cost
-
-export function todaysSpend(): number {
-  const row = one<{ c: number }>(
-    "SELECT COALESCE(SUM(cost_usd), 0) AS c FROM tasks " +
-      "WHERE date(updated_at) = date('now')",
-  );
-  return round(row?.c ?? 0, 4);
-}
-
-export function checkCost(): Check {
-  const cap = limits.dailyCostLimit();
-  if (cap <= 0) return [true, ""];
-  const spend = todaysSpend();
-  if (spend < cap) return [true, ""];
-  return [
-    false,
-    `daily cost limit reached — $${spend.toFixed(2)} of ` +
-      `$${cap.toFixed(2)} spent today. ` +
-      `Raise DESKSWARM_DAILY_COST_LIMIT or wait for the next UTC day.`,
-  ];
-}
 
 // ----------------------------------------------------------------- memory
 
@@ -214,61 +184,22 @@ export function diskWarning(): string {
   return `${free} GB of disk left — snapshots are 2–6 GB each.`;
 }
 
-// ---------------------------------------------------------------- breaker
-
-export function consecutiveFailures(): [number, string | null] {
-  const rows = all<{ status: string; updated_at: string }>(
-    "SELECT status, updated_at FROM tasks " +
-      "WHERE status IN ('COMPLETED', 'FAILED') ORDER BY id DESC LIMIT ?",
-    limits.failureBreaker(),
-  );
-  let n = 0;
-  let last: string | null = null;
-  for (const r of rows) {
-    if (r.status !== "FAILED") break;
-    n += 1;
-    last = last || r.updated_at;
-  }
-  return [n, last];
-}
-
-export function checkBreaker(): Check {
-  const breaker = limits.failureBreaker();
-  if (breaker <= 0) return [true, ""];
-  const [n, last] = consecutiveFailures();
-  if (n < breaker) return [true, ""];
-  // After the cooldown, let one through: if the provider recovered we want to
-  // find out, and a breaker that never re-tries is just an outage of its own.
-  const at = parseIso(last);
-  if (at && Date.now() - at.getTime() > limits.breakerCooldownMin() * 60_000) {
-    return [true, ""];
-  }
-  return [
-    false,
-    `the last ${n} tasks all failed, so dispatch is paused — usually the model ` +
-      `provider is unreachable or the key is wrong. Check a failed task's error, ` +
-      `then retry; it clears itself after ${limits.breakerCooldownMin()} minutes anyway.`,
-  ];
-}
-
 // --------------------------------------------------------------- summary
 
 export function status(machines = 0) {
-  const [fails] = consecutiveFailures();
-  const [costOk, costMsg] = checkCost();
   const [memOk, memMsg] = checkMemory(1, machines);
   const mem = memoryReport(machines);
   const [diskOk, diskMsg] = checkDisk();
-  const [brkOk, brkMsg] = checkBreaker();
   return {
-    spend_today_usd: todaysSpend(),
-    daily_cost_limit_usd: limits.dailyCostLimit() || null,
     memory_available_mb: mem.available_mb,
     memory_source: mem.source,
     disk_free_gb: probes.diskFreeGb(),
-    consecutive_failures: fails,
-    blocking: [costMsg, brkMsg].filter(Boolean),
+    machines_in_use: busyMachines().size,
+    // Kept as a field rather than dropped: nothing blocks any more now that
+    // the cost cap and the failure breaker are gone, but the panel, the API
+    // shape and anything watching /api/v1/guards all still read it.
+    blocking: [] as string[],
     warnings: [memMsg, diskMsg, diskWarning()].filter(Boolean),
-    ok: costOk && memOk && diskOk && brkOk,
+    ok: memOk && diskOk,
   };
 }

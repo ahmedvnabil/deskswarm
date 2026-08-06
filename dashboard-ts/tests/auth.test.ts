@@ -42,8 +42,8 @@ test("an api request without a session is refused", async () => {
 test("reading the fleet used to be open and is not any more", async () => {
   // Every one of these answered 200 to anyone who could reach the port.
   for (const path of [
-    "/api/v1/computers", "/api/v1/tasks", "/api/v1/audit", "/api/v1/shares",
-    "/api/v1/analytics", "/api/v1/guards", "/partials/fleet", "/partials/audit",
+    "/api/v1/computers", "/api/v1/keys", "/api/v1/audit", "/api/v1/shares",
+    "/api/v1/guards", "/partials/fleet", "/partials/audit", "/partials/activity",
   ]) {
     const r = await anon(path, { headers: { accept: "application/json" } });
     expect(`${path} -> ${r.status}`).toBe(`${path} -> 401`);

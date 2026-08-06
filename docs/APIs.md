@@ -16,15 +16,20 @@ or, on failure:
 
 ## Authentication
 
-If `DASHBOARD_TOKEN` is set in the environment, every mutating endpoint
-(creating/renaming/deleting a computer, running a command, dispatching or
-cancelling a task) requires:
+Two separate credentials, for two different callers.
+
+**The dashboard token** is yours. Everything under `/api/v1` and every page
+needs a signed-in session or, for scripts, `DASHBOARD_TOKEN`:
 
 ```
 Authorization: Bearer <DASHBOARD_TOKEN>
 ```
 
-`GET` endpoints are unauthenticated by default (read-only status/history).
+**An MCP key** belongs to an outside client and reaches exactly one machine's
+`/mcp/<slug>` endpoint — never the dashboard API, never another machine. Keys
+are issued and revoked through the API below. The two are not
+interchangeable in either direction.
+
 Put this dashboard behind a reverse proxy / VPN / firewall if you're exposing
 it beyond a trusted network — it has no built-in rate limiting or TLS.
 
@@ -38,8 +43,7 @@ Liveness check.
 
 ## Computers
 
-A *computer* is one agent-controlled machine: a desktop container plus its
-bridge container. They are created and destroyed at runtime — the fleet is
+A *computer* is one machine: a desktop container plus its bridge container. They are created and destroyed at runtime — the fleet is
 stored in the database, not in `docker-compose.yml`.
 
 ### `GET /api/v1/computers`
@@ -102,14 +106,13 @@ flags: `{ "reserved": "1" }` / `{ "no_suspend": "1" }` (and `"0"` to clear).
 `no_suspend` exempts the machine from automatic idle suspend; manual
 sleep/wake still work.
 
-A reserved machine is one you drive by hand. `POST /api/v1/tasks` with
-`"desktop": "all"` skips it, as do fleet-wide schedules, so a broadcast can't
-take the keyboard while you are using it. Naming it directly still dispatches
-there. If every machine is reserved, a fleet-wide dispatch returns `400`
-rather than silently doing nothing.
+A reserved machine is one you drive by hand: no MCP key can be issued for it,
+so no outside client can take the keyboard while you are using it. Keys
+already issued keep working — reserving is not a revoke, and silently breaking
+a client someone wired up last week would be worse than the surprise it saves.
 
 Only the display name changes — the containers keep their original slug, so
-in-flight tasks are unaffected. Existing task history is relabelled to match.
+the machine's MCP endpoint and every key issued against it keep working.
 
 **Errors**: `404` unknown id, `400` missing name, `409` name already taken.
 
@@ -123,8 +126,12 @@ keeps its home volume, name, port and snapshot.
 ```
 
 Sleeping ends the desktop's X session, so **open windows and unsaved work are
-lost** — saved files are not. Refused with `409` while a task is pending or
-running on the machine.
+lost** — saved files are not.
+
+Refused with `409` if an MCP client has called the machine within
+`DESKSWARM_LIVE_WINDOW` seconds. Repeat with `?force=1` to sleep it anyway:
+the client may equally be a script that wandered off, and there has to be a
+way to stop the machine.
 
 ### `POST /api/v1/computers/<id>/wake`
 
@@ -138,15 +145,16 @@ Starts a sleeping machine and waits for its bridge to answer, up to
 `ready: false` means it started but the desktop was still coming up — the
 screen will work a moment later. That is not an error.
 
-Waking is automatic when you click a sleeping machine on the wall, and when a
-task or schedule targets one, so this is only needed for scripting.
+Waking is automatic when you click a sleeping machine on the wall, and on the
+first MCP call that needs it, so this is only needed for scripting.
 
 ### Sleeping automatically
 
 Set `DESKSWARM_IDLE_SUSPEND_MINUTES` to suspend machines nobody is using. A
 machine counts as in use while a browser has its screen open (an established
-connection to its noVNC port) or a task is pending/running on it. Machines
-with `no_suspend` set are always skipped.
+connection to its noVNC port) or an MCP client has called it within
+`DESKSWARM_LIVE_WINDOW` seconds. Machines with `no_suspend` set are always
+skipped.
 
 It is `0` — off — by default, because a surprise suspend costs someone their
 open windows.
@@ -398,194 +406,123 @@ Removes the snapshot. The underlying image is deleted too **unless** machines
 are still running from it, in which case the response reports
 `"image_kept": true`.
 
-## Schedules
+## MCP
 
-Repeat a task automatically. The dashboard ticks every 20s and claims due
-schedules with a conditional `UPDATE`, so running several gunicorn workers
-never double-dispatches one schedule.
+Each machine has its own MCP endpoint. This is how work actually gets done on
+a machine: you point an MCP client (Claude Code, Claude Desktop, anything
+speaking the protocol) at one machine's URL with one key, and it gets that
+machine's screen, keyboard, root shell and home directory.
 
-### `GET /api/v1/schedules`
+```
+POST /mcp/<slug>
+Authorization: Bearer <mcp-key>
+Content-Type: application/json
+```
+
+Transport is MCP **Streamable HTTP**, stateless: no session id, no
+server-initiated stream. Protocol versions `2025-06-18`, `2025-03-26` and
+`2024-11-05` are accepted; an unrecognised one is answered with the newest.
+
+Implemented methods are `initialize`, `tools/list`, `tools/call`, `ping`,
+`resources/list` and `prompts/list` (both empty). `GET` on the endpoint
+returns `405` — nothing here pushes — and `DELETE` returns `204`.
+
+A failed *tool call* comes back as a normal result with `isError: true`, not a
+JSON-RPC error. That distinction is deliberate and matches the spec: a
+JSON-RPC error means the client is broken, `isError` means the call went wrong
+and the model should read the message and try something else.
+
+### Tools
+
+| tool | what it does |
+|---|---|
+| `screenshot` | a PNG of the screen — every coordinate comes off this |
+| `screen_size` | resolution in pixels |
+| `click` / `double_click` | click at `x,y`; `button` is `left`/`right`/`middle` |
+| `move_mouse` | move the pointer without clicking |
+| `drag` | `from_x,from_y` → `to_x,to_y` |
+| `scroll` | `direction` plus `clicks` |
+| `type_text` | type into the focused window |
+| `press_key` / `hotkey` | one key, or a combination |
+| `launch_app` | start a program by name |
+| `shell` | run a command as root, returns exit code and output |
+| `list_files` / `read_file` / `write_file` | the machine's home directory |
+| `get_clipboard` / `set_clipboard` | the machine's clipboard |
+| `inventory` | OS, kernel, runtimes, installed apps, disk, memory |
+
+Paths are relative to the machine's home directory and cannot climb out of it.
+
+`type_text` sends non-Latin text (Arabic, Chinese, emoji) through the
+clipboard automatically — the keyboard path goes through keysym lookup, which
+silently drops those characters.
+
+A sleeping machine is woken by the first call that needs it, unless
+`DESKSWARM_MCP_AUTO_WAKE` is off.
+
+### `GET /mcp/<slug>/info`
+
+Needs no key. Confirms the slug names a real machine and lists the protocol
+versions and tool names it offers — enough to configure a client, nothing that
+holding a key would have bought.
+
+## MCP keys
+
+A key names one machine at issue and cannot be widened afterwards. Revoking is
+complete: the key is the only way in over MCP, so the next call fails.
+
+### `GET /api/v1/keys`
+
+Every key, newest first. Each row carries its `token`, its `url`, and a
+ready-to-paste `claude_code` command.
 
 ```json
 { "ok": true, "data": [
-  { "id": 1, "desktop": "all", "description": "Daily fleet health check.",
-    "kind": "daily", "every_minutes": null, "at_time": "09:00",
-    "enabled": 1, "next_run_at": "2026-08-06T09:00:00+00:00",
-    "last_run_at": null, "run_count": 0, "created_at": "..." }], "error": null }
+    { "id": 1, "computer_id": 3, "computer": "research-01", "slug": "research-01",
+      "label": "claude code", "status": "live", "token": "dsk_...",
+      "url": "https://swarm.example.com/mcp/research-01",
+      "claude_code": "claude mcp add --transport http research-01 ...",
+      "calls": 42, "last_tool": "screenshot",
+      "last_used_at": "2026-08-06T14:50:35+00:00", "last_used_ip": "10.0.0.4",
+      "expires_at": "2026-09-05T14:00:00+00:00", "revoked": 0,
+      "created_at": "2026-08-06T14:00:00+00:00" }
+  ], "error": null }
 ```
 
-### `POST /api/v1/schedules`
+`status` is `live`, `revoked` or `expired`.
 
-**Body** — every N minutes:
+### `GET /api/v1/computers/<id>/keys`
+
+The same, for one machine.
+
+### `POST /api/v1/computers/<id>/keys`
 
 ```json
-{ "desktop": "all", "description": "Check the queue", "kind": "interval", "every_minutes": 30 }
+{ "label": "claude code", "days": 30 }
 ```
 
-or daily at a fixed UTC time:
+`days` defaults to `DESKSWARM_MCP_KEY_DEFAULT_DAYS` and is capped at
+`DESKSWARM_MCP_KEY_MAX_DAYS`; `0` means no expiry. Returns `201` with the row
+above.
 
-```json
-{ "desktop": "agent-1", "description": "Morning report", "kind": "daily", "at_time": "09:00" }
-```
+`409` if the machine is **reserved** — un-reserve it first. Handing out a key
+to a machine you have claimed for yourself would let a client take the
+keyboard while you are using it.
 
-`desktop` accepts a machine name or `"all"`. `201 Created`.
+### `DELETE /api/v1/keys/<id>`
 
-**Errors**: `400` missing description, bad `kind`, `every_minutes < 1`,
-`at_time` not `HH:MM`, or unknown machine.
+Revokes it. `{ "id": 1, "revoked": true }`.
 
-### `PATCH /api/v1/schedules/<id>`
-
-Pause or resume. **Body**: `{ "enabled": "0" }` / `{ "enabled": "1" }`.
-Resuming recomputes the next run from now.
-
-### `DELETE /api/v1/schedules/<id>`
-
-Removes the schedule. Tasks it already created are kept.
-
-## `GET /api/v1/tasks`
-
-Most recent 100 tasks, newest first.
-
-**Response**
-
-```json
-{
-  "ok": true,
-  "data": [
-    {
-      "id": 3,
-      "desktop": "desktop-1",
-      "description": "Take a screenshot and describe what you see.",
-      "status": "COMPLETED",
-      "current_action": null,
-      "result_text": "...",
-      "actions": "[\"screenshot\"]",
-      "cost_usd": 0.0087,
-      "duration_seconds": 12.4,
-      "error": null,
-      "pid": null,
-      "started_at": "2026-08-05T01:27:03+00:00",
-      "created_at": "2026-08-05T01:27:02+00:00",
-      "updated_at": "2026-08-05T01:28:19+00:00"
-    }
-  ],
-  "error": null
-}
-```
-
-`status` is one of `PENDING`, `RUNNING`, `COMPLETED`, `FAILED`, `CANCELLED`.
-While `RUNNING`, `current_action` reflects the agent's most recent step
-(`screenshot`, `left_click`, `type_text`, `responding`, ...) — updated live by
-`dashboard/run_task.py` after every turn, so you don't have to wait for
-completion to see what it's doing.
-
-## `GET /api/v1/tasks/<id>`
-
-Full detail for a single task (same shape as one row above, untruncated).
-
-**Errors**: `404` if the task doesn't exist.
-
-## `GET /api/v1/tasks/export.csv`
-
-Full task history as a CSV download (`id, desktop, description, status,
-result_text, cost_usd, duration_seconds, error, created_at, updated_at`).
-
-## `POST /api/v1/tasks`
-
-Dispatch a natural-language task to one desktop, or the whole fleet in parallel.
-
-**Body**
-
-```json
-{ "desktop": "desktop-1", "description": "Open a browser and search for today's news." }
-```
-
-`desktop` is either a computer's name (see `GET /api/v1/computers`) or
-`"all"` to run the same task on every computer concurrently.
-
-**Response** — `201 Created`
-
-```json
-{ "ok": true, "data": { "task_ids": [4] }, "error": null }
-```
-
-Tasks run asynchronously in a background thread; poll `GET /api/v1/tasks` (or
-`GET /partials/tasks` for the HTML fragment used by the dashboard) for status.
-
-**Errors**
-
-| status | condition |
-|---|---|
-| 400 | missing `description`, unknown `desktop` name, or the fleet is empty |
-| 401 | missing/invalid `Authorization` header when `DASHBOARD_TOKEN` is set |
-
-## `POST /api/v1/tasks/<id>/cancel`
-
-Cancel a `PENDING` or `RUNNING` task. Sends `SIGTERM` to the runner
-subprocess if one is attached and marks the task `CANCELLED`.
-
-**Response**
-
-```json
-{ "ok": true, "data": { "id": 4, "status": "CANCELLED" }, "error": null }
-```
-
-**Errors**: `404` if the task doesn't exist, `400` if it's already finished.
-
-## `POST /api/v1/tasks/<id>/retry`
-
-Re-run a task with the same desktop and description as an existing one
-(typically a `FAILED` task) — creates a **new** task row rather than
-mutating the old one, so history is preserved.
-
-**Response** — `201 Created`
-
-```json
-{ "ok": true, "data": { "task_id": 9 }, "error": null }
-```
-
-**Errors**: `404` if the original task doesn't exist, `400` if its desktop
-was removed from the fleet since.
-
-## `GET /api/v1/analytics`
-
-Aggregate stats across all tasks.
-
-**Response**
-
-```json
-{
-  "ok": true,
-  "data": {
-    "total": 12,
-    "by_status": { "PENDING": 0, "RUNNING": 1, "COMPLETED": 9, "FAILED": 2 },
-    "success_rate": 81.8,
-    "total_cost_usd": 0.0932,
-    "avg_duration_seconds": 14.2,
-    "per_desktop": [
-      { "name": "desktop-1", "total": 5, "completed": 4, "failed": 1, "cost_usd": 0.041 }
-    ],
-    "daily": [
-      { "day": "2026-08-04", "count": 5, "cost": 0.041 },
-      { "day": "2026-08-05", "count": 7, "cost": 0.052 }
-    ]
-  },
-  "error": null
-}
-```
-
-`daily` covers up to the last 14 days with at least one finished task,
-oldest first — this is what powers the dashboard's chart.
+Deleting a machine deletes its keys with it, reported as `keys_deleted` on the
+delete response.
 
 ## HTML partials (used internally by the dashboard, not a stable API)
 
 - `GET /partials/fleet` — fleet cards with their per-machine controls
-- `GET /partials/tasks?desktop=&status=&page=` — task history table;
-  `status` accepts `ACTIVE` (pending+running), `COMPLETED`, `FAILED`,
-  `CANCELLED`. Page size is `DESKSWARM_PAGE_SIZE` (default 25); out-of-range
-  pages clamp to the last one
-- `GET /partials/schedules` — schedule table
-- `GET /partials/analytics` — stat tiles + chart + per-machine breakdown
+- `GET /partials/activity?machine=&page=` — every MCP call, newest first.
+  Page size is `DESKSWARM_PAGE_SIZE` (default 25); out-of-range pages clamp to
+  the last one
+- `GET /partials/computers/<id>/access` — the machine's endpoint, its keys and
+  what a key can do there
 - `GET /partials/computers/<id>/inventory` — rendered software inventory
 
 The dashboard also accepts deep links: `/?open=terminal&computer=<id>` and

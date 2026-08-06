@@ -20,8 +20,7 @@
 {% endif %}
 
 <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] text-neutral-600 mono mb-4">
-  <span>spent today <span class="text-neutral-400">${{ '%.4f'|format(g.spend_today_usd) }}</span>{% if g.daily_cost_limit_usd %} / ${{ '%.2f'|format(g.daily_cost_limit_usd) }}{% endif %}</span>
   {% if g.memory_available_mb %}<span>memory <span class="text-neutral-400">{{ g.memory_available_mb }} MB free</span>{% if g.memory_source == "meminfo" %}<span class="text-neutral-700" title="reads the host&#39;s memory; set DESKSWARM_MEMORY_BUDGET_MB under an LXC or VM cap"> (host — untrusted)</span>{% endif %}</span>{% endif %}
   {% if g.disk_free_gb %}<span>disk <span class="text-neutral-400">{{ g.disk_free_gb }} GB free</span></span>{% endif %}
-  {% if g.consecutive_failures %}<span class="text-amber-500">{{ g.consecutive_failures }} failures in a row</span>{% endif %}
+  {% if g.machines_in_use %}<span class="text-amber-500">{{ g.machines_in_use }} machine(s) in use by a client</span>{% endif %}
 </div>

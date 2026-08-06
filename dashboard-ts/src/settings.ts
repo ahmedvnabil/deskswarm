@@ -35,30 +35,17 @@ export const DB_PATH = resolve(
   env("DESKSWARM_DB_PATH") || `${BASE_DIR}/data/fleet.db`,
 );
 mkdirSync(dirname(DB_PATH), { recursive: true });
-// Settled once, here, because the worker subprocess inherits it.
 process.env.DESKSWARM_DB_PATH = DB_PATH;
-
-/** The Python worker that drives one agent session. Still Python: the cua
- *  agent loop has no published TypeScript equivalent, and shelling out to it
- *  is a smaller, better-understood surface than reimplementing it. */
-export const RUN_TASK_SCRIPT = `${BASE_DIR}/run_task.py`;
-export const PYTHON = env("DESKSWARM_PYTHON", "python3");
 
 export const TEMPLATE_DIR = `${BASE_DIR}/templates`;
 
 export const PORT = envInt("PORT", 7000);
-
-export const TASK_TIMEOUT_SECONDS = envInt("DESKSWARM_TASK_TIMEOUT", 300);
 
 export const DASHBOARD_TOKEN = env("DASHBOARD_TOKEN");
 
 export const MAX_BULK_CREATE = envInt("DESKSWARM_MAX_BULK_CREATE", 25);
 
 export const PAGE_SIZE = envInt("DESKSWARM_PAGE_SIZE", 25);
-
-// A task costs a subprocess plus an agent session. Without a ceiling, "run on
-// the whole fleet" across a large fleet would start them all at once.
-export const MAX_CONCURRENT_TASKS = envInt("DESKSWARM_MAX_CONCURRENT_TASKS", 8);
 
 export const IDLE_SUSPEND_MINUTES = envInt("DESKSWARM_IDLE_SUSPEND_MINUTES", 0);
 
@@ -70,7 +57,48 @@ export const MAX_UPLOAD_MB = envInt("DESKSWARM_MAX_UPLOAD_MB", 64);
 
 export const SHOT_TTL = envFloat("DESKSWARM_SHOT_TTL", 3);
 
-export const DISABLE_SCHEDULER = !!env("DESKSWARM_DISABLE_SCHEDULER");
+/** Stops the idle-suspend / nightly-backup loop. Tests set it so a suite does
+ *  not start suspending the machines it just made up. */
+export const DISABLE_HOUSEKEEPING = !!(
+  env("DESKSWARM_DISABLE_HOUSEKEEPING") || env("DESKSWARM_DISABLE_SCHEDULER")
+);
+
+// --------------------------------------------------------------------- mcp
+
+/**
+ * How long one MCP tool call may take before the dashboard gives up on the
+ * bridge.
+ *
+ * Generous, because the calls behind it are not uniform: a screenshot is
+ * milliseconds and `shell` may be an `apt-get install`. The client is waiting
+ * on an HTTP request either way, so this is the ceiling on how long a wedged
+ * machine can hold one open.
+ */
+export const MCP_CALL_TIMEOUT_SECONDS = envFloat("DESKSWARM_MCP_TIMEOUT", 120);
+
+/** A machine that is asleep is woken by the first MCP call that needs it,
+ *  rather than failing — an external client has no sleep/wake button. */
+export const MCP_AUTO_WAKE = envBool("DESKSWARM_MCP_AUTO_WAKE", true);
+
+/**
+ * The origin an MCP client should be pointed at.
+ *
+ * Only used to render a ready-to-paste endpoint URL in the UI. Left empty the
+ * dashboard derives it from the request, which is right whenever the browser
+ * and the MCP client can reach this from the same address — and wrong exactly
+ * when someone browses over a LAN address but the client will connect over the
+ * public name, which is what this setting is for.
+ */
+export const MCP_PUBLIC_ORIGIN = env("DESKSWARM_MCP_PUBLIC_ORIGIN").replace(/\/$/, "");
+
+/**
+ * How long after its last call a machine still counts as "being worked in".
+ *
+ * Drives the wall's live outline and keeps the idle sweeper off a machine an
+ * outside client is using. Long enough to span an agent thinking between two
+ * tool calls, short enough that a finished session stops looking active.
+ */
+export const LIVE_WINDOW_SECONDS = envInt("DESKSWARM_LIVE_WINDOW", 90);
 
 /**
  * Timestamps, in exactly the shape Python's

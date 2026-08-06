@@ -32,7 +32,15 @@ const machine = {
   sleeping: false,
   desktop_state: "running",
   bridge_state: "running",
-  active_task: { id: 3, description: "do a thing", status: "RUNNING", current_action: "click" },
+  activity: { tool: "click", label: "claude code", ok: true, seconds_ago: 4 },
+};
+
+const mcpKey = {
+  id: 1, computer_id: 1, token: "dsk_abc", label: "claude code",
+  expires_at: nowIso(), revoked: 0, calls: 12, last_used_at: nowIso(),
+  last_used_ip: "127.0.0.1", last_tool: "screenshot", created_at: nowIso(),
+  status: "live", computer: "alpha", slug: "alpha",
+  url: "http://localhost/mcp/alpha", claude_code: "claude mcp add ...",
 };
 
 const share = {
@@ -46,46 +54,31 @@ const contexts: Record<string, [full: object, empty: object]> = {
   "index.html": [{ computers: [machine], actor: "sara" }, { computers: [], actor: null }],
   "_fleet.html": [{ computers: [machine], shot_token: 1 }, { computers: [], shot_token: 1 }],
   "_guards.html": [
-    { g: { spend_today_usd: 1.5, daily_cost_limit_usd: 10, memory_available_mb: 900,
-           memory_source: "meminfo", disk_free_gb: 12, consecutive_failures: 2,
-           blocking: ["stopped"], warnings: ["8 GB of disk left"], ok: false } },
-    { g: { spend_today_usd: 0, daily_cost_limit_usd: null, memory_available_mb: null,
-           memory_source: "budget", disk_free_gb: null, consecutive_failures: 0,
-           blocking: [], warnings: [], ok: true } },
+    { g: { memory_available_mb: 900, memory_source: "meminfo", disk_free_gb: 12,
+           machines_in_use: 2, blocking: ["stopped"],
+           warnings: ["8 GB of disk left"], ok: false } },
+    { g: { memory_available_mb: null, memory_source: "budget", disk_free_gb: null,
+           machines_in_use: 0, blocking: [], warnings: [], ok: true } },
   ],
-  "_tasks.html": [
-    { tasks: [{ id: 1, desktop: "alpha", description: "x", status: "COMPLETED",
-                result_text: "done", cost_usd: 0.12, duration_seconds: 3.5,
-                error: null, created_at: nowIso(), updated_at: nowIso() },
-              { id: 2, desktop: "alpha", description: "y", status: "RUNNING",
-                current_action: "type", cost_usd: null, duration_seconds: null,
-                created_at: nowIso(), updated_at: nowIso() }],
-      names: ["alpha"], sel_desktop: "alpha", sel_status: "", page: 1, pages: 3, total: 2 },
-    { tasks: [], names: [], sel_desktop: "", sel_status: "", page: 1, pages: 1, total: 0 },
+  "_access.html": [
+    { comp: machine, url: "http://localhost/mcp/alpha", keys: [mcpKey, { ...mcpKey, id: 2, status: "revoked" }],
+      tools: [{ name: "screenshot", description: "take a picture" }],
+      recent: [{ machine: "alpha", tool: "click", label: "claude code", ok: true, at: 0 }] },
+    { comp: machine, url: "http://localhost/mcp/alpha", keys: [], tools: [], recent: [] },
   ],
-  "_analytics.html": [
-    { analytics: { total: 4, by_status: { PENDING: 1, RUNNING: 1, COMPLETED: 1, FAILED: 1, CANCELLED: 0 },
-                   success_rate: 50.0, total_cost_usd: 1.2345, avg_duration_seconds: 12.3,
-                   per_desktop: [{ name: "alpha", total: 2, completed: 1, failed: 1, cost_usd: 1.2, exists: true }],
-                   daily: [{ day: "2026-08-05", count: 2, cost: 0.5 }] } },
-    { analytics: { total: 0, by_status: { PENDING: 0, RUNNING: 0, COMPLETED: 0, FAILED: 0, CANCELLED: 0 },
-                   success_rate: null, total_cost_usd: 0, avg_duration_seconds: null,
-                   per_desktop: [], daily: [] } },
-  ],
-  "_schedules.html": [
-    { schedules: [{ id: 1, desktop: "alpha", description: "ping", kind: "interval",
-                    every_minutes: 15, at_time: null, enabled: 1,
-                    next_run_at: nowIso(), last_run_at: nowIso(), run_count: 3 },
-                  { id: 2, desktop: "all", description: "nightly", kind: "daily",
-                    every_minutes: null, at_time: "03:00", enabled: 0,
-                    next_run_at: nowIso(), last_run_at: null, run_count: 0 }] },
-    { schedules: [] },
+  "_activity.html": [
+    { rows: [{ id: 1, at: nowIso(), actor: "mcp:claude code", source_ip: "10.0.0.1",
+               action: "MCP screenshot", target: "alpha", detail: "", status: 200, ok: 1 },
+             { id: 2, at: nowIso(), actor: "mcp:bot", source_ip: null,
+               action: "MCP shell", target: "alpha", detail: "ls -la", status: 500, ok: 0 }],
+      pages: 2, page: 1, machine: "alpha", computers: [machine] },
+    { rows: [], pages: 1, page: 1, machine: null, computers: [] },
   ],
   "_audit.html": [
     { rows: [{ id: 1, at: nowIso(), actor: "share:sara", source_ip: "10.0.0.1",
                action: "GET /s/<token>", target: "alpha", detail: "opened", status: 200, ok: 1 },
              { id: 2, at: nowIso(), actor: "dashboard", source_ip: null,
-               action: "POST /api/v1/tasks", target: null, detail: null, status: 400, ok: 0 }],
+               action: "POST /api/v1/computers/1/keys", target: null, detail: null, status: 400, ok: 0 }],
       pages: 2, page: 1, target: "alpha", names: ["alpha"] },
     { rows: [], pages: 1, page: 1, target: "", names: [] },
   ],
@@ -132,19 +125,21 @@ for (const [name, [full, empty]] of Object.entries(contexts)) {
   });
 }
 
-test("the task status filter keeps all five options", () => {
-  // Jinja's `for v, label in [('a','b'), …]` unpacks a list of tuples;
-  // nunjucks has no tuples and walked the strings instead, producing options
-  // whose value was a single letter. The page still rendered, which is why the
-  // only thing that caught it was comparing output with the Flask original.
-  const html = render("_tasks.html", contexts["_tasks.html"][1] as any);
-  for (const [value, label] of [
-    ["", "any status"], ["ACTIVE", "in flight"], ["COMPLETED", "completed"],
-    ["FAILED", "failed"], ["CANCELLED", "cancelled"],
-  ]) {
-    expect(html).toContain(`value="${value}"`);
-    expect(html).toContain(`>${label}</option>`);
-  }
+test("the access panel shows the key but never its hash", () => {
+  // The token is deliberately shown — a key you cannot read again is one people
+  // store somewhere worse. The hash is an implementation detail, and printing
+  // it invites someone to paste it in as the credential.
+  const html = render("_access.html", contexts["_access.html"][0] as any);
+  expect(html).toContain("dsk_abc");
+  expect(html).toContain("/mcp/alpha");
+  expect(html).not.toContain("token_hash");
+});
+
+test("a revoked key offers no revoke button", () => {
+  const html = render("_access.html", contexts["_access.html"][0] as any);
+  // One live key, one revoked: exactly one button, and the dead one's token
+  // is not reprinted next to it.
+  expect(html.match(/>revoke</g)?.length).toBe(1);
 });
 
 test("an empty fleet still shows its empty state", async () => {
@@ -162,16 +157,13 @@ test("a populated partial names the machine", async () => {
 
 test("every partial route answers", async () => {
   const id = (await addMachine("alpha")).json.data.id;
-  await post("/api/v1/schedules", {
-    json: { desktop: "alpha", description: "ping", kind: "interval", every_minutes: 15 },
-  });
+  await post(`/api/v1/computers/${id}/keys`, { json: { label: "sara" } });
   await post(`/api/v1/computers/${id}/shares`, { json: { label: "sara" } });
 
   for (const path of [
-    "/partials/fleet", "/partials/tasks", "/partials/analytics",
-    "/partials/guards", "/partials/schedules", "/partials/audit",
+    "/partials/fleet", "/partials/activity", "/partials/guards", "/partials/audit",
     `/partials/computers/${id}/files`, `/partials/computers/${id}/backups`,
-    `/partials/computers/${id}/inventory`,
+    `/partials/computers/${id}/inventory`, `/partials/computers/${id}/access`,
   ]) {
     const r = await get(path);
     expect(`${path} -> ${r.status}`).toBe(`${path} -> 200`);

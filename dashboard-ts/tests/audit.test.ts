@@ -59,7 +59,7 @@ test("every mutating endpoint leaves a line", async () => {
     ["POST", `/api/v1/computers/${id}/backups`, {}],
     ["POST", `/api/v1/computers/${id}/shares`, { json: { label: "x" } }],
     ["POST", `/api/v1/computers/${id}/rotate-password`, {}],
-    ["POST", "/api/v1/tasks", { json: { desktop: "m1", description: "d" } }],
+    ["POST", `/api/v1/computers/${id}/keys`, { json: { label: "k" } }],
     ["DELETE", `/api/v1/computers/${id}`, {}],
   ];
   for (const [method, path, opts] of calls) {

@@ -1,23 +1,22 @@
 /**
- * The entry point: reclaim orphaned tasks, build the app, start the loop,
- * listen.
+ * The entry point: build the app, make sure someone can sign in, start the
+ * housekeeping loop, listen.
  *
- * The Python version had to do the reclaim in a separate process before
- * gunicorn forked, or every worker would have run it and a worker respawning
- * later would have failed tasks its sibling was still running. One process
- * makes that a plain function call.
+ * There is no longer a reclaim step. When the dashboard drove agent sessions
+ * itself, a restart left half-finished tasks behind that had to be failed on
+ * the way up; now that machines are driven from outside over MCP, a restart
+ * interrupts nothing it owns — the worst it costs a connected client is one
+ * failed call.
  */
 
 import { app } from "./app";
 import { ensureAdmin } from "./auth";
-import { reclaim } from "./reclaim";
-import { startScheduler } from "./scheduler";
-import { DISABLE_SCHEDULER, PORT } from "./settings";
+import { startHousekeeping } from "./housekeeping";
+import { DISABLE_HOUSEKEEPING, PORT } from "./settings";
 
-reclaim();
 await ensureAdmin();
 
-if (!DISABLE_SCHEDULER) startScheduler();
+if (!DISABLE_HOUSEKEEPING) startHousekeeping();
 
 const server = Bun.serve({
   port: PORT,

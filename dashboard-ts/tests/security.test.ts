@@ -22,7 +22,7 @@ test("a cross-site form post is rejected", async () => {
 });
 
 test("a cross-site json post is rejected", async () => {
-  expect((await post("/api/v1/tasks", { json: { description: "x" }, headers: EVIL })).status).toBe(403);
+  expect((await post("/api/v1/computers/1/keys", { json: { label: "x" }, headers: EVIL })).status).toBe(403);
 });
 
 test("a cross-site delete is rejected", async () => {

@@ -16,7 +16,8 @@ import {
   ValidationError,
   type Computer,
 } from "./../machines";
-import { activeTaskByComputer } from "./../tasks";
+import { recentActivity } from "./../mcp/activity";
+import { deleteForComputer as deleteKeysForComputer } from "./../mcp/keys";
 import { render } from "./../templates";
 import { requireToken } from "./../security";
 import { MAX_CLIPBOARD_KB, SHOT_TTL } from "./../settings";
@@ -47,9 +48,12 @@ function loadComputer(c: Context<Env>): Computer | null {
 const truthy = (v: unknown) => ["1", "true", "yes"].includes(String(v).toLowerCase());
 
 machines.get("/partials/fleet", async (c) => {
-  const busy = activeTaskByComputer();
+  // What an outside client is doing right now is the thing the wall is for:
+  // a tile with a live MCP session is outlined and captioned with the last
+  // tool that ran, which is as close to "watch it work" as a still gets.
+  const live = recentActivity();
   const computers = await computerViews(listComputers(), browserHost(c));
-  for (const view of computers) view.active_task = busy[view.name];
+  for (const view of computers) view.activity = live[view.name];
   return c.html(
     render("_fleet.html", {
       computers,
@@ -159,10 +163,9 @@ machines.patch("/api/v1/computers/:id", requireToken, async (c) => {
   );
   if (clash) return fail(c, `'${newName}' already exists`, 409);
 
-  // Only the display name changes — the slug stays, so containers and any
-  // in-flight task keep pointing at the same machine.
+  // Only the display name changes — the slug stays, so the containers, the
+  // machine's MCP endpoint and any key issued against it keep working.
   run("UPDATE computers SET name = ? WHERE id = ?", newName, comp.id);
-  run("UPDATE tasks SET desktop = ? WHERE desktop = ?", newName, comp.name);
   return ok(c, { id: comp.id, name: newName });
 });
 
@@ -190,13 +193,18 @@ machines.post("/api/v1/computers/:id/restart", requireToken, async (c) => {
 machines.post("/api/v1/computers/:id/sleep", requireToken, async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
-  const busy =
-    one<{ n: number }>(
-      "SELECT COUNT(*) AS n FROM tasks WHERE desktop = ? AND status IN ('PENDING','RUNNING')",
-      comp.name,
-    )?.n ?? 0;
-  if (busy) {
-    return fail(c, `${comp.name} has ${busy} task(s) still running`, 409);
+  // Sleeping a machine an outside client is mid-session in would fail its next
+  // call for no reason it can see, so say so instead. Deliberately a warning
+  // you can override with ?force=1 rather than a lock: the client may equally
+  // be a script that wandered off.
+  const busy = recentActivity()[comp.name];
+  if (busy && !truthy(c.req.query("force"))) {
+    return fail(
+      c,
+      `${comp.name} has an MCP client working in it (last call ${busy.tool}, ` +
+        `${busy.seconds_ago}s ago). Repeat with ?force=1 to sleep it anyway.`,
+      409,
+    );
   }
   try {
     await providerFor(comp).suspendComputer(comp.slug);
@@ -270,7 +278,11 @@ machines.delete("/api/v1/computers/:id", requireToken, async (c) => {
     return fail(c, `failed to remove containers: ${err?.message ?? err}`, 500);
   }
   run("DELETE FROM computers WHERE id = ?", comp.id);
-  return ok(c, { id: comp.id, removed: true });
+  // Otherwise the machine's keys outlive it, and the id they point at is free
+  // to be handed to the next machine created.
+  const orphaned = deleteKeysForComputer(comp.id);
+  if (orphaned) c.set("auditDetail", `${orphaned} MCP key(s) deleted with it`);
+  return ok(c, { id: comp.id, removed: true, keys_deleted: orphaned });
 });
 
 machines.get("/api/v1/computers/:id/inventory", async (c) => {

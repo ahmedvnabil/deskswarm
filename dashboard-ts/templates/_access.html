@@ -1,0 +1,110 @@
+{# One machine's front door: where a client connects, what it may do there,
+   and the keys that currently reach it. #}
+
+<div class="space-y-5">
+
+  <div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">MCP endpoint</div>
+    <div class="flex items-center gap-2">
+      <code class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-xs mono break-all">{{ url }}</code>
+      <button onclick="copyText({{ url|tojson }}, this)"
+        class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-2 rounded shrink-0">copy</button>
+    </div>
+    <div class="text-[11px] text-neutral-500 mt-1.5">
+      Streamable HTTP. This URL reaches <span class="mono text-neutral-400">{{ comp.name }}</span> and
+      nothing else — a key issued for another machine is refused here.
+    </div>
+  </div>
+
+  <div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Issue a key</div>
+    <div class="flex items-center gap-2 flex-wrap">
+      <input id="key-label" placeholder="what is this for — 'claude code', 'research bot'…"
+        class="flex-1 min-w-56 bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
+      <select id="key-days" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5 text-sm">
+        <option value="7">7 days</option>
+        <option value="30" selected>30 days</option>
+        <option value="90">90 days</option>
+        <option value="365">a year</option>
+        <option value="0">no expiry</option>
+      </select>
+      <button onclick="createKey({{ comp.id }})"
+        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">issue</button>
+    </div>
+  </div>
+
+  {% if keys.length %}
+  <div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Keys for this machine</div>
+    <div class="space-y-2">
+      {% for k in keys %}
+      <div class="bg-neutral-950 border rounded p-3
+        {{ 'border-neutral-800' if k.status == 'live' else 'border-neutral-900 opacity-50' }}">
+        <div class="flex items-center gap-2 mb-2 flex-wrap">
+          <span class="text-sm font-semibold">{{ k.label }}</span>
+          <span class="text-[10px] rounded px-1.5 py-px
+            {{ 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30' if k.status == 'live'
+               else 'bg-neutral-800 text-neutral-500' }}">{{ k.status }}</span>
+          <span class="text-[10px] text-neutral-500 mono">
+            {{ k.calls }} calls{% if k.last_tool %} · last {{ k.last_tool }}{% endif %}
+            {%- if k.last_used_at %} · {{ k.last_used_at }}{% endif %}
+          </span>
+          <span class="text-[10px] text-neutral-600 mono ml-auto">
+            {{ 'no expiry' if not k.expires_at else 'expires ' + k.expires_at }}
+          </span>
+          {% if k.status == 'live' %}
+          <button onclick="revokeKey({{ k.id }}, {{ k.label|tojson }}, {{ comp.id }})"
+            class="text-[11px] text-red-400 hover:text-red-300">revoke</button>
+          {% endif %}
+        </div>
+
+        {% if k.status == 'live' %}
+        <div class="flex items-center gap-2 mb-1.5">
+          <code class="flex-1 bg-black/40 border border-neutral-800 rounded px-2 py-1.5 text-[11px] mono break-all">{{ k.token }}</code>
+          <button onclick="copyText({{ k.token|tojson }}, this)"
+            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">copy key</button>
+        </div>
+        {# The one command between having a key and having a working client. #}
+        <div class="flex items-center gap-2">
+          <code class="flex-1 bg-black/40 border border-neutral-800 rounded px-2 py-1.5 text-[11px] mono break-all">{{ k.claude_code }}</code>
+          <button onclick="copyText({{ k.claude_code|tojson }}, this)"
+            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">copy command</button>
+        </div>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  {% if recent.length %}
+  <div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Just now</div>
+    <div class="bg-neutral-950 border border-neutral-800 rounded divide-y divide-neutral-900">
+      {% for r in recent %}
+      <div class="px-3 py-1.5 text-[11px] flex items-center gap-2">
+        <span class="mono {{ 'text-neutral-300' if r.ok else 'text-red-400' }}">{{ r.tool }}</span>
+        <span class="text-neutral-600">{{ r.label }}</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">
+      What a key can do here — {{ tools.length }} tools
+    </div>
+    <div class="flex flex-wrap gap-1">
+      {% for t in tools %}
+      <span title="{{ t.description }}"
+        class="text-[10px] mono bg-neutral-800 text-neutral-300 rounded px-1.5 py-0.5">{{ t.name }}</span>
+      {% endfor %}
+    </div>
+    <div class="text-[11px] text-neutral-500 mt-2">
+      A key is full control of this machine: its screen, a root shell and its home
+      directory. Hand one out the way you would hand out the machine.
+    </div>
+  </div>
+
+</div>

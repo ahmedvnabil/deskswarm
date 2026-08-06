@@ -27,12 +27,22 @@ export const pasted: [string, string][] = [];
 export const homes = new Map<string, Map<string, Uint8Array>>();
 export const snapshots = new Map<string, string>();
 export const execLog: string[] = [];
+/** Every command the bridge stub was asked to run, as [command, params]. The
+ *  MCP tools are mostly thin translations onto these, so this is where a test
+ *  checks that `click` really became a `left_click` at the right point. */
+export const bridgeLog: [string, any][] = [];
 
 export const realFleet = await import("../src/providers/docker");
 
 /** Knobs the stubs read on every call, so a test can change the world
  *  mid-flight the way monkeypatching did. */
-export const world = { bridgeUp: true, watchers: 0 };
+export const world = {
+  bridgeUp: true,
+  watchers: 0,
+  /** Set to a message to make every bridge command answer success:false —
+   *  the "the machine said no" path, as opposed to "the machine is gone". */
+  bridgeRefuses: "" as string,
+};
 
 function collect(stream: NodeJS.ReadableStream): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -191,13 +201,30 @@ globalThis.fetch = (async (input: any, init?: any) => {
     });
   }
   if (url.endsWith("/cmd")) {
+    if (!world.bridgeUp) return new Response("down", { status: 503 });
+    let body: any = {};
+    try {
+      body = JSON.parse(String(init?.body ?? "{}"));
+    } catch {
+      /* a malformed body is the caller's problem, not the stub's */
+    }
+    bridgeLog.push([body.command, body.params ?? {}]);
+    if (world.bridgeRefuses) {
+      return new Response(
+        `data: ${JSON.stringify({ success: false, error: world.bridgeRefuses })}\n`,
+      );
+    }
     const png = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
       "base64",
     );
-    return new Response(
-      `data: ${JSON.stringify({ success: true, image_data: png.toString("base64") })}\n`,
-    );
+    const extra: Record<string, unknown> =
+      body.command === "screenshot"
+        ? { image_data: png.toString("base64") }
+        : body.command === "get_screen_size"
+          ? { size: { width: 1024, height: 768 } }
+          : {};
+    return new Response(`data: ${JSON.stringify({ success: true, ...extra })}\n`);
   }
   return realFetch(input, init);
 }) as typeof fetch;
@@ -209,9 +236,9 @@ const { app } = await import("../src/app");
 const { closeDb, run } = await import("../src/db");
 const { initDb } = await import("../src/schema");
 const { nowIso } = await import("../src/settings");
-const { dispatched } = await import("../src/tasks");
+const activity = await import("../src/mcp/activity");
 
-export { app, dispatched };
+export { app };
 
 // Hashed once: argon2id is deliberately slow, and paying that per test would
 // add ten seconds to the suite for no extra coverage.
@@ -239,9 +266,13 @@ export function reset(): void {
   snapshots.clear();
   pasted.length = 0;
   execLog.length = 0;
-  dispatched.length = 0;
+  bridgeLog.length = 0;
+  // In-memory and process-wide, so a machine left "in use" by one test would
+  // otherwise still be in use in the next one.
+  activity.reset();
   world.bridgeUp = true;
   world.watchers = 0;
+  world.bridgeRefuses = "";
   delete process.env.DESKSWARM_IDLE_SUSPEND_MINUTES;
   delete process.env.DESKSWARM_WAKE_TIMEOUT;
   initDb();
@@ -275,11 +306,18 @@ export interface Reply {
 async function request(
   method: string,
   path: string,
-  opts: { json?: unknown; body?: BodyInit; headers?: Record<string, string> } = {},
+  opts: {
+    json?: unknown;
+    body?: BodyInit;
+    headers?: Record<string, string>;
+    /** MCP clients have no session. Sending one anyway would let a broken
+     *  bearer check pass on the cookie instead. */
+    noCookie?: boolean;
+  } = {},
 ): Promise<Reply> {
   const headers: Record<string, string> = {
     host: "localhost",
-    ...(sessionCookie ? { cookie: sessionCookie } : {}),
+    ...(sessionCookie && !opts.noCookie ? { cookie: sessionCookie } : {}),
     ...opts.headers,
   };
   let body: BodyInit | undefined = opts.body;
@@ -301,6 +339,8 @@ async function request(
   return { status: res.status, json, text, bytes, headers: res.headers };
 }
 
+const rawRequest = request;
+
 export const get = (p: string, o?: any) => request("GET", p, o);
 export const post = (p: string, o?: any) => request("POST", p, o);
 export const patch = (p: string, o?: any) => request("PATCH", p, o);
@@ -318,6 +358,50 @@ export function seedHome(slug: string, files: Record<string, string>): void {
     home.set(name, Buffer.from(body));
   }
   homes.set(slug, home);
+}
+
+/**
+ * Issue an MCP key for a machine and return a caller bound to it.
+ *
+ * Deliberately goes through the real endpoint rather than inserting a row: the
+ * refusal for a reserved machine and the shape of what comes back are both
+ * part of what the tests are checking.
+ */
+export async function issueKey(computerId: number, label = "test-client", days?: number) {
+  const r = await post(`/api/v1/computers/${computerId}/keys`, {
+    json: { label, ...(days === undefined ? {} : { days }) },
+  });
+  return r;
+}
+
+/** One JSON-RPC call to a machine's MCP endpoint, as an outside client would
+ *  make it: bearer token, no session cookie, no Origin. */
+export async function mcp(
+  slug: string,
+  token: string,
+  method: string,
+  params?: unknown,
+  id: string | number | null = 1,
+): Promise<Reply> {
+  const message: Record<string, unknown> = { jsonrpc: "2.0", method };
+  if (id !== null) message.id = id;
+  if (params !== undefined) message.params = params;
+  return rawRequest("POST", `/mcp/${slug}`, {
+    json: message,
+    headers: { authorization: `Bearer ${token}` },
+    noCookie: true,
+  });
+}
+
+/** A tools/call, unwrapped to the result the client would act on. */
+export async function callTool(
+  slug: string,
+  token: string,
+  name: string,
+  args: Record<string, unknown> = {},
+) {
+  const r = await mcp(slug, token, "tools/call", { name, arguments: args });
+  return { status: r.status, result: r.json?.result, error: r.json?.error, raw: r };
 }
 
 export const backupDir = (slug: string) => join(ROOT, "backups", slug);

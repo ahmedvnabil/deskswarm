@@ -10,21 +10,27 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: oven-sh/setup-bun@v2
         with:
-          python-version: "3.12"
-      - name: Install test dependencies
-        # The dashboard's own runtime deps, minus the heavy cua SDKs — the
-        # tests stub Docker and never start an agent.
-        run: pip install flask gunicorn docker requests pytest
-      - run: pytest tests -q
+          bun-version: "1.3"
+      - name: Install dependencies
+        working-directory: dashboard-ts
+        run: bun install --frozen-lockfile
+      - name: Typecheck
+        working-directory: dashboard-ts
+        run: bunx tsc --noEmit
+      - name: Test
+        working-directory: dashboard-ts
+        # The suite stubs Docker and the bridge, so it needs neither a daemon
+        # nor a desktop.
+        run: bun test
 
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - name: Build the dashboard image
-        run: docker build -t deskswarm-dashboard:ci dashboard
+        run: docker build -t deskswarm-dashboard:ci dashboard-ts
       - name: Build the bridge image
         run: docker build -t deskswarm-bridge:ci bridge
       - name: Compose config is valid

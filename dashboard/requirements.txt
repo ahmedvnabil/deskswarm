@@ -1,8 +1,0 @@
-flask==3.1.*
-gunicorn==26.*
-docker==7.*
-requests==2.*
-# The cua SDKs move fast and a breaking change here silently stops every task,
-# so pin the minor and bump deliberately.
-cua-agent==0.8.*
-cua-computer==0.5.*

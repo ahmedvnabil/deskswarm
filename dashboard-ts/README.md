@@ -1,32 +1,33 @@
 # dashboard-ts
 
-The dashboard, in Bun. It replaces `../dashboard` (Flask) and is what
-`docker-compose.yml` builds; the Flask one is still there and still works —
-point the compose `build:` back at it to switch.
+The dashboard, in Bun. It is what `docker-compose.yml` builds — the Flask
+original it replaced has been removed, because the two shared one database and
+this one no longer has the tables that one expects.
 
     bun install
     bun test
     bun run dev
 
-## What changed and what didn't
+## Layout
 
-The database, the API, the HTML and every container it manages are the same.
-The port was verified by running both dashboards against the same production
-database and diffing them: all nine JSON endpoints came back byte-identical,
-and the rendered pages matched apart from the spelling of one HTML entity
-(`&quot;` vs `&#34;`) and the wording of Docker's own error strings.
-
-* `src/` mirrors the Python modules one-to-one — `machines`, `tasks`,
-  `guards`, `backups`, `shares`, `audit`, `scheduler`, one router per slice of
-  the URL space.
-* `src/providers/` is what used to be `fleet.py`. A machine backend implements
-  `MachineProvider`; `docker.ts` is the one that ships. Which backend owns a
-  machine is a column on its row, not a global — a fleet is meant to be able
-  to mix them. `DESKSWARM_PROVIDER` names the backend new machines go to.
-* `templates/` is the Jinja2 markup, ported to nunjucks by
-  `scripts/port-templates.py`. 31 lines changed out of 1,681.
-* `run_task.py` is still Python: the cua agent loop it drives has no published
-  TypeScript equivalent, and it was already a subprocess per task.
+* `src/` — one module per concern, one router per slice of the URL space.
+  Nothing imports upwards.
+* `src/mcp/` — `keys.ts` (a key: one machine, revocable), `tools.ts` (the
+  advertised tool list and the handlers behind it, deliberately one table),
+  `activity.ts` (what the outside clients are doing right now).
+* `src/routes/mcp.ts` — the endpoint itself: MCP Streamable HTTP, stateless,
+  written against the protocol rather than an SDK. The surface actually in use
+  is `initialize`, `tools/list` and `tools/call`, and vendoring a framework to
+  express three methods buys less than it costs.
+* `src/providers/` — the only modules that talk to Docker. A machine backend
+  implements `MachineProvider`; `docker.ts` is the one that ships. Which
+  backend owns a machine is a column on its row, not a global — a fleet is
+  meant to be able to mix them. `DESKSWARM_PROVIDER` names the backend new
+  machines go to.
+* `src/bridge.ts` — one command to a machine's cua bridge, and its
+  `data:`-prefixed reply parsed. Shared by the wall and by the MCP tools,
+  which want different things from a failure.
+* `templates/` — nunjucks, carried over from the Flask original's Jinja2.
 * Docker goes through `dockerode`, SQLite through `bun:sqlite`.
 
 One process replaces gunicorn's several, which removes a real bug: two workers
@@ -35,8 +36,15 @@ used to run the same `ALTER TABLE` at import and the loser died with
 
 ## Signing in
 
-Everything except `/health` and `/s/<token>` needs a person or a token behind
-it. People sign in at `/login`; scripts keep sending `DASHBOARD_TOKEN`.
+Everything except `/health`, `/s/<token>` and `/mcp/<slug>` needs a person or
+a token behind it. People sign in at `/login`; scripts keep sending
+`DASHBOARD_TOKEN`.
+
+`/mcp/<slug>` is not an exception to that so much as a second door with its
+own lock: it does its own bearer check against `mcp_keys`, and a key reaches
+exactly one machine and never the dashboard API. It stays inside the
+cross-site check — MCP's transport spec asks servers to validate `Origin`, and
+a real client sends none at all.
 
 Passwords go through `Bun.password` (argon2id — no dependency, no parameters to
 get wrong), sessions are random 32-byte tokens stored by hash, and a failed

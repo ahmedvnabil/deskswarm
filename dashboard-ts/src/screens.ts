@@ -6,26 +6,28 @@
  * the tile you click gets a real interactive session.
  */
 
+import { parseBridgeStream, type BridgeTarget } from "./bridge";
 import { SHOT_TTL } from "./settings";
 
 const cache = new Map<string, { at: number; png: Buffer }>();
 
-export interface BridgeTarget {
-  slug: string;
-  bridge_host: string;
-  bridge_port: number;
-}
+export type { BridgeTarget };
 
-/** Grab a PNG of one machine's screen through its bridge. */
+/**
+ * Grab a PNG of one machine's screen through its bridge.
+ *
+ * Null for every failure, deliberately: this feeds a wall of tiles that
+ * refreshes every few seconds, where a machine that cannot be photographed
+ * right now is a placeholder, not an error worth propagating.
+ */
 export async function bridgeScreenshot(view: BridgeTarget): Promise<Buffer | null> {
   const now = Date.now();
   const hit = cache.get(view.slug);
   if (hit && now - hit.at < SHOT_TTL * 1000) return hit.png;
 
-  const url = `http://${view.bridge_host}:${view.bridge_port}/cmd`;
   let text: string;
   try {
-    const res = await fetch(url, {
+    const res = await fetch(`http://${view.bridge_host}:${view.bridge_port}/cmd`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ command: "screenshot", params: {} }),
@@ -37,20 +39,7 @@ export async function bridgeScreenshot(view: BridgeTarget): Promise<Buffer | nul
     return null;
   }
 
-  // The bridge answers as an SSE-ish stream: `data: {json}`. The last complete
-  // object wins, which is what the payload actually is.
-  let payload: any = null;
-  for (let line of text.split("\n")) {
-    line = line.trim();
-    if (line.startsWith("data:")) line = line.slice(5).trim();
-    if (line.startsWith("{")) {
-      try {
-        payload = JSON.parse(line);
-      } catch {
-        continue;
-      }
-    }
-  }
+  const payload = parseBridgeStream(text);
   if (!payload?.success || !payload?.image_data) return null;
 
   let png: Buffer;
@@ -61,4 +50,11 @@ export async function bridgeScreenshot(view: BridgeTarget): Promise<Buffer | nul
   }
   cache.set(view.slug, { at: now, png });
   return png;
+}
+
+/** Drop a machine's cached frame. Called after an MCP tool call that changed
+ *  the screen, so the wall shows the result rather than the stale frame it
+ *  took a moment earlier. */
+export function invalidateScreen(slug: string): void {
+  cache.delete(slug);
 }

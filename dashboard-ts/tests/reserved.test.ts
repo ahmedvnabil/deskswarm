@@ -1,9 +1,12 @@
 /**
- * A reserved machine is one you are driving by hand. The point of the flag is
- * that a fleet-wide dispatch must not grab its keyboard out from under you.
+ * A reserved machine is one you are driving by hand.
+ *
+ * The flag used to mean "fleet-wide dispatch skips it". There is no dispatch
+ * any more, so it means the thing that would take the keyboard out from under
+ * you now: no key can be issued for it, and so no outside client can reach it.
  */
 import { beforeEach, expect, test } from "bun:test";
-import { addMachine, get, patch, post, reset } from "./harness";
+import { addMachine, get, issueKey, patch, reset } from "./harness";
 
 let ids: Record<string, number>;
 
@@ -16,36 +19,34 @@ beforeEach(async () => {
   await patch(`/api/v1/computers/${ids.mine}`, { json: { reserved: "1" } });
 });
 
-async function targetsOf(body: Record<string, unknown>) {
-  const r = await post("/api/v1/tasks", { json: { description: "x", ...body } });
-  expect(r.status).toBe(201);
-  const rows = new Map<number, string>(
-    (await get("/api/v1/tasks")).json.data.map((t: any) => [t.id, t.desktop]),
-  );
-  return r.json.data.task_ids.map((i: number) => rows.get(i)).sort();
-}
-
-test("a fleet-wide dispatch skips a reserved machine", async () => {
-  expect(await targetsOf({ desktop: "all" })).toEqual(["w1", "w2"]);
+test("a reserved machine refuses to hand out a key", async () => {
+  const r = await issueKey(ids.mine);
+  expect(r.status).toBe(409);
+  expect(r.json.error).toContain("reserved");
 });
 
-test("naming a reserved machine still works", async () => {
-  // Explicitly targeting it is a deliberate choice, not an accident.
-  expect(await targetsOf({ desktop: "mine" })).toEqual(["mine"]);
+test("an unreserved machine hands one out", async () => {
+  expect((await issueKey(ids.w1)).status).toBe(201);
 });
 
 test("un-reserving puts it back in the fleet", async () => {
   await patch(`/api/v1/computers/${ids.mine}`, { json: { reserved: "0" } });
-  expect(await targetsOf({ desktop: "all" })).toEqual(["mine", "w1", "w2"]);
+  expect((await issueKey(ids.mine)).status).toBe(201);
 });
 
-test("all reserved is an error, not a silent no-op", async () => {
-  for (const name of ["w1", "w2"]) {
-    await patch(`/api/v1/computers/${ids[name]}`, { json: { reserved: "1" } });
-  }
-  const r = await post("/api/v1/tasks", { json: { desktop: "all", description: "x" } });
-  expect(r.status).toBe(400);
-  expect(r.json.error).toContain("every machine is reserved");
+/**
+ * Reserving does not revoke what is already out.
+ *
+ * Deliberate, and the opposite would be worse: a flag meant to keep a machine
+ * to yourself for an afternoon should not silently break a client someone
+ * wired up last week. Revoking the key is the way to do that, and it is one
+ * click away.
+ */
+test("reserving leaves an existing key working", async () => {
+  const key = (await issueKey(ids.w1)).json.data;
+  await patch(`/api/v1/computers/${ids.w1}`, { json: { reserved: "1" } });
+  const listed = (await get("/api/v1/keys")).json.data.find((k: any) => k.id === key.id);
+  expect(listed.status).toBe("live");
 });
 
 test("the flag is reported and toggles", async () => {

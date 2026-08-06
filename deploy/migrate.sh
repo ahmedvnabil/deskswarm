@@ -6,7 +6,7 @@
 #   copy it over:      scp old:/root/deskswarm-migration.tar.gz new:/root/
 #   on the new host:   ./deploy/migrate.sh import /root/deskswarm-migration.tar.gz
 #
-# What travels: the database (machines, tasks, audit, shares, schedules,
+# What travels: the database (machines, MCP keys, audit, shares,
 # snapshots, users), every machine's home directory, the stored backups, and
 # .env. What does not: the images, which the new host builds or pulls, and the
 # containers, which are recreated around the restored home volumes.

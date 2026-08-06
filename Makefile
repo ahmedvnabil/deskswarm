@@ -34,8 +34,8 @@ logs:  ## follow the dashboard log
 shell:  ## a shell inside the dashboard container
 	$(COMPOSE) exec dashboard bash
 
-test:  ## run the test suite (needs: pip install flask docker requests pytest)
-	pytest tests -q
+test:  ## run the test suite (needs: bun)
+	cd dashboard-ts && bun test
 
 check:  ## is it up?
 	@curl -fsS http://$(HOST):$(PORT)/health && echo || \
