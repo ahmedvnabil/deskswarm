@@ -48,6 +48,21 @@ it. The client brings the model; deskswarm brings the computer.
   database with this one and expects tables that no longer exist. CI now builds
   and tests `dashboard-ts`.
 
+**Fixed** (all three found driving a real machine, not by the tests)
+
+- Uploading a file into a machine hung for ever and took the dashboard with
+  it. `docker-modem` writes a Buffer with an explicit `Content-Length` and
+  ends the request itself, but pipes a stream and leaves the pipe to end it —
+  and under Bun that end never arrives, so the socket was never released and
+  every later Docker call queued behind it. Affected the dashboard's own file
+  upload too, not just MCP.
+- `launch_app` started programs inside the *bridge* container against the
+  throwaway Xvfb it keeps for pynput's sake, so the desktop never changed and
+  the bridge reported success anyway. It now launches in the machine's own
+  session, as the desktop user.
+- `launch_app` reported success for a program that is not installed. It now
+  checks first and says so.
+
 **Changed**
 
 - A **reserved** machine now refuses to issue keys, rather than being skipped

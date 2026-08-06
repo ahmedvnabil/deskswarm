@@ -356,9 +356,11 @@ describe("keys and machines", () => {
   });
 
   /**
-   * The id a deleted machine used is free to be reissued by SQLite's
-   * AUTOINCREMENT-less rowid reuse, so a key left pointing at it would come
-   * back to life aimed at a machine nobody meant to share.
+   * `computers.id` is AUTOINCREMENT, so a deleted machine's id is not handed
+   * to the next one — this is belt and braces rather than a live hole. It is
+   * worth a test anyway: the day someone drops AUTOINCREMENT to tidy the
+   * schema, a stale key would come back to life aimed at a machine nobody
+   * meant to share, and nothing else would notice.
    */
   test("a key does not survive its machine to reach the next one", async () => {
     await del(`/api/v1/computers/${id}`);
@@ -382,4 +384,44 @@ describe("keys and machines", () => {
     expect(r.status).toBe(400);
     expect(r.json.error).toContain("expiry");
   });
+});
+
+/**
+ * Launching something that isn't there.
+ *
+ * The bridge spawns and returns without waiting to see whether the spawn took,
+ * so it reports success for a program that does not exist. An agent then
+ * screenshots an unchanged desktop with no idea why — found doing exactly that
+ * against a real machine.
+ */
+test("launching a program that isn't installed says so", async () => {
+  const { execResult } = await import("./harness");
+  execResult.exit_code = 127; // `command -v` found nothing
+  const { result } = await callTool("m1", token, "launch_app", { app: "xterm" });
+  expect(result.isError).toBe(true);
+  expect(result.content[0].text).toContain("not installed");
+  expect(result.content[0].text).toContain("apt-get install");
+  const { launched } = await import("./harness");
+  expect(launched.length).toBe(0);
+});
+
+/**
+ * Launching goes to the desktop, never to the bridge.
+ *
+ * cua's VNC handler implements input and screen commands only, so the bridge's
+ * own `launch` falls through to a handler that runs inside the *bridge*
+ * container, against the throwaway Xvfb it keeps for pynput's sake. The
+ * program starts on a display nobody can see and the bridge reports success.
+ * Found by launching xterm on a real machine and watching the screenshot not
+ * change, three times.
+ */
+test("launching starts the program on the desktop, not the bridge", async () => {
+  const { launched } = await import("./harness");
+  const { result } = await callTool("m1", token, "launch_app", {
+    app: "xterm",
+    args: ["-e", "top"],
+  });
+  expect(result.isError).toBeUndefined();
+  expect(launched.at(-1)).toEqual(["m1", "xterm", ["-e", "top"]]);
+  expect(bridgeLog.some((b) => b[0] === "launch")).toBe(false);
 });

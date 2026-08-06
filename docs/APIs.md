@@ -453,8 +453,13 @@ and the model should read the message and try something else.
 Paths are relative to the machine's home directory and cannot climb out of it.
 
 `type_text` sends non-Latin text (Arabic, Chinese, emoji) through the
-clipboard automatically — the keyboard path goes through keysym lookup, which
-silently drops those characters.
+clipboard and Ctrl+V automatically — the keyboard path goes through keysym
+lookup, which silently drops those characters. Terminal emulators do not bind
+Ctrl+V, so for non-Latin text in one, write a file and run it instead.
+
+`launch_app` starts the program in the machine's own desktop session, not in
+the bridge container — and refuses with a clear message if the program is not
+installed, rather than reporting a launch nothing can see.
 
 A sleeping machine is woken by the first call that needs it, unless
 `DESKSWARM_MCP_AUTO_WAKE` is off.

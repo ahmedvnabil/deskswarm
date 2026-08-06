@@ -94,6 +94,8 @@ export interface MachineProvider {
   getClipboard(slug: string): Promise<string>;
   setClipboard(slug: string, text: string): Promise<void>;
   pasteText(slug: string, text: string): Promise<void>;
+  /** Start a program on the machine's own desktop session. */
+  launchApp(slug: string, app: string, args?: string[]): Promise<void>;
 
   // ---------------------------------------------------------------- files
   listHome(slug: string, rel?: string): Promise<HomeEntry[]>;

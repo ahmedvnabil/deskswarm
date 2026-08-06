@@ -18,8 +18,11 @@ import { envInt, nowIso } from "./settings";
 
 export const RETENTION_DAYS = envInt("DESKSWARM_AUDIT_RETENTION_DAYS", 90);
 
-// Routes worth no line: polling and health checks would drown everything else.
-const IGNORED_PATH_PREFIXES = ["/partials/", "/health", "/static/"];
+// Routes worth no line here: polling and health checks would drown everything
+// else, and /mcp writes its own — the generic hook can only see "POST
+// /mcp/<slug>", where the interesting part is which tool ran, for whom, on
+// what. Two rows per call, one of them useless, is worse than one good one.
+const IGNORED_PATH_PREFIXES = ["/partials/", "/health", "/static/", "/mcp/"];
 
 export interface AuditRow {
   id: number;

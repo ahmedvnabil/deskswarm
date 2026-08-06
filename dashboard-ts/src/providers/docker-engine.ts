@@ -91,7 +91,3 @@ export async function execInContainer(
   return { exit_code: info.ExitCode ?? null, output: demultiplex(raw) };
 }
 
-/** A Node stream over a byte buffer, for putArchive. */
-export function bufferStream(data: Buffer | Uint8Array): Readable {
-  return Readable.from([Buffer.from(data)]);
-}

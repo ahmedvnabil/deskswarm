@@ -286,9 +286,11 @@ is already installed before it assumes.
 Two details worth knowing:
 
 - **`type_text` handles Arabic and other non-Latin text** by routing it
-  through the clipboard. The keyboard path goes through keysym lookup, which
-  drops those characters silently — this is the difference between text
-  appearing and an empty window with no error.
+  through the clipboard and Ctrl+V. The keyboard path goes through keysym
+  lookup, which drops those characters silently — this is the difference
+  between text appearing and an empty window with no error. Terminal
+  emulators are the exception: they do not bind Ctrl+V, so for non-Latin text
+  in a terminal, write a file and run it.
 - **A sleeping machine wakes on the first call.** An outside client has no
   wake button, so without this a machine that dozed off would just stop
   answering. It is what makes idle-suspend safe to leave on.

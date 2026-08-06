@@ -34,7 +34,6 @@ import {
 } from "./../providers";
 import {
   checkBridge,
-  computerView,
   getComputer,
   touchActive,
   wakeAndWait,

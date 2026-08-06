@@ -27,6 +27,11 @@ export const pasted: [string, string][] = [];
 export const homes = new Map<string, Map<string, Uint8Array>>();
 export const snapshots = new Map<string, string>();
 export const execLog: string[] = [];
+/** Programs started on a machine's desktop, as [slug, app, args]. */
+export const launched: [string, string, string[]][] = [];
+/** What the next exec should report. Tests that care about a command failing
+ *  set exit_code here; reset() puts it back to success. */
+export const execResult = { ok: true, exit_code: 0, output: "" };
 /** Every command the bridge stub was asked to run, as [command, params]. The
  *  MCP tools are mostly thin translations onto these, so this is where a test
  *  checks that `click` really became a `left_click` at the right point. */
@@ -135,6 +140,9 @@ const stubs = {
     clipboards.set(slug, text);
     pasted.push([slug, text]);
   },
+  launchApp: async (slug: string, app: string, args: string[] = []) => {
+    launched.push([slug, app, args]);
+  },
   snapshotComputer: async (slug: string, tag: string) => {
     snapshots.set(tag, slug);
     return `img:${tag}`;
@@ -142,7 +150,7 @@ const stubs = {
   removeImage: async () => {},
   execInDesktopResult: async (_slug: string, command: string) => {
     execLog.push(command);
-    return { ok: true, exit_code: 0, output: "" };
+    return { ...execResult };
   },
   homeArchiveStream,
   restoreHome,
@@ -267,6 +275,8 @@ export function reset(): void {
   pasted.length = 0;
   execLog.length = 0;
   bridgeLog.length = 0;
+  launched.length = 0;
+  Object.assign(execResult, { ok: true, exit_code: 0, output: "" });
   // In-memory and process-wide, so a machine left "in use" by one test would
   // otherwise still be in use in the next one.
   activity.reset();

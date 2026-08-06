@@ -21,7 +21,6 @@ import { basename, dirname, join, normalize, posix } from "node:path";
 import * as tar from "tar-stream";
 
 import {
-  bufferStream,
   collect,
   docker,
   execInContainer,
@@ -775,6 +774,36 @@ export async function pasteText(slug: string, text: string): Promise<void> {
   }
 }
 
+/**
+ * Start a program on the machine's desktop.
+ *
+ * Deliberately not the bridge's own `launch` command, which is the obvious
+ * thing to reach for and is wrong: cua's VNC handler implements the input and
+ * screen commands only, so `launch` falls through to a handler that runs
+ * *inside the bridge container* against the throwaway Xvfb it keeps for
+ * pynput's sake. The program starts, on a display nobody can see, and the
+ * bridge reports success — the desktop is untouched and the agent that asked
+ * has no way to tell.
+ *
+ * Same shape as the clipboard path for the same reasons: as `cua`, with the
+ * desktop's DISPLAY, and detached with setsid so it outlives the exec that
+ * started it rather than dying with it.
+ */
+export async function launchApp(
+  slug: string,
+  app: string,
+  args: string[] = [],
+): Promise<void> {
+  const argv = [app, ...args].map(shellQuote).join(" ");
+  const res = await execInDesktop(
+    slug,
+    asDesktopUser(`setsid nohup ${argv} >/dev/null 2>&1 & disown`),
+  );
+  if (res.exit_code !== 0) {
+    throw new Error(res.output.trim() || `could not launch ${app}`);
+  }
+}
+
 // ------------------------------------------------------------------ files
 
 /**
@@ -860,8 +889,16 @@ export async function uploadToHome(
   pack.finalize();
   const archive = await collect(pack as unknown as NodeJS.ReadableStream);
 
+  // The Buffer goes to putArchive as a Buffer, not wrapped in a stream, and
+  // the difference is the whole upload working or hanging for ever.
+  // docker-modem writes a Buffer with an explicit Content-Length and calls
+  // req.end() itself; a stream it pipes instead, leaving the pipe to end the
+  // request — and under Bun that end never arrives. The request stays open,
+  // the caller never gets a reply, and because the socket is never released
+  // every later Docker call queues behind it until the whole dashboard stops
+  // answering anything that touches Docker.
   const c = docker().getContainer(desktopContainerName(slug));
-  await c.putArchive(bufferStream(archive) as any, { path: targetDir });
+  await c.putArchive(archive as any, { path: targetDir });
   return posix.join(targetDir, filename);
 }
 
@@ -950,6 +987,7 @@ export const dockerProvider: MachineProvider = {
   getClipboard,
   setClipboard,
   pasteText,
+  launchApp,
 
   listHome,
   uploadToHome,
