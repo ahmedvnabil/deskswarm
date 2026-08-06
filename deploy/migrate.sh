@@ -151,7 +151,20 @@ elif [ "$MODE" = "import" ]; then
   # The rows arrived with the database and their home volumes are back, but no
   # containers exist yet. `restart` is destroy-and-create with keep_home, which
   # is exactly that: new containers around the restored homes.
+  # An install that never set one carries DASHBOARD_TOKEN= across, and an
+  # empty Bearer header is a 401 — which is how the first run of this failed.
   TOKEN="$(grep '^DASHBOARD_TOKEN=' "$DIR/.env" 2>/dev/null | cut -d= -f2- || true)"
+  if [ -z "$TOKEN" ]; then
+    TOKEN="$(openssl rand -hex 24)"
+    if grep -q '^DASHBOARD_TOKEN=' "$DIR/.env"; then
+      sed -i "s|^DASHBOARD_TOKEN=.*|DASHBOARD_TOKEN=${TOKEN}|" "$DIR/.env"
+    else
+      echo "DASHBOARD_TOKEN=${TOKEN}" >> "$DIR/.env"
+    fi
+    echo "    the old install had no API token — generated one"
+    $COMPOSE up -d >/dev/null
+    sleep 5
+  fi
   BASE="$(dashboard_url)"
   IDS="$(curl -fsS -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/computers" |
          grep -oE '"id":[0-9]+' | cut -d: -f2 || true)"

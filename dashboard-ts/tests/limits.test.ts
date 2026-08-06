@@ -15,6 +15,9 @@ interface Call {
 }
 
 const calls: Call[] = [];
+/** Images this host already has. Empty means every create has to pull first. */
+const present = new Set<string>(["img"]);
+const pulled: string[] = [];
 let refuseOn: string[] = [];
 /** An error the fake raises for every call, whatever the limits. */
 let alwaysThrow: string | null = null;
@@ -22,6 +25,18 @@ let alwaysThrow: string | null = null;
 /** Docker, reduced to the two calls createContainer + start make. */
 mock.module("../src/providers/docker-engine", () => ({
   docker: () => ({
+    getImage: (name: string) => ({
+      inspect: async () => {
+        if (!present.has(name)) throw Object.assign(new Error("no such image"), { statusCode: 404 });
+        return {};
+      },
+    }),
+    pull: async (name: string) => {
+      pulled.push(name);
+      present.add(name);
+      return {};
+    },
+    modem: { followProgress: (_s: any, cb: any) => cb(null, []) },
     createContainer: async (spec: Call) => {
       calls.push(spec);
       if (alwaysThrow) throw new Error(alwaysThrow);
@@ -47,6 +62,9 @@ beforeEach(() => {
   calls.length = 0;
   refuseOn = [];
   alwaysThrow = null;
+  pulled.length = 0;
+  present.clear();
+  present.add("img");
   fleet.resetLimitsProbe();
 });
 
@@ -98,4 +116,18 @@ test("the watchers script ignores the bridge's own connection", () => {
   // machine look permanently in use and defeat the idle sweep.
   expect(fleet.VNC_WATCHERS_SCRIPT).toContain("1AF5");     // 6901, the browser
   expect(fleet.VNC_WATCHERS_SCRIPT).not.toContain("170D"); // 5901, the bridge
+});
+
+test("a missing image is pulled instead of 404ing", async () => {
+  // The Python SDK's containers.run() pulled on its own. dockerode's
+  // createContainer does not, so a fresh host failed on its first machine with
+  // "No such image: trycua/xfce-cua" — found on a real migration, not here.
+  await fleet.runContainer({ name: "x", Image: "trycua/xfce-cua:latest" });
+  expect(pulled).toEqual(["trycua/xfce-cua:latest"]);
+  expect(calls.length).toBe(1);
+});
+
+test("an image already present is not pulled again", async () => {
+  await fleet.runContainer({ name: "x", Image: "img" });
+  expect(pulled).toEqual([]);
 });

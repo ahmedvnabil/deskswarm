@@ -143,6 +143,32 @@ export async function ensureBridgeImage(): Promise<void> {
   });
 }
 
+/**
+ * Make sure an image is on this host, pulling it if it is not.
+ *
+ * The Python SDK's `containers.run()` pulled a missing image on its own;
+ * dockerode's `createContainer` answers 404 and stops. Without this, a fresh
+ * install fails on its first machine with "No such image: trycua/xfce-cua",
+ * which is a confusing way to learn that a 1.8 GB download was needed.
+ */
+export async function ensureImage(image: string): Promise<void> {
+  try {
+    await docker().getImage(image).inspect();
+    return;
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+  }
+  const stream = await docker().pull(image);
+  await new Promise<void>((resolve, reject) => {
+    docker().modem.followProgress(stream, (err: any, out: any[]) => {
+      if (err) return reject(err);
+      const failed = out?.find((line) => line?.error);
+      if (failed) return reject(new Error(failed.error));
+      resolve();
+    });
+  });
+}
+
 export async function usedNovncPorts(): Promise<Set<number>> {
   const ports = new Set<number>();
   const containers = await docker().listContainers({ all: true });
@@ -217,6 +243,7 @@ const UNSUPPORTED_HINTS = [
  * than running it unbounded, so we try once, learn, and stop asking.
  */
 export async function runContainer(spec: any, limits: Limits = {}): Promise<void> {
+  if (spec?.Image) await ensureImage(spec.Image);
   const withLimits = {
     ...spec,
     HostConfig: { ...spec.HostConfig, ...limits },
