@@ -9,6 +9,14 @@
 <style>
   body { font-family: ui-sans-serif, system-ui, sans-serif; }
   .mono { font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace; }
+
+  /* At the smallest size a tile is a status light, not a readout: the facts
+     column and the secondary tools have nowhere to go, so they go. Done in CSS
+     off a class on the grid rather than by re-rendering, because the size is a
+     local preference and the server has no business knowing it. */
+  .wall-sm .tile-facts,
+  .wall-sm .tile-tools { display: none; }
+  .wall-sm .tile-shot  { width: 100%; }
 </style>
 </head>
 <body class="bg-neutral-950 text-neutral-200 min-h-screen">
@@ -52,6 +60,8 @@
           <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
           <button type="button" onclick="setWallSize('md')" data-size="md" class="wall-size bg-neutral-800 rounded px-2 py-1">M</button>
           <button type="button" onclick="setWallSize('lg')" data-size="lg" class="wall-size bg-neutral-800 rounded px-2 py-1">L</button>
+          <button type="button" id="legend-toggle" onclick="showLegend()" title="what am I looking at?"
+            class="hidden text-neutral-600 hover:text-neutral-300 px-1">?</button>
         </div>
         <form onsubmit="addComputer(event)" class="flex items-center gap-2">
           <input id="new-computer-name" required placeholder="name, or agent-{1..10}"
@@ -66,6 +76,56 @@
           </button>
         </form>
       </div>
+      {# What the wall is telling you. Shown until it is dismissed, then never
+         again — a legend is worth a lot on the first day and is clutter by the
+         third, and which of those you are in is not something the server can
+         guess. #}
+      <div id="wall-legend" class="hidden mb-3 border border-neutral-800 rounded-lg bg-neutral-900/40 px-4 py-3">
+        <div class="flex items-start justify-between gap-4 mb-2.5">
+          <div class="text-xs text-neutral-300">
+            Each tile is one Linux desktop. Click its picture for a real
+            keyboard-and-mouse session; <span class="text-neutral-200">access</span>
+            issues the key an MCP client needs to drive it.
+          </div>
+          <button onclick="dismissLegend()" title="hide this"
+            class="text-neutral-600 hover:text-neutral-300 text-xs shrink-0">hide</button>
+        </div>
+        <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-1.5 text-[11px]">
+          <div class="flex items-baseline gap-2">
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-amber-500/15 text-amber-300 border border-amber-500/40 shrink-0">in use</span>
+            <span class="text-neutral-500">a client called it in the last 90s — the tile names the tool and who ran it</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">idle</span>
+            <span class="text-neutral-500">running and reachable, nothing happening in it</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-neutral-800 text-neutral-400 border border-neutral-700 shrink-0">asleep</span>
+            <span class="text-neutral-500">stopped, costs no memory, files kept — the next MCP call wakes it</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-red-500/15 text-red-300 border border-red-500/40 shrink-0">down</span>
+            <span class="text-neutral-500">its containers are gone or not answering — <span class="text-neutral-400">restart</span> rebuilds them and keeps the files</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-amber-400/90 shrink-0 w-[4.5rem]">no key</span>
+            <span class="text-neutral-500">nothing can reach it yet; issue one from <span class="text-neutral-400">access</span></span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-[9px] rounded px-1 py-px bg-sky-500/20 text-sky-300 border border-sky-500/40 shrink-0">yours</span>
+            <span class="text-neutral-500">reserved — no new key can be issued while it is</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-neutral-400 shrink-0 w-[4.5rem]">the picture</span>
+            <span class="text-neutral-500">a still, refreshed every few seconds — not a live stream</span>
+          </div>
+          <div class="flex items-baseline gap-2">
+            <span class="text-neutral-400 shrink-0 w-[4.5rem]">S · M · L</span>
+            <span class="text-neutral-500">tile size; S drops to screens only, for a large fleet</span>
+          </div>
+        </div>
+      </div>
+
       <div id="fleet-status" hx-get="/partials/fleet" hx-trigger="load, every 5s, refresh" hx-swap="innerHTML">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
@@ -134,6 +194,25 @@
   tick(); setInterval(tick, 1000);
   setWallSize(localStorage.getItem('wallSize') || 'md');
 
+  // The legend starts hidden in the markup and is revealed here, so someone
+  // who dismissed it never sees it flash on the way past.
+  if(localStorage.getItem('wallLegend') === 'hidden'){
+    document.getElementById('legend-toggle').classList.remove('hidden');
+  } else {
+    document.getElementById('wall-legend').classList.remove('hidden');
+  }
+  function dismissLegend(){
+    localStorage.setItem('wallLegend', 'hidden');
+    document.getElementById('wall-legend').classList.add('hidden');
+    const b = document.getElementById('legend-toggle');
+    if(b) b.classList.remove('hidden');
+  }
+  function showLegend(){
+    localStorage.removeItem('wallLegend');
+    document.getElementById('wall-legend').classList.remove('hidden');
+    document.getElementById('legend-toggle').classList.add('hidden');
+  }
+
   // ---------------------------------------------------------------- modal
   function openModal(title){
     document.getElementById('modal-title').textContent = title;
@@ -170,7 +249,8 @@
   function setWallSize(k){
     localStorage.setItem('wallSize', k);
     const grid = document.getElementById('wall-grid');
-    if(grid) grid.className = 'grid gap-3 ' + SIZES[k];
+    // 'wall-sm' is what the stylesheet keys the stripped-down tile off.
+    if(grid) grid.className = 'grid gap-3 ' + SIZES[k] + (k === 'sm' ? ' wall-sm' : '');
     document.querySelectorAll('.wall-size').forEach(b => {
       const on = b.dataset.size === k;
       b.className = 'wall-size rounded px-2 py-1 ' +
@@ -198,7 +278,14 @@
   }
 
   // The wall re-renders every 5s; re-apply size and filter afterwards.
-  document.body.addEventListener('htmx:afterSwap', e => {
+  //
+  // afterSettle, not afterSwap. htmx swaps the new DOM in, then *settles* it —
+  // and settling walks the swapped content restoring attributes, which threw
+  // away anything set in between. The symptom was that choosing S or L looked
+  // like it worked and reverted at the next poll five seconds later, and the
+  // wall filter forgot itself on the same beat. Same family as the bug that
+  // moved the default columns into the template; this is the other half of it.
+  document.body.addEventListener('htmx:afterSettle', e => {
     if(e.detail.target.id !== 'fleet-status') return;
     // The template already renders the default (md) columns, so this only
     // matters when the user has chosen another size.
@@ -616,6 +703,32 @@
     const j = await r.json();
     if(!j.ok) alert(j.error || 'snapshot failed');
     else refreshSnapshots();
+  }
+
+  // Everything a tile does not have room for. A menu rather than eight more
+  // buttons: these are the actions you reach for once a week, and paying for
+  // them with permanent tile space on every machine is the wrong trade.
+  function openMore(id, name, sleeping, reserved){
+    openModal(name);
+    const item = (label, hint, call, cls) =>
+      '<button onclick="closeModal(); ' + call + '" class="w-full text-left px-3 py-2 rounded ' +
+      'hover:bg-neutral-800 flex items-baseline gap-3 ' + (cls || '') + '">' +
+      '<span class="text-sm w-24 shrink-0">' + label + '</span>' +
+      '<span class="text-xs text-neutral-500">' + hint + '</span></button>';
+    const n = JSON.stringify(name);
+    document.getElementById('modal-body').innerHTML =
+      '<div class="space-y-0.5">' +
+      item('clip', 'copy and paste text between here and this machine', `openClipboard(${id}, ${n})`) +
+      item('share', 'give one person a link to this machine only', `openShare(${id}, ${n})`) +
+      item('backups', "archive this machine's home, or put an archive back", `openBackups(${id}, ${n})`) +
+      item('snapshot', 'save what is installed, to create new machines from', `snapshotComputer(${id}, ${n})`) +
+      item('rename', 'change the display name; the endpoint and keys are unaffected', `renameComputer(${id}, ${n})`) +
+      item(reserved ? 'unreserve' : 'reserve',
+           reserved ? 'allow keys to be issued for it again'
+                    : 'keep it for yourself — no new key can be issued for it',
+           `toggleReserved(${id}, ${reserved ? 0 : 1})`) +
+      item('restart', 'recreate its containers, keeping its files', `restartComputer(${id}, ${n})`) +
+      '</div>';
   }
 
   // --------------------------------------------------------------- keys

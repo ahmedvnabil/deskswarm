@@ -17,7 +17,10 @@ import {
   type Computer,
 } from "./../machines";
 import { recentActivity } from "./../mcp/activity";
-import { deleteForComputer as deleteKeysForComputer } from "./../mcp/keys";
+import {
+  deleteForComputer as deleteKeysForComputer,
+  liveCountByComputer as liveKeyCounts,
+} from "./../mcp/keys";
 import { render } from "./../templates";
 import { requireToken } from "./../security";
 import { MAX_CLIPBOARD_KB, SHOT_TTL } from "./../settings";
@@ -52,11 +55,30 @@ machines.get("/partials/fleet", async (c) => {
   // a tile with a live MCP session is outlined and captioned with the last
   // tool that ran, which is as close to "watch it work" as a still gets.
   const live = recentActivity();
-  const computers = await computerViews(listComputers(), browserHost(c));
-  for (const view of computers) view.activity = live[view.name];
+  const keyCounts = liveKeyCounts();
+  const rows = listComputers();
+  const computers = await computerViews(rows, browserHost(c));
+  for (const view of computers) {
+    view.activity = live[view.name];
+    // A machine with no live key is one no client can reach — worth saying on
+    // the tile, because it looks identical to a working one otherwise.
+    view.keys_live = keyCounts[view.id] ?? 0;
+  }
+  // The counts under the filter chips: the fleet at a glance, before you read
+  // a single tile.
+  const summary = {
+    total: computers.length,
+    in_use: computers.filter((v) => v.activity).length,
+    idle: computers.filter((v) => !v.activity && !v.sleeping && v.bridge_ok).length,
+    asleep: computers.filter((v) => v.sleeping).length,
+    down: computers.filter((v) => !v.sleeping && !v.bridge_ok).length,
+    keys: Object.values(keyCounts).reduce((a, b) => a + b, 0),
+    unreachable: computers.filter((v) => !v.keys_live && !v.reserved).length,
+  };
   return c.html(
     render("_fleet.html", {
       computers,
+      summary,
       shot_token: Math.floor(Date.now() / 1000 / SHOT_TTL),
     }),
   );

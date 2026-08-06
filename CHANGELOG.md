@@ -48,7 +48,30 @@ it. The client brings the model; deskswarm brings the computer.
   database with this one and expects tables that no longer exist. CI now builds
   and tests `dashboard-ts`.
 
-**Fixed** (all three found driving a real machine, not by the tests)
+**Changed — the wall**
+
+- Tiles now carry the facts rather than only a picture: the state as a word
+  (`in use` / `idle` / `asleep` / `down`), what an outside client is doing and
+  who is doing it, how many live keys reach the machine, and its image and
+  port. A desktop shrunk to a thumbnail is unreadable, so the screen is now
+  the smaller half of the tile and answers only "is anything on screen".
+- **A machine with no key is called out.** It is running, reachable and
+  useless — nothing can talk to it — and it looked exactly like a working one.
+- A summary line above the wall: how many machines are in each state, how many
+  live keys exist, and how many machines have none.
+- A legend explaining every state, dismissible and brought back with `?`.
+- Actions are on the tile instead of behind a hover, since half of them are how
+  you recover a machine that is down. The rarer ones moved into a `···` menu.
+- The empty state now walks through add → issue a key → point a client at it.
+
+**Fixed** (all found driving the thing, not by the tests)
+
+- Choosing wall size S or L silently reverted to M at the next 5s refresh, and
+  the wall filter forgot itself on the same beat. The re-apply ran on
+  `htmx:afterSwap`, and htmx's settle step — which runs after it — restores
+  attributes on the swapped content, throwing the change away. Moved to
+  `htmx:afterSettle`. Same family as the bug that put the default columns in
+  the template; this was the other half of it.
 
 - Uploading a file into a machine hung for ever and took the dashboard with
   it. `docker-modem` writes a Buffer with an explicit `Content-Length` and

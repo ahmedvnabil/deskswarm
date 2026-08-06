@@ -33,6 +33,11 @@ const machine = {
   desktop_state: "running",
   bridge_state: "running",
   activity: { tool: "click", label: "claude code", ok: true, seconds_ago: 4 },
+  keys_live: 2,
+};
+
+const fleetSummary = {
+  total: 1, in_use: 1, idle: 0, asleep: 0, down: 0, keys: 2, unreachable: 0,
 };
 
 const mcpKey = {
@@ -52,7 +57,10 @@ const share = {
 /** Both shapes every template has to survive: full, and completely empty. */
 const contexts: Record<string, [full: object, empty: object]> = {
   "index.html": [{ computers: [machine], actor: "sara" }, { computers: [], actor: null }],
-  "_fleet.html": [{ computers: [machine], shot_token: 1 }, { computers: [], shot_token: 1 }],
+  "_fleet.html": [
+    { computers: [machine], summary: fleetSummary, shot_token: 1 },
+    { computers: [], summary: { total: 0, in_use: 0, idle: 0, asleep: 0, down: 0, keys: 0, unreachable: 0 }, shot_token: 1 },
+  ],
   "_guards.html": [
     { g: { memory_available_mb: 900, memory_source: "meminfo", disk_free_gb: 12,
            machines_in_use: 2, blocking: ["stopped"],
@@ -167,6 +175,47 @@ test("every partial route answers", async () => {
   ]) {
     const r = await get(path);
     expect(`${path} -> ${r.status}`).toBe(`${path} -> 200`);
+  }
+});
+
+/**
+ * A machine nothing can reach looks identical to a working one.
+ *
+ * It is running, its bridge answers, its screen is fine — and no client on
+ * earth can talk to it, because no key was ever issued. That is the one state
+ * the wall has to volunteer, since nothing about the machine itself is wrong.
+ */
+test("a machine with no key says so, and points at the fix", () => {
+  const ctx = contexts["_fleet.html"][0] as any;
+  const withKey = render("_fleet.html", ctx);
+  expect(withKey).toContain("2 live keys");
+  expect(withKey).not.toContain("unreachable");
+
+  const without = render("_fleet.html", {
+    ...ctx,
+    computers: [{ ...machine, keys_live: 0 }],
+    summary: { ...fleetSummary, keys: 0, unreachable: 1 },
+  });
+  expect(without).toContain("no key — unreachable");
+  // and the access button is the highlighted one, not just another grey pill
+  expect(without).toContain("bg-amber-500 hover:bg-amber-400");
+});
+
+test("the tile states are named, not only coloured", () => {
+  // A border tint is not a status. Each tile carries the word as well, and the
+  // same word the filter chips and the summary line use.
+  for (const [state, word] of [
+    [{ activity: { tool: "click", label: "c", ok: true, seconds_ago: 1 } }, "in use"],
+    [{ sleeping: true, bridge_ok: false }, "asleep"],
+    [{ bridge_ok: false }, "down"],
+    [{}, "idle"],
+  ] as [object, string][]) {
+    const html = render("_fleet.html", {
+      computers: [{ ...machine, activity: undefined, ...state }],
+      summary: fleetSummary,
+      shot_token: 1,
+    });
+    expect(`${word}: ${html.includes(">" + word + "</span>")}`).toBe(`${word}: true`);
   }
 });
 

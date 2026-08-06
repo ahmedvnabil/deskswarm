@@ -182,6 +182,23 @@ export function listing(computerId?: number | null): KeyRow[] {
   return rows.map((r) => ({ ...r, status: status(r) }));
 }
 
+/**
+ * How many live keys each machine has, keyed by computer_id.
+ *
+ * One query for the whole fleet rather than one per tile: the wall re-renders
+ * every five seconds, and a machine with no key is worth showing precisely
+ * because nothing can reach it — so this is read on every one of those.
+ */
+export function liveCountByComputer(): Record<number, number> {
+  const rows = all<{ computer_id: number; n: number }>(
+    "SELECT computer_id, COUNT(*) AS n FROM mcp_keys " +
+      "WHERE revoked = 0 AND (expires_at IS NULL OR expires_at > ?) " +
+      "GROUP BY computer_id",
+    nowIso(),
+  );
+  return Object.fromEntries(rows.map((r) => [r.computer_id, r.n]));
+}
+
 /** Keys issued against a machine that no longer exists are dead weight, and
  *  deleting a machine should not leave its authority lying in the table. */
 export function deleteForComputer(computerId: number): number {

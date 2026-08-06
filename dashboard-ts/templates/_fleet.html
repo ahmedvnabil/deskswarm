@@ -1,135 +1,201 @@
 {% if not computers.length %}
-<div class="border border-dashed border-neutral-800 rounded-lg p-10 text-center">
-  <div class="text-neutral-400 text-sm mb-1">No machines yet</div>
-  <div class="text-neutral-600 text-xs">Add one above — it boots a full XFCE desktop plus its agent bridge.</div>
+{# The empty state teaches the flow, because there is no other moment where
+   someone is guaranteed to be looking and has nothing else to read. #}
+<div class="border border-dashed border-neutral-800 rounded-lg p-8">
+  <div class="max-w-2xl">
+    <div class="text-neutral-300 text-sm font-semibold mb-1">No machines yet</div>
+    <div class="text-neutral-500 text-xs mb-5">
+      A machine is a full XFCE Linux desktop in a container, plus a bridge that
+      turns calls into keyboard, mouse and screen. It takes about a second.
+    </div>
+    <ol class="text-xs text-neutral-400 space-y-2">
+      <li><span class="text-amber-400 mono mr-2">1</span>
+        Type a name above and hit <span class="text-neutral-200">+ add</span>.
+        <span class="text-neutral-600">A range like <span class="mono">agent-{1..10}</span> makes ten.</span></li>
+      <li><span class="text-amber-400 mono mr-2">2</span>
+        Open its <span class="text-neutral-200">access</span> panel and issue a key.</li>
+      <li><span class="text-amber-400 mono mr-2">3</span>
+        Paste the <span class="mono text-neutral-300">claude mcp add</span> command it gives you
+        into your client. That client now has the machine.</li>
+    </ol>
+  </div>
 </div>
 {% else %}
+
+{# ------------------------------------------------------------- summary ---
+   The fleet in one line, before you read a single tile. The state words here
+   are the same ones on the tiles and in the filter chips, on purpose — three
+   different vocabularies for one thing is how a dashboard stops being read. #}
+<div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] mono text-neutral-500 mb-2.5">
+  <span class="text-neutral-400">{{ summary.total }} machine{{ '' if summary.total == 1 else 's' }}</span>
+  {% if summary.in_use %}<span class="text-amber-400">{{ summary.in_use }} in use</span>{% endif %}
+  {% if summary.idle %}<span class="text-emerald-400">{{ summary.idle }} idle</span>{% endif %}
+  {% if summary.asleep %}<span class="text-neutral-500">{{ summary.asleep }} asleep</span>{% endif %}
+  {% if summary.down %}<span class="text-red-400">{{ summary.down }} down</span>{% endif %}
+  <span class="text-neutral-700">|</span>
+  <span>{{ summary.keys }} live key{{ '' if summary.keys == 1 else 's' }}</span>
+  {% if summary.unreachable %}
+  <span class="text-neutral-500"
+        title="No client can reach these — issue a key from a machine's access panel">
+    {{ summary.unreachable }} with no key
+  </span>
+  {% endif %}
+</div>
+
 {# The column classes are rendered here, not applied by JS after the swap:
    relying on the script left the grid with no columns whenever it lost the
    race with htmx's initial load, and every tile went full-width. JS only
    overrides this when the user picks a different size. #}
 <div id="wall-grid" class="grid gap-3 grid-cols-2 md:grid-cols-3 2xl:grid-cols-4">
   {% for c in computers %}
-  <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900
-       {%- if c.activity %} border-amber-500/50
-       {%- elif c.sleeping %} border-neutral-800
-       {%- elif not c.bridge_ok %} border-red-500/40
+  {# One state per tile, decided once here so the chip, the dot, the border and
+     the filter can never disagree about what a machine is doing. #}
+  {% set state = 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) %}
+  {% set label = {'busy':'in use','asleep':'asleep','idle':'idle','down':'down'}[state] %}
+  {% set tone  = {'busy':'amber','asleep':'neutral','idle':'emerald','down':'red'}[state] %}
+
+  <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900 flex flex-col
+       {%- if state == 'busy' %} border-amber-500/60
+       {%- elif state == 'down' %} border-red-500/50
        {%- elif c.reserved %} border-sky-500/40
        {%- else %} border-neutral-800{% endif %}"
        data-name="{{ c.name|e }}" data-id="{{ c.id }}"
-       data-state="{{ 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) }}"
+       data-state="{{ state }}"
        data-reserved="{{ 1 if c.reserved else 0 }}"
        data-sleeping="{{ 1 if c.sleeping else 0 }}">
 
-    {# Click the picture to open a real interactive session for this machine. #}
-    <div class="aspect-[16/10] bg-black relative cursor-pointer"
-         onclick="openLive({{ c.id }}, '{{ c.name|e }}', '{{ c.novnc_url }}')">
-      {% if c.sleeping %}
-      {# Stopped on purpose: no screen to show, and no bridge to ask. The tile
-         stays clickable — openLive wakes it first. #}
-      <div class="absolute inset-0 flex items-center justify-center text-center bg-neutral-950">
-        <div>
-          <div class="text-neutral-500 text-lg leading-none">☾</div>
-          <div class="text-[10px] text-neutral-500 mt-1">sleeping · 0 MB</div>
-          <button onclick="event.stopPropagation(); wakeComputer({{ c.id }}, '{{ c.name|e }}')"
-            class="mt-2 bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-1 rounded">wake</button>
-        </div>
-      </div>
-      {% elif c.bridge_ok %}
-      {# src is rendered server-side with a token that only ticks every few
-         seconds: the picture loads on first paint, the 5s partial swap reuses
-         the cached URL (so no flicker), and the token change pulls a fresh
-         frame. alt is empty so a failed frame never paints text over the
-         overlay. #}
-      <img class="wall-shot absolute inset-0 w-full h-full object-cover
-                  {{ '' if c.activity else 'opacity-60 group-hover:opacity-90' }}"
-           src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
-           {# Not lazy. The wall replaces its own DOM every five seconds, and a
-              lazy image is only fetched after a layout pass decides it is near
-              the viewport — which never happens, because the element is gone
-              before that. Every tile is the content of this page, so there is
-              nothing to defer anyway. #}
-           alt="">
-      {% else %}
-      <div class="absolute inset-0 flex items-center justify-center text-center">
-        <div>
-          <div class="text-red-400 text-xs font-semibold">
-            {{ 'containers missing' if c.desktop_state == 'missing' else 'bridge down' }}
-          </div>
-          <div class="text-[10px] text-neutral-600 mt-0.5">{{ c.desktop_state }}/{{ c.bridge_state }}</div>
-          <button onclick="event.stopPropagation(); restartComputer({{ c.id }}, '{{ c.name|e }}')"
-            class="mt-2 bg-neutral-800 hover:bg-neutral-700 text-[10px] px-2 py-1 rounded">restart</button>
-        </div>
-      </div>
-      {% endif %}
-      <div class="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/50 pointer-events-none"></div>
-    </div>
-
-    <!-- top overlay: selection + name + status -->
-    <div class="absolute top-0 inset-x-0 px-2 py-1.5 flex items-start gap-1.5 pointer-events-none">
-      <span class="h-1.5 w-1.5 rounded-full mt-1.5 shrink-0
-        {%- if c.activity %} bg-amber-400 animate-pulse
-        {%- elif c.sleeping %} bg-neutral-600
-        {%- elif c.bridge_ok %} bg-emerald-500
+    <!-- ------------------------------------------------------------ head -->
+    <div class="flex items-center gap-2 px-2.5 py-1.5 border-b border-neutral-800/80 bg-neutral-950/40">
+      <span class="h-1.5 w-1.5 rounded-full shrink-0
+        {%- if state == 'busy' %} bg-amber-400 animate-pulse
+        {%- elif state == 'idle' %} bg-emerald-500
+        {%- elif state == 'asleep' %} bg-neutral-600
         {%- else %} bg-red-500{% endif %}"></span>
-      <span class="text-[11px] font-semibold truncate drop-shadow">{{ c.name }}</span>
+      <span class="text-[12px] font-semibold truncate">{{ c.name }}</span>
+
+      <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px shrink-0
+        {%- if tone == 'amber' %} bg-amber-500/15 text-amber-300 border border-amber-500/40
+        {%- elif tone == 'emerald' %} bg-emerald-500/10 text-emerald-300 border border-emerald-500/30
+        {%- elif tone == 'red' %} bg-red-500/15 text-red-300 border border-red-500/40
+        {%- else %} bg-neutral-800 text-neutral-400 border border-neutral-700{% endif %}">{{ label }}</span>
+
       {% if c.reserved %}
-      <span title="reserved for you — keys cannot be issued for it while it is"
+      <span title="reserved for you — no new key can be issued while it is"
         class="text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded px-1 py-px shrink-0">yours</span>
       {% endif %}
-      <button class="ml-auto pointer-events-auto text-neutral-400 hover:text-red-400 text-xs leading-none"
-              title="remove" onclick="event.stopPropagation(); removeComputer({{ c.id }}, '{{ c.name|e }}')">✕</button>
+
+      <button class="ml-auto text-neutral-600 hover:text-red-400 text-xs leading-none shrink-0"
+              title="remove this machine and its keys"
+              onclick="event.stopPropagation(); removeComputer({{ c.id }}, '{{ c.name|e }}')">✕</button>
     </div>
 
-    <!-- bottom overlay: what it's doing -->
-    <div class="absolute bottom-0 inset-x-0 px-2 py-1.5 pointer-events-none">
-      {% if c.activity %}
-      {# What the outside client did last, and how long ago. This is the whole
-         of "watch it work" for a machine nobody is looking at directly. #}
-      <div class="text-[10px] mono {{ 'text-amber-300' if c.activity.ok else 'text-red-400' }} truncate">
-        {{ c.activity.tool }} · {{ c.activity.seconds_ago }}s ago</div>
-      <div class="text-[10px] text-neutral-300 truncate">{{ c.activity.label }}</div>
-      {% else %}
-      <div class="text-[10px] mono text-neutral-400">
-        {{ 'sleeping' if c.sleeping else ('idle' if c.bridge_ok else 'offline') }} · :{{ c.novnc_port }}
+    <!-- ------------------------------------------------------------ body -->
+    <div class="flex min-h-0 flex-1">
+
+      {# The screen. Deliberately no longer the whole tile: a desktop shrunk to
+         a thumbnail is unreadable, so it answers "is something on screen" and
+         the column beside it answers everything you actually came to ask. #}
+      <div class="tile-shot relative w-[46%] shrink-0 bg-black cursor-pointer aspect-[16/10]"
+           onclick="openLive({{ c.id }}, '{{ c.name|e }}', '{{ c.novnc_url }}')"
+           title="open a real keyboard-and-mouse session">
+        {% if c.sleeping %}
+        <div class="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 gap-1">
+          <div class="text-neutral-600 text-lg leading-none">☾</div>
+          <div class="text-[9px] text-neutral-600">no memory used</div>
+        </div>
+        {% elif c.bridge_ok %}
+        {# src is rendered server-side with a token that only ticks every few
+           seconds: the picture loads on first paint, the 5s partial swap reuses
+           the cached URL (so no flicker), and the token change pulls a fresh
+           frame. alt is empty so a failed frame never paints text over it. #}
+        <img class="wall-shot absolute inset-0 w-full h-full object-cover
+                    {{ '' if c.activity else 'opacity-70 group-hover:opacity-100' }}"
+             src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
+             {# Not lazy. The wall replaces its own DOM every five seconds, and a
+                lazy image is only fetched after a layout pass decides it is near
+                the viewport — which never happens, because the element is gone
+                before that. #}
+             alt="">
+        {% else %}
+        <div class="absolute inset-0 flex items-center justify-center bg-neutral-950">
+          <div class="text-[9px] text-red-400/70 text-center px-1">no screen</div>
+        </div>
+        {% endif %}
       </div>
-      {% endif %}
+
+      {# The facts. Hidden at the smallest wall size, where there is no room for
+         them and the tile is a status light rather than a readout. #}
+      <div class="tile-facts flex-1 min-w-0 px-2.5 py-2 text-[10px] leading-tight space-y-1.5">
+
+        {% if c.activity %}
+        <div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">doing now</div>
+          <div class="mono truncate {{ 'text-amber-300' if c.activity.ok else 'text-red-400' }}">
+            {{ c.activity.tool }}{{ '' if c.activity.ok else ' — failed' }}
+          </div>
+          <div class="text-neutral-400 truncate">{{ c.activity.label }} · {{ c.activity.seconds_ago }}s ago</div>
+        </div>
+        {% elif state == 'down' %}
+        <div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">problem</div>
+          <div class="text-red-400">{{ 'containers missing' if c.desktop_state == 'missing' else 'bridge not answering' }}</div>
+          <div class="text-neutral-600 mono">{{ c.desktop_state }}/{{ c.bridge_state }}</div>
+        </div>
+        {% endif %}
+
+        <div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">access</div>
+          {% if c.keys_live %}
+          <div class="text-neutral-300">{{ c.keys_live }} live key{{ '' if c.keys_live == 1 else 's' }}</div>
+          {% elif c.reserved %}
+          <div class="text-sky-300">reserved — no keys</div>
+          {% else %}
+          {# The one gap worth shouting about: this machine is fine and no
+             client on earth can reach it. It looks identical to a working one
+             otherwise, which is exactly why it needs saying. #}
+          <div class="text-amber-400/90">no key — unreachable</div>
+          {% endif %}
+        </div>
+
+        <div class="text-neutral-600 mono truncate">
+          {{ c.image.split(':')[1] if c.image else 'clean' }} · :{{ c.novnc_port }}
+        </div>
+      </div>
     </div>
 
-    {# Hover actions. Two columns: eight buttons in one column ran taller than
-       the tile at the small wall size and spilled over the status line. #}
-    <div class="absolute top-7 right-1.5 grid grid-cols-2 gap-1 opacity-0 group-hover:opacity-100 transition">
-      <button onclick="event.stopPropagation(); openTerminal({{ c.id }}, '{{ c.name|e }}')"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">shell</button>
-      <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">apps</button>
-      <button onclick="event.stopPropagation(); openFiles({{ c.id }}, '{{ c.name|e }}')"
-        title="put files on this machine, or take them off"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">files</button>
-      <button onclick="event.stopPropagation(); openClipboard({{ c.id }}, '{{ c.name|e }}')"
-        title="copy and paste between here and this machine"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">clip</button>
-      <button onclick="event.stopPropagation(); snapshotComputer({{ c.id }}, '{{ c.name|e }}')"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">snap</button>
-      <button onclick="event.stopPropagation(); renameComputer({{ c.id }}, '{{ c.name|e }}')"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">name</button>
-      <button onclick="event.stopPropagation(); toggleReserved({{ c.id }}, {{ 0 if c.reserved else 1 }})"
-        title="{{ 'allow keys for this machine again' if c.reserved else 'reserve for yourself — no new keys can be issued for it' }}"
-        class="{{ 'bg-sky-600/80 hover:bg-sky-600' if c.reserved else 'bg-neutral-900/90 hover:bg-neutral-800' }} text-[10px] px-2 py-1 rounded">
-        {{ 'unreserve' if c.reserved else 'reserve' }}</button>
-      <button onclick="event.stopPropagation(); openBackups({{ c.id }}, '{{ c.name|e }}')"
-        title="back up this machine's home, or put a backup back"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">save</button>
-      <button onclick="event.stopPropagation(); openShare({{ c.id }}, '{{ c.name|e }}')"
-        title="give someone a link to this machine only"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">share</button>
+    <!-- ----------------------------------------------------------- foot -->
+    {# Actions are on the tile rather than behind a hover: half of these are
+       how you'd recover a machine that is down, and needing to know they are
+       there is a poor thing to require of someone whose fleet just broke. #}
+    <div class="flex items-center gap-1 px-2 py-1.5 border-t border-neutral-800/80 bg-neutral-950/40">
       <button onclick="event.stopPropagation(); openAccess({{ c.id }}, '{{ c.name|e }}')"
-        title="its MCP endpoint and the keys that reach it"
-        class="bg-amber-600/80 hover:bg-amber-600 text-neutral-950 font-semibold text-[10px] px-2 py-1 rounded">access</button>
-      <button onclick="event.stopPropagation(); {{ 'wakeComputer' if c.sleeping else 'sleepComputer' }}({{ c.id }}, '{{ c.name|e }}')"
-        title="{{ 'start it back up' if c.sleeping else 'stop it and free its memory — files are kept, open windows are not' }}"
-        class="bg-neutral-900/90 hover:bg-neutral-800 text-[10px] px-2 py-1 rounded">
-        {{ 'wake' if c.sleeping else 'sleep' }}</button>
+        title="its MCP endpoint, and the keys that reach it"
+        class="text-[10px] font-semibold px-2 py-1 rounded shrink-0
+          {{ 'bg-amber-500 hover:bg-amber-400 text-neutral-950' if not c.keys_live and not c.reserved
+             else 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200' }}">access</button>
+
+      <div class="tile-tools flex items-center gap-1 min-w-0 overflow-hidden">
+        <button onclick="event.stopPropagation(); openTerminal({{ c.id }}, '{{ c.name|e }}')"
+          title="a root shell on this machine"
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">shell</button>
+        <button onclick="event.stopPropagation(); openFiles({{ c.id }}, '{{ c.name|e }}')"
+          title="put files on this machine, or take them off"
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">files</button>
+        <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
+          title="what is installed on it"
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">apps</button>
+        <button onclick="event.stopPropagation(); openMore({{ c.id }}, '{{ c.name|e }}', {{ 1 if c.sleeping else 0 }}, {{ 1 if c.reserved else 0 }})"
+          title="clip, snapshot, rename, share, backup, reserve"
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">···</button>
+      </div>
+
+      {# The one action that changes with state, kept last so its position is
+         stable while its meaning changes. #}
+      <button onclick="event.stopPropagation(); {% if state == 'down' %}restartComputer{% elif c.sleeping %}wakeComputer{% else %}sleepComputer{% endif %}({{ c.id }}, '{{ c.name|e }}')"
+        title="{% if state == 'down' %}recreate its containers, keeping its files{% elif c.sleeping %}start it back up{% else %}stop it and free its memory — files are kept, open windows are not{% endif %}"
+        class="ml-auto text-[10px] px-2 py-1 rounded shrink-0
+          {{ 'bg-red-600/80 hover:bg-red-600 text-white' if state == 'down' else 'bg-neutral-800/70 hover:bg-neutral-700' }}">
+        {% if state == 'down' %}restart{% elif c.sleeping %}wake{% else %}sleep{% endif %}</button>
     </div>
   </div>
   {% endfor %}

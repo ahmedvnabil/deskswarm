@@ -61,6 +61,8 @@ export interface ComputerView {
   bridge_state?: string;
   error?: string;
   activity?: unknown;
+  /** Keys that can reach this machine right now. Zero means no client can. */
+  keys_live?: number;
 }
 
 export async function computerView(
