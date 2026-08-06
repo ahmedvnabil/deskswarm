@@ -2,7 +2,7 @@
 
 import { Hono, type Context } from "hono";
 import * as audit from "./../audit";
-import * as fleet from "./../fleet";
+import { providerFor, randomVncPassword } from "./../providers";
 import * as sharesLib from "./../shares";
 import { one, run } from "./../db";
 import {
@@ -110,10 +110,11 @@ shares.delete("/api/v1/shares/:id", requireToken, (c) => {
 shares.post("/api/v1/computers/:id/rotate-password", requireToken, async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
-  const password = fleet.randomVncPassword();
+  const password = randomVncPassword();
   try {
-    await fleet.destroyComputer(comp.slug, true);
-    await fleet.createComputer(comp.slug, comp.novnc_port, password, comp.image);
+    const backend = providerFor(comp);
+    await backend.destroyComputer(comp.slug, true);
+    await backend.createComputer(comp.slug, comp.novnc_port, password, comp.image);
   } catch (err: any) {
     return fail(c, `failed to rotate: ${err?.message ?? err}`, 500);
   }
@@ -161,7 +162,7 @@ shares.get("/s/:token/screen.png", async (c) => {
   if (!row) return c.text("not found", 404);
   const comp = getComputer(row.computer_id);
   if (!comp) return c.text("not found", 404);
-  if (!(await fleet.isRunning(comp.slug))) return c.text("unavailable", 503);
+  if (!(await providerFor(comp).isRunning(comp.slug))) return c.text("unavailable", 503);
   const png = await bridgeScreenshot(await computerView(comp, { withState: false }));
   if (png === null) return c.text("unavailable", 503);
   return c.body(png as any, 200, {

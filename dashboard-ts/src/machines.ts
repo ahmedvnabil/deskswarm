@@ -5,7 +5,14 @@
  * routes on top of this are in routes/machines.ts.
  */
 
-import * as fleet from "./fleet";
+import {
+  defaultProviderName,
+  providerByName,
+  providerFor,
+  providerNames,
+  randomVncPassword,
+  slugify,
+} from "./providers";
 import { all, one, run } from "./db";
 import { MAX_BULK_CREATE, envFloat, nowIso } from "./settings";
 
@@ -19,6 +26,7 @@ export interface Computer {
   reserved: number;
   no_suspend: number;
   last_active_at: string | null;
+  provider: string | null;
   created_at: string;
 }
 
@@ -60,15 +68,17 @@ export async function computerView(
   opts: { withState?: boolean; host?: string | null } = {},
 ): Promise<ComputerView> {
   const withState = opts.withState !== false;
+  const backend = providerFor(comp);
+  const bridge = backend.bridgeEndpoint(comp.slug);
   const view: ComputerView = {
     id: comp.id,
     name: comp.name,
     slug: comp.slug,
     novnc_port: comp.novnc_port,
-    novnc_url: fleet.novncUrl(comp.novnc_port, comp.vnc_password, opts.host),
+    novnc_url: backend.novncUrl(comp.novnc_port, comp.vnc_password, opts.host),
     vnc_password: comp.vnc_password,
-    bridge_host: fleet.bridgeContainerName(comp.slug),
-    bridge_port: 8000,
+    bridge_host: bridge.host,
+    bridge_port: bridge.port,
     created_at: comp.created_at,
     reserved: !!comp.reserved,
     no_suspend: !!comp.no_suspend,
@@ -78,7 +88,7 @@ export async function computerView(
   };
   if (withState) {
     try {
-      Object.assign(view, await fleet.containerState(comp.slug));
+      Object.assign(view, await backend.containerState(comp.slug));
     } catch (err: any) {
       view.error = String(err?.message ?? err);
     }
@@ -130,8 +140,13 @@ export async function computerViews(
  * the safe direction for an admission check.
  */
 export async function budgetedMachineCount(): Promise<number> {
-  const awake = await fleet.awakeMachineCount();
-  return awake === null ? listComputers().length : awake;
+  const counts = await Promise.all(
+    providerNames().map((n) => providerByName(n).awakeMachineCount()),
+  );
+  // One backend that cannot answer makes the whole number a guess, and
+  // over-counting is the safe direction for an admission check.
+  if (counts.some((c) => c === null)) return listComputers().length;
+  return (counts as number[]).reduce((a, b) => a + b, 0);
 }
 
 const RANGE_RE = /\{(\d+)\.\.(\d+)\}/;
@@ -189,30 +204,32 @@ export async function createOneComputer(
   name: string,
   image: string | null,
 ): Promise<ComputerView> {
-  const slug = fleet.slugify(name);
+  const slug = slugify(name);
   const clash = one("SELECT 1 AS x FROM computers WHERE name = ? OR slug = ?", name, slug);
   if (clash) throw new ValidationError(`'${name}' already exists`);
 
-  const port = await withCreateLock(async () => {
+  const providerName = defaultProviderName();
+  const backend = providerByName(providerName);
+
+  await withCreateLock(async () => {
     const reserved = all<{ novnc_port: number }>(
       "SELECT novnc_port FROM computers",
     ).map((r) => r.novnc_port);
-    const chosen = await fleet.nextNovncPort(reserved);
-    const password = fleet.randomVncPassword();
-    await fleet.createComputer(slug, chosen, password, image);
+    const chosen = await backend.nextNovncPort(reserved);
+    const password = randomVncPassword();
+    await backend.createComputer(slug, chosen, password, image);
     run(
-      "INSERT INTO computers (name, slug, novnc_port, vnc_password, image, created_at) " +
-        "VALUES (?,?,?,?,?,?)",
+      "INSERT INTO computers (name, slug, novnc_port, vnc_password, image, provider, created_at) " +
+        "VALUES (?,?,?,?,?,?,?)",
       name,
       slug,
       chosen,
       password,
       image,
+      providerName,
       nowIso(),
     );
-    return chosen;
   });
-  void port;
 
   const row = one<Computer>("SELECT * FROM computers WHERE slug = ?", slug)!;
   return computerView(row, { withState: false });
@@ -224,8 +241,12 @@ export function touchActive(compId: number): void {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitForBridge(slug: string, timeout: number): Promise<boolean> {
-  const target = { bridge_host: fleet.bridgeContainerName(slug), bridge_port: 8000 };
+async function waitForBridge(
+  comp: Computer,
+  timeout: number,
+): Promise<boolean> {
+  const bridge = providerFor(comp).bridgeEndpoint(comp.slug);
+  const target = { bridge_host: bridge.host, bridge_port: bridge.port };
   const deadline = Date.now() + timeout * 1000;
   while (Date.now() < deadline) {
     if (await checkBridge(target)) return true;
@@ -253,16 +274,17 @@ export async function wakeAndWait(
   // Read at call time, not from a binding fixed at import: a value captured
   // once then silently ignores anything that changes the setting.
   const limit = timeout ?? envFloat("DESKSWARM_WAKE_TIMEOUT", 45);
-  await fleet.resumeComputer(comp.slug);
+  const backend = providerFor(comp);
+  await backend.resumeComputer(comp.slug);
   touchActive(comp.id);
-  if (await waitForBridge(comp.slug, limit)) {
+  if (await waitForBridge(comp, limit)) {
     return { ready: true, recreated: false };
   }
   try {
-    await fleet.destroyComputer(comp.slug, true);
-    await fleet.createComputer(comp.slug, comp.novnc_port, comp.vnc_password, comp.image);
+    await backend.destroyComputer(comp.slug, true);
+    await backend.createComputer(comp.slug, comp.novnc_port, comp.vnc_password, comp.image);
   } catch {
     return { ready: false, recreated: false };
   }
-  return { ready: await waitForBridge(comp.slug, limit), recreated: true };
+  return { ready: await waitForBridge(comp, limit), recreated: true };
 }

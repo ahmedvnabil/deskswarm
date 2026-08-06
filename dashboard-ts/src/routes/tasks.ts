@@ -1,7 +1,7 @@
 /** Dispatching work to machines, and reading back what happened. */
 
 import { Hono } from "hono";
-import * as fleet from "./../fleet";
+import { providerFor } from "./../providers";
 import { all, one } from "./../db";
 import { getComputerByName, listComputers } from "./../machines";
 import {
@@ -162,6 +162,7 @@ tasks.post("/api/v1/tasks/:id/retry", requireToken, (c) => {
   if (!comp) return fail(c, `computer '${row.desktop}' no longer exists`);
 
   const newId = createTaskRow(comp.name, row.description);
-  void runTaskWorker(newId, fleet.bridgeContainerName(comp.slug), 8000, row.description);
+  const bridge = providerFor(comp).bridgeEndpoint(comp.slug);
+  void runTaskWorker(newId, bridge.host, bridge.port, row.description);
   return ok(c, { task_id: newId }, 201);
 });

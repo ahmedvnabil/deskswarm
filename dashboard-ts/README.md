@@ -16,9 +16,13 @@ database and diffing them: all nine JSON endpoints came back byte-identical,
 and the rendered pages matched apart from the spelling of one HTML entity
 (`&quot;` vs `&#34;`) and the wording of Docker's own error strings.
 
-* `src/` mirrors the Python modules one-to-one — `fleet`, `machines`, `tasks`,
+* `src/` mirrors the Python modules one-to-one — `machines`, `tasks`,
   `guards`, `backups`, `shares`, `audit`, `scheduler`, one router per slice of
   the URL space.
+* `src/providers/` is what used to be `fleet.py`. A machine backend implements
+  `MachineProvider`; `docker.ts` is the one that ships. Which backend owns a
+  machine is a column on its row, not a global — a fleet is meant to be able
+  to mix them. `DESKSWARM_PROVIDER` names the backend new machines go to.
 * `templates/` is the Jinja2 markup, ported to nunjucks by
   `scripts/port-templates.py`. 31 lines changed out of 1,681.
 * `run_task.py` is still Python: the cua agent loop it drives has no published

@@ -10,7 +10,7 @@
 
 import * as audit from "./audit";
 import * as backups from "./backups";
-import * as fleet from "./fleet";
+import { providerFor } from "./providers";
 import * as shares from "./shares";
 import { all, one, run } from "./db";
 import { listComputers, type Computer } from "./machines";
@@ -107,7 +107,8 @@ export async function idleTick(): Promise<void> {
       touch(comp.id);
       continue;
     }
-    const watchers = await fleet.vncWatchers(comp.slug);
+    const backend = providerFor(comp);
+    const watchers = await backend.vncWatchers(comp.slug);
     if (watchers === null) continue; // already asleep, or unreachable
     if (watchers > 0) {
       touch(comp.id);
@@ -122,7 +123,7 @@ export async function idleTick(): Promise<void> {
     }
     if (last.getTime() > cutoff) continue;
     try {
-      await fleet.suspendComputer(comp.slug);
+      await backend.suspendComputer(comp.slug);
     } catch {
       /* a machine that won't stop is not a reason to skip the rest */
     }

@@ -28,7 +28,7 @@ export const homes = new Map<string, Map<string, Uint8Array>>();
 export const snapshots = new Map<string, string>();
 export const execLog: string[] = [];
 
-export const realFleet = await import("../src/fleet");
+export const realFleet = await import("../src/providers/docker");
 
 /** Knobs the stubs read on every call, so a test can change the world
  *  mid-flight the way monkeypatching did. */
@@ -86,8 +86,7 @@ async function restoreHome(slug: string, tarPath: string, wipe = true) {
   await done;
 }
 
-mock.module("../src/fleet", () => ({
-  ...realFleet,
+const stubs = {
   ensureBridgeImage: async () => {},
   detectNetwork: async () => "test-net",
   usedNovncPorts: async () => new Set<number>(),
@@ -166,6 +165,12 @@ mock.module("../src/fleet", () => ({
     if (!body) throw new Error("no such file");
     return [Buffer.from(body), rel.split("/").pop() ?? rel, false];
   },
+};
+
+mock.module("../src/providers/docker", () => ({
+  ...realFleet,
+  ...stubs,
+  dockerProvider: { ...realFleet.dockerProvider, ...stubs },
 }));
 
 // --------------------------------------------------------------- network

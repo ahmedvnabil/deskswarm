@@ -1,7 +1,7 @@
 /** Adding, inspecting, driving and removing machines. */
 
 import { Hono, type Context } from "hono";
-import * as fleet from "./../fleet";
+import { providerFor, ClipboardUnavailable } from "./../providers";
 import * as guards from "./../guards";
 import { one, run } from "./../db";
 import {
@@ -178,8 +178,9 @@ machines.post("/api/v1/computers/:id/restart", requireToken, async (c) => {
   if (!comp) return notFound(c);
   try {
     // keep_home: a restart is meant to fix the machine, not wipe your work.
-    await fleet.destroyComputer(comp.slug, true);
-    await fleet.createComputer(comp.slug, comp.novnc_port, comp.vnc_password, comp.image);
+    const backend = providerFor(comp);
+    await backend.destroyComputer(comp.slug, true);
+    await backend.createComputer(comp.slug, comp.novnc_port, comp.vnc_password, comp.image);
   } catch (err: any) {
     return fail(c, `failed to restart: ${err?.message ?? err}`, 500);
   }
@@ -198,7 +199,7 @@ machines.post("/api/v1/computers/:id/sleep", requireToken, async (c) => {
     return fail(c, `${comp.name} has ${busy} task(s) still running`, 409);
   }
   try {
-    await fleet.suspendComputer(comp.slug);
+    await providerFor(comp).suspendComputer(comp.slug);
   } catch (err: any) {
     return fail(c, `failed to sleep: ${err?.message ?? err}`, 500);
   }
@@ -223,9 +224,9 @@ machines.get("/api/v1/computers/:id/clipboard", async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
   try {
-    return ok(c, { text: await fleet.getClipboard(comp.slug) });
+    return ok(c, { text: await providerFor(comp).getClipboard(comp.slug) });
   } catch (err: any) {
-    const code = err instanceof fleet.ClipboardUnavailable ? 503 : 500;
+    const code = err instanceof ClipboardUnavailable ? 503 : 500;
     return fail(c, String(err?.message ?? err), code);
   }
 });
@@ -243,16 +244,17 @@ machines.post("/api/v1/computers/:id/clipboard", requireToken, async (c) => {
     return fail(c, `clipboard text over ${MAX_CLIPBOARD_KB} KB`, 413);
   }
   // "paste" also presses Ctrl+V, which is what makes Arabic typing work at
-  // all — see fleet.pasteText.
+  // all — see the provider's pasteText.
   const press = truthy(payload.paste ?? "");
   // Size and intent, not the text — an audit trail that archives everything
   // anyone pasted is its own kind of problem.
   c.set("auditDetail", `${bytes} bytes, paste=${press}`);
   try {
-    if (press) await fleet.pasteText(comp.slug, text);
-    else await fleet.setClipboard(comp.slug, text);
+    const backend = providerFor(comp);
+    if (press) await backend.pasteText(comp.slug, text);
+    else await backend.setClipboard(comp.slug, text);
   } catch (err: any) {
-    const code = err instanceof fleet.ClipboardUnavailable ? 503 : 500;
+    const code = err instanceof ClipboardUnavailable ? 503 : 500;
     return fail(c, String(err?.message ?? err), code);
   }
   touchActive(comp.id);
@@ -263,7 +265,7 @@ machines.delete("/api/v1/computers/:id", requireToken, async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
   try {
-    await fleet.destroyComputer(comp.slug);
+    await providerFor(comp).destroyComputer(comp.slug);
   } catch (err: any) {
     return fail(c, `failed to remove containers: ${err?.message ?? err}`, 500);
   }
@@ -275,7 +277,7 @@ machines.get("/api/v1/computers/:id/inventory", async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
   try {
-    return ok(c, await fleet.getInventory(comp.slug));
+    return ok(c, await providerFor(comp).getInventory(comp.slug));
   } catch (err: any) {
     return fail(c, String(err?.message ?? err), 500);
   }
@@ -288,7 +290,7 @@ machines.get("/partials/computers/:id/inventory", async (c) => {
   }
   let inv: unknown;
   try {
-    inv = await fleet.getInventory(comp.slug);
+    inv = await providerFor(comp).getInventory(comp.slug);
   } catch (err: any) {
     inv = { error: String(err?.message ?? err) };
   }
@@ -305,7 +307,7 @@ machines.post("/api/v1/computers/:id/exec", requireToken, async (c) => {
   if (!command) return fail(c, "command is required");
   c.set("auditDetail", command.slice(0, 500));
   try {
-    return ok(c, await fleet.execInDesktopResult(comp.slug, command));
+    return ok(c, await providerFor(comp).execInDesktopResult(comp.slug, command));
   } catch (err: any) {
     return fail(c, String(err?.message ?? err), 500);
   }

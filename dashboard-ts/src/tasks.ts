@@ -7,7 +7,7 @@
  */
 
 import { all, one, run } from "./db";
-import * as fleet from "./fleet";
+import { providerFor } from "./providers";
 import * as guards from "./guards";
 import { listComputers, wakeAndWait, type Computer } from "./machines";
 import {
@@ -318,7 +318,8 @@ export function dispatchTask(target: string, description: string): number[] {
 export function startTask(comp: Computer, taskId: number, description: string): void {
   started = (async () => {
     try {
-      const state = await fleet.containerState(comp.slug);
+      const backend = providerFor(comp);
+      const state = await backend.containerState(comp.slug);
       if (state.desktop_state === "exited") await wakeAndWait(comp);
     } catch {
       /* best effort — the worker reports the real failure */
@@ -331,7 +332,8 @@ export function startTask(comp: Computer, taskId: number, description: string): 
       dispatched.push(taskId);
       return;
     }
-    await runTaskWorker(taskId, fleet.bridgeContainerName(comp.slug), 8000, description);
+    const bridge = providerFor(comp).bridgeEndpoint(comp.slug);
+    await runTaskWorker(taskId, bridge.host, bridge.port, description);
   })();
   void started;
 }

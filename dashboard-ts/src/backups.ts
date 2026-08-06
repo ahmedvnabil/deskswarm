@@ -26,7 +26,7 @@ import { pipeline } from "node:stream/promises";
 import { createGunzip, createGzip } from "node:zlib";
 import * as tar from "tar-stream";
 
-import * as fleet from "./fleet";
+import { providerForSlug } from "./providers";
 import { env, envInt, nowIso } from "./settings";
 
 export const BACKUP_DIR = env("DESKSWARM_BACKUP_DIR", "/app/data/backups");
@@ -92,7 +92,7 @@ export async function create(slug: string, at = new Date()): Promise<BackupMeta>
 
   const started = Date.now();
   try {
-    const stream = await fleet.homeArchiveStream(slug);
+    const stream = await providerForSlug(slug).homeArchiveStream(slug);
     await pipeline(stream as any, createGzip({ level: 6 }), createWriteStream(partial));
     renameSync(partial, final);
   } catch (err) {
@@ -247,17 +247,18 @@ export async function sanitise(source: string, dest: string): Promise<number> {
  * unrelated.
  */
 export async function restore(slug: string, source: string, wipe = true) {
-  const wasRunning = await fleet.isRunning(slug);
-  if (wasRunning) await fleet.suspendComputer(slug);
+  const backend = providerForSlug(slug);
+  const wasRunning = await backend.isRunning(slug);
+  if (wasRunning) await backend.suspendComputer(slug);
 
   const staged = `${source}.staged-${process.pid}.tar`;
   let kept = 0;
   try {
     kept = await sanitise(source, staged);
-    await fleet.restoreHome(slug, staged, wipe);
+    await backend.restoreHome(slug, staged, wipe);
   } finally {
     rmSync(staged, { force: true });
-    if (wasRunning) await fleet.resumeComputer(slug);
+    if (wasRunning) await backend.resumeComputer(slug);
   }
   return { machine: slug, entries: kept, restarted: wasRunning };
 }

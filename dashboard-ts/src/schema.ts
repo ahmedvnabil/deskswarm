@@ -96,6 +96,13 @@ export function initDb(): void {
       "ALTER TABLE computers ADD COLUMN no_suspend INTEGER NOT NULL DEFAULT 0",
     );
   }
+  if (!comp.has("provider")) {
+    // Which backend owns this machine. Existing rows predate the column and
+    // are all Docker, which is what the default says.
+    db.exec(
+      "ALTER TABLE computers ADD COLUMN provider TEXT NOT NULL DEFAULT 'docker'",
+    );
+  }
 
   audit.init();
   shares.init();
@@ -103,6 +110,15 @@ export function initDb(): void {
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
   );
+
+  const snap = columns("snapshots");
+  if (!snap.has("provider")) {
+    // A snapshot is an image in one backend's store, so deleting it has to go
+    // back to the same one.
+    db.exec(
+      "ALTER TABLE snapshots ADD COLUMN provider TEXT NOT NULL DEFAULT 'docker'",
+    );
+  }
 
   const task = columns("tasks");
   for (const [col, decl] of [

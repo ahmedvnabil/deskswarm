@@ -1,5 +1,9 @@
 /**
- * Dynamic fleet management: create, destroy, inspect and shell into desktops.
+ * The Docker machine provider: a desktop is a pair of containers.
+ *
+ * This was fleet.ts, the only thing that knew what a machine was. It is now
+ * one implementation of MachineProvider — the behaviour is unchanged, and the
+ * interface it satisfies is what lets a second backend exist beside it.
  *
  * A "computer" is a pair of containers on the same Docker network:
  *   <prefix>-desktop-<slug>  — trycua/xfce-cua, a real XFCE session over VNC
@@ -16,8 +20,23 @@ import { createReadStream } from "node:fs";
 import { basename, dirname, join, normalize, posix } from "node:path";
 import * as tar from "tar-stream";
 
-import { bufferStream, collect, docker, execInContainer, isNotFound } from "./docker";
-import { env, envBool, envFloat, envInt } from "./settings";
+import {
+  bufferStream,
+  collect,
+  docker,
+  execInContainer,
+  isNotFound,
+} from "./docker-engine";
+import { env, envBool, envFloat, envInt } from "../settings";
+import {
+  ClipboardUnavailable,
+  HomePathMissing,
+  PathOutsideHome,
+  type BridgeEndpoint,
+  type MachineProvider,
+} from "./types";
+
+export { ClipboardUnavailable, HomePathMissing, PathOutsideHome };
 
 export const DESKTOP_IMAGE = env("DESKSWARM_DESKTOP_IMAGE", "trycua/xfce-cua:latest");
 export const BRIDGE_IMAGE = env("DESKSWARM_BRIDGE_IMAGE", "deskswarm-bridge:latest");
@@ -53,9 +72,6 @@ export const limitsSupportedProbe = () => limitsSupported;
 export const resetLimitsProbe = () => {
   limitsSupported = null;
 };
-
-export class ClipboardUnavailable extends Error {}
-export class PathOutsideHome extends Error {}
 
 export function slugify(name: string): string {
   const slug = name
@@ -729,8 +745,6 @@ for f in .* *; do
 done
 `;
 
-export class HomePathMissing extends Error {}
-
 export async function listHome(slug: string, rel = "") {
   const target = safeHomePath(rel);
   const res = await execInContainer(desktopContainerName(slug), [
@@ -831,3 +845,58 @@ export async function downloadFromHome(
   }
   return [raw, `${base}.tar`, true];
 }
+
+// --------------------------------------------------------------- provider
+
+/**
+ * Where this machine's agent bridge is listening.
+ *
+ * A container name, resolved by Docker's own DNS on the network the pair
+ * shares. Nothing above this line assumes that — a backend running real VMs
+ * would answer with an address instead.
+ */
+export function bridgeEndpoint(slug: string): BridgeEndpoint {
+  return { host: bridgeContainerName(slug), port: 8000 };
+}
+
+/**
+ * The interface, satisfied by the functions above.
+ *
+ * Written out rather than assembled from the module namespace so that adding a
+ * method to MachineProvider is a type error here, in the implementation that
+ * has to grow one, instead of a runtime `undefined is not a function` on the
+ * first machine that needs it.
+ */
+export const dockerProvider: MachineProvider = {
+  name: "docker",
+
+  createComputer,
+  destroyComputer,
+  containerState,
+  suspendComputer,
+  resumeComputer,
+  isRunning,
+
+  bridgeEndpoint,
+  novncUrl,
+  nextNovncPort,
+
+  awakeMachineCount,
+  vncWatchers,
+  homeSizeMb,
+
+  snapshotComputer,
+  removeImage,
+
+  execInDesktopResult,
+  getInventory,
+  getClipboard,
+  setClipboard,
+  pasteText,
+
+  listHome,
+  uploadToHome,
+  downloadFromHome,
+  homeArchiveStream,
+  restoreHome,
+};

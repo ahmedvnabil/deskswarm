@@ -1,7 +1,7 @@
 /** Freezing a provisioned machine into an image, and the wall's stills. */
 
 import { Hono, type Context } from "hono";
-import * as fleet from "./../fleet";
+import { providerFor, providerByName, slugify } from "./../providers";
 import * as guards from "./../guards";
 import { all, one, run } from "./../db";
 import { computerView, getComputer, type Computer } from "./../machines";
@@ -42,16 +42,17 @@ snapshots.post("/api/v1/computers/:id/snapshot", requireToken, async (c) => {
 
   let image: string;
   try {
-    image = await fleet.snapshotComputer(comp.slug, fleet.slugify(name));
+    image = await providerFor(comp).snapshotComputer(comp.slug, slugify(name));
   } catch (err: any) {
     return fail(c, `snapshot failed: ${err?.message ?? err}`, 500);
   }
 
   run(
-    "INSERT INTO snapshots (name, image, source, created_at) VALUES (?,?,?,?)",
+    "INSERT INTO snapshots (name, image, source, provider, created_at) VALUES (?,?,?,?,?)",
     name,
     image,
     comp.name,
+    providerFor(comp).name,
     nowIso(),
   );
   return ok(c, one("SELECT * FROM snapshots WHERE name = ?", name), 201);
@@ -59,7 +60,7 @@ snapshots.post("/api/v1/computers/:id/snapshot", requireToken, async (c) => {
 
 snapshots.delete("/api/v1/snapshots/:id", requireToken, async (c) => {
   const id = intParam(c, "id");
-  const row = id === null ? null : one<{ id: number; image: string }>(
+  const row = id === null ? null : one<{ id: number; image: string; provider: string | null }>(
     "SELECT * FROM snapshots WHERE id = ?",
     id,
   );
@@ -71,7 +72,7 @@ snapshots.delete("/api/v1/snapshots/:id", requireToken, async (c) => {
   // Only drop the image when nothing is running off it.
   if (!inUse) {
     try {
-      await fleet.removeImage(row.image);
+      await providerByName(row.provider).removeImage(row.image);
     } catch {
       /* the row is gone either way; a stuck image is not worth a 500 */
     }
@@ -85,7 +86,7 @@ snapshots.get("/api/v1/computers/:id/screenshot", async (c) => {
   // A sleeping machine has no screen to capture. Saying so immediately beats
   // spending the bridge's full 12s timeout on every tile, every refresh.
   try {
-    const state = await fleet.containerState(comp.slug);
+    const state = await providerFor(comp).containerState(comp.slug);
     if (state.desktop_state === "exited") return fail(c, "sleeping", 503);
   } catch {
     /* if Docker can't say, try the bridge anyway */

@@ -20,7 +20,7 @@ let refuseOn: string[] = [];
 let alwaysThrow: string | null = null;
 
 /** Docker, reduced to the two calls createContainer + start make. */
-mock.module("../src/docker", () => ({
+mock.module("../src/providers/docker-engine", () => ({
   docker: () => ({
     createContainer: async (spec: Call) => {
       calls.push(spec);
