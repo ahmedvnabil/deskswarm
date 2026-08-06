@@ -204,12 +204,26 @@ globalThis.fetch = (async (input: any, init?: any) => {
 
 // ------------------------------------------------------------------ app
 
+const auth = await import("../src/auth");
 const { app } = await import("../src/app");
-const { closeDb } = await import("../src/db");
+const { closeDb, run } = await import("../src/db");
 const { initDb } = await import("../src/schema");
+const { nowIso } = await import("../src/settings");
 const { dispatched } = await import("../src/tasks");
 
 export { app, dispatched };
+
+// Hashed once: argon2id is deliberately slow, and paying that per test would
+// add ten seconds to the suite for no extra coverage.
+const TEST_USER = "tester";
+const TEST_PASSWORD = "correct-horse-battery";
+const TEST_HASH = await Bun.password.hash(TEST_PASSWORD);
+
+/** The cookie every request carries. Rebuilt per test, because the database
+ *  it refers to is. */
+let sessionCookie = "";
+export const authCookie = () => sessionCookie;
+export { TEST_USER, TEST_PASSWORD };
 
 /** A clean database and clean stubs, for one test. */
 export function reset(): void {
@@ -231,6 +245,19 @@ export function reset(): void {
   delete process.env.DESKSWARM_IDLE_SUSPEND_MINUTES;
   delete process.env.DESKSWARM_WAKE_TIMEOUT;
   initDb();
+
+  // Everything is behind a session now, so every test signs in — which means
+  // the auth path is exercised by all 173 of them rather than by its own file
+  // alone.
+  auth.resetRateLimit();
+  run(
+    "INSERT INTO users (username, password_hash, created_at) VALUES (?,?,?)",
+    TEST_USER,
+    TEST_HASH,
+    nowIso(),
+  );
+  const user = auth.findUser(TEST_USER)!;
+  sessionCookie = `deskswarm_session=${auth.startSession(user.id, "127.0.0.1", "test")}`;
 }
 
 // -------------------------------------------------------------- requests
@@ -250,7 +277,11 @@ async function request(
   path: string,
   opts: { json?: unknown; body?: BodyInit; headers?: Record<string, string> } = {},
 ): Promise<Reply> {
-  const headers: Record<string, string> = { host: "localhost", ...opts.headers };
+  const headers: Record<string, string> = {
+    host: "localhost",
+    ...(sessionCookie ? { cookie: sessionCookie } : {}),
+    ...opts.headers,
+  };
   let body: BodyInit | undefined = opts.body;
   if (opts.json !== undefined) {
     body = JSON.stringify(opts.json);

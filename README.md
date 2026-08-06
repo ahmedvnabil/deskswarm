@@ -336,9 +336,19 @@ deskswarm gives an agent a real desktop and gives you a root shell on it from
 a web page, so read [`SECURITY.md`](SECURITY.md) before exposing it. The short
 version:
 
-- **Set `DASHBOARD_TOKEN`** — without it every mutating endpoint is open to
-  anyone who can reach the port.
-- **Keep it off the public internet.** No TLS, no rate limiting.
+- **Sign-in is required for everything.** A username and password, argon2id
+  hashes, a session cookie, and a lockout after repeated failures. The first
+  boot creates a user and prints the password once; set
+  `DESKSWARM_ADMIN_USER` / `DESKSWARM_ADMIN_PASSWORD` to choose it yourself.
+  Manage people from the host: `docker compose exec dashboard bun run
+  src/cli.ts users | adduser | passwd | deluser | sessions | logout-all`.
+- **`DASHBOARD_TOKEN` still works** for scripts — n8n, cron, curl — and is the
+  only way in that has no session behind it.
+- **Two paths stay public on purpose**: `/health`, because the container
+  healthcheck has no cookie, and `/s/<token>`, because a share is a link you
+  hand to someone without an account.
+- **Terminate TLS in front of it.** There is none built in, and a session
+  cookie over plain HTTP is a session anyone on the path can take.
 - **The dashboard mounts the Docker socket**, which it needs in order to create
   machines. That is root on the host — treat the dashboard as a privileged
   admin surface, not an app you share a link to.

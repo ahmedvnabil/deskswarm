@@ -43,7 +43,7 @@ const share = {
 
 /** Both shapes every template has to survive: full, and completely empty. */
 const contexts: Record<string, [full: object, empty: object]> = {
-  "index.html": [{ computers: [machine] }, { computers: [] }],
+  "index.html": [{ computers: [machine], actor: "sara" }, { computers: [], actor: null }],
   "_fleet.html": [{ computers: [machine], shot_token: 1 }, { computers: [], shot_token: 1 }],
   "_guards.html": [
     { g: { spend_today_usd: 1.5, daily_cost_limit_usd: 10, memory_available_mb: 900,
@@ -112,6 +112,10 @@ const contexts: Record<string, [full: object, empty: object]> = {
     { comp: machine, view: { ...machine, sleeping: true }, share, token: "t" },
   ],
   "share_gone.html": [{}, {}],
+  "login.html": [
+    { next: "/partials/fleet", username: "sara", error: "wrong username or password", session_days: 14 },
+    { next: "/", username: "", error: null, session_days: 14 },
+  ],
 };
 
 test("every template file has a case here", () => {

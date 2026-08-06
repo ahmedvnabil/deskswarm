@@ -7,7 +7,7 @@
  * worse than no log, because it reads as complete.
  */
 import { beforeEach, expect, test } from "bun:test";
-import { addMachine, del, get, patch, post, reset } from "./harness";
+import { TEST_USER, addMachine, del, get, patch, post, reset } from "./harness";
 import { run } from "../src/db";
 import * as audit from "../src/audit";
 
@@ -21,7 +21,9 @@ test("a mutation is recorded with who, what and where", async () => {
   await add("recorded");
   const row = (await entries())[0];
   expect(row.action).toBe("POST /api/v1/computers");
-  expect(row.actor).toBe("dashboard");
+  // Before there was a login this was always "dashboard"; now that a person
+  // signs in, the trail can say which one.
+  expect(row.actor).toBe(TEST_USER);
   expect(row.target).toBe("recorded");
   expect(row.status).toBe(201);
   expect(row.ok).toBe(1);

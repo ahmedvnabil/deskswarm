@@ -6,10 +6,11 @@
  */
 
 import { Hono } from "hono";
-import { blockCrossSite, writeAudit } from "./security";
+import { blockCrossSite, requireSession, writeAudit } from "./security";
 import { initDb } from "./schema";
 import { fail, type Env } from "./http";
 
+import { authRoutes } from "./routes/auth";
 import { system } from "./routes/system";
 import { machines } from "./routes/machines";
 import { files } from "./routes/files";
@@ -27,9 +28,13 @@ export function createApp() {
 
   app.use("*", blockCrossSite);
   app.use("*", writeAudit);
+  // After the audit hook so a refused sign-in still leaves a line, and before
+  // every router so nothing can be reached without a person or a token.
+  app.use("*", requireSession);
 
   // Order matters only where paths overlap; each router owns a disjoint slice.
   for (const router of [
+    authRoutes,
     system,
     machines,
     files,

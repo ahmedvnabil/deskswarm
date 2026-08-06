@@ -9,6 +9,7 @@
  */
 
 import * as audit from "./audit";
+import * as auth from "./auth";
 import * as backups from "./backups";
 import { providerFor } from "./providers";
 import * as shares from "./shares";
@@ -182,6 +183,7 @@ export async function maintenanceTick(): Promise<void> {
 
   if (claimDaily("housekeeping", "03:00")) {
     audit.prune();
+    auth.purgeSessions();
     shares.purgeExpired();
   }
 }

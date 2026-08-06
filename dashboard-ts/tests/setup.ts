@@ -16,4 +16,7 @@ process.env.DESKSWARM_DB_PATH = join(root, "test.db");
 process.env.DESKSWARM_BACKUP_DIR = join(root, "backups");
 process.env.DESKSWARM_DISABLE_SCHEDULER = "1";
 process.env.DESKSWARM_DISABLE_WORKERS = "1";
-delete process.env.DASHBOARD_TOKEN;
+// Set, not unset: the token path is one of the two ways in and has to be
+// covered. Session-authenticated requests pass requireToken on the strength of
+// their session, so this does not change what the other tests exercise.
+process.env.DASHBOARD_TOKEN = "test-api-token-9f2c";

@@ -9,11 +9,13 @@
  */
 
 import { app } from "./app";
+import { ensureAdmin } from "./auth";
 import { reclaim } from "./reclaim";
 import { startScheduler } from "./scheduler";
 import { DISABLE_SCHEDULER, PORT } from "./settings";
 
 reclaim();
+await ensureAdmin();
 
 if (!DISABLE_SCHEDULER) startScheduler();
 

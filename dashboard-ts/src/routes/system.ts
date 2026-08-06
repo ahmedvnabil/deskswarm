@@ -13,7 +13,13 @@ export const system = new Hono<Env>();
 system.get("/health", (c) => c.json({ status: "ok" }));
 
 system.get("/", (c) =>
-  c.html(render("index.html", { computers: listComputers() })),
+  c.html(
+    render("index.html", {
+      computers: listComputers(),
+      // Named in the header, and the reason the sign-out button is there at all.
+      actor: c.get("actor"),
+    }),
+  ),
 );
 
 system.get("/api/v1/guards", async (c) =>

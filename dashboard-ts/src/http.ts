@@ -13,6 +13,7 @@ export interface Vars {
   auditTarget?: string | null;
   auditDetail?: string | null;
   actor?: string;
+  userId?: number;
 }
 
 export type Env = { Variables: Vars };

@@ -32,3 +32,17 @@ and the rendered pages matched apart from the spelling of one HTML entity
 One process replaces gunicorn's several, which removes a real bug: two workers
 used to run the same `ALTER TABLE` at import and the loser died with
 "duplicate column name".
+
+## Signing in
+
+Everything except `/health` and `/s/<token>` needs a person or a token behind
+it. People sign in at `/login`; scripts keep sending `DASHBOARD_TOKEN`.
+
+Passwords go through `Bun.password` (argon2id — no dependency, no parameters to
+get wrong), sessions are random 32-byte tokens stored by hash, and a failed
+sign-in is rate limited per address. Changing a password ends that user's
+sessions, because a password change is usually a response to it having leaked.
+
+The first boot creates a user if there are none and prints the password once.
+`DESKSWARM_ADMIN_USER` and `DESKSWARM_ADMIN_PASSWORD` set it instead.
+`src/cli.ts` manages users from the host.

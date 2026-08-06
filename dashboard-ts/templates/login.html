@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<meta name="referrer" content="no-referrer">
+<title>sign in — deskswarm</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  body { font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+</style>
+</head>
+<body class="bg-neutral-950 text-neutral-200 min-h-screen flex items-center justify-center p-6">
+
+<div class="w-full max-w-sm">
+  <div class="mb-6">
+    <div class="text-lg font-bold tracking-tight">deskswarm</div>
+    <div class="text-xs text-neutral-500 mt-0.5">fleet control</div>
+  </div>
+
+  {% if error %}
+  <div class="mb-4 border border-red-900 bg-red-950/40 text-red-300 text-xs rounded px-3 py-2">
+    {{ error }}
+  </div>
+  {% endif %}
+
+  <form method="post" action="/login" class="bg-neutral-900 border border-neutral-800 rounded-lg p-5">
+    <input type="hidden" name="next" value="{{ next|e }}">
+
+    <label class="block text-xs text-neutral-500 mb-1" for="username">username</label>
+    <input id="username" name="username" autocomplete="username" autofocus required
+           value="{{ username|e }}"
+           class="mono w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 mb-4
+                  text-sm focus:outline-none focus:border-neutral-500">
+
+    <label class="block text-xs text-neutral-500 mb-1" for="password">password</label>
+    <input id="password" name="password" type="password" autocomplete="current-password" required
+           class="mono w-full bg-neutral-950 border border-neutral-700 rounded px-3 py-2 mb-5
+                  text-sm focus:outline-none focus:border-neutral-500">
+
+    <button type="submit"
+            class="w-full bg-neutral-100 text-neutral-900 hover:bg-white rounded px-3 py-2
+                   text-sm font-medium">
+      sign in
+    </button>
+  </form>
+
+  <p class="text-xs text-neutral-600 mt-4 leading-relaxed">
+    This dashboard can run commands as root inside every machine it manages.
+    Sessions last {{ session_days }} days and end when the password changes.
+  </p>
+</div>
+
+</body>
+</html>

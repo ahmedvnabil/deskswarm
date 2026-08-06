@@ -10,6 +10,7 @@
 
 import { getDb, all } from "./db";
 import * as audit from "./audit";
+import * as auth from "./auth";
 import * as shares from "./shares";
 
 function columns(table: string): Set<string> {
@@ -105,6 +106,7 @@ export function initDb(): void {
   }
 
   audit.init();
+  auth.init();
   shares.init();
 
   db.exec(
