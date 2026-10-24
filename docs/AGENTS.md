@@ -186,3 +186,37 @@ session, retains ownership while it runs, and terminates the recorded run-specif
 process group on cancellation. A real Linux regression test forces that fork
 path and verifies both attachment and termination; mock-only tests cannot detect
 this behavior. All 307 tests and the TypeScript check passed after the fix.
+
+## Independent Codex on the Linux control-plane host
+
+The same restricted CLI provider can run on the trusted Linux host rather than
+on an operator's computer. Use a dedicated service account and its own persistent
+home/CODEX_HOME. Start `codex login --device-auth` as that account and complete the
+OpenAI device approval in the browser. Keep its auth cache mode 0600 and its home
+mode 0700; the dashboard and desktop containers do not need that auth cache.
+
+Run `scripts/local-codex-provider.ts` with Bun under the same service account.
+Give it a random gateway token, `DESKSWARM_CODEX_BIN`, and a bind address reachable
+only on the dashboard's private Docker bridge. Keep the token in a root-readable
+service environment file and encrypted Model connections storage. Configure the
+model connection to the private gateway's `/v1` URL using Chat Completions and
+model `default`. A systemd service can restart the provider after failure and
+start at boot. Its environment must explicitly set the service user's HOME,
+CODEX_HOME and PATH; file access must permit Codex to refresh its own auth cache.
+No public gateway listener or reverse SSH tunnel is needed.
+
+On the deployed CT, the provider runs as `deskswarm-codex` under
+`deskswarm-codex-provider.service`, with startup enabled. It uses the existing
+restricted CLI invocation: ephemeral read-only sessions, no host shell tools,
+and desktop actions returned to DeskSwarm for execution on the selected desktop.
+The service has a private temporary directory, no-new-privileges, a read-only
+system filesystem, a writable dedicated home and bounded memory/process count.
+Inspect service state and `codex login status` as the service account when
+troubleshooting; do not print its auth file or environment token.
+
+Independent live validation: the prior Mac relay container was stopped and the
+Mac reverse SSH tunnel terminated **before** starting a new real Codex Agent run
+through Cloudflare. Process inspection showed the CLI running under the dedicated
+CT service user. The model inspected the desktop, wrote a UTF-8 Markdown report,
+read it back and saved it; the completed run's downloaded archive contained the
+verified Arabic report. No operator-host gateway participated in that run.
