@@ -217,9 +217,37 @@ function tree() {
   if (!groups.length) groups.push(node("p", "لا توجد نتائج مطابقة", "muted"));
   $("server-tree").replaceChildren(...groups);
 }
+let liveComputer = null;
+let liveOwned = false;
+function closeLiveDesktop() {
+  $("live-desktop").removeAttribute("src");
+  $("live-desktop").hidden = true;
+  $("close-live-desktop").hidden = true;
+  document.body.classList.remove("live-desktop-open");
+  liveComputer = null;
+}
+function openLiveDesktop() {
+  const comp = current();
+  if (!comp || comp.sleeping || !comp.novnc_url) return;
+  closeServerDrawer();
+  const url = new URL(comp.novnc_url, location.href);
+  liveOwned = !!comp.agent_run_id;
+  if (liveOwned) url.searchParams.set("view_only", "true");
+  closePanel();
+  liveComputer = comp.id;
+  $("live-desktop").src = url.href;
+  $("live-desktop").hidden = false;
+  $("close-live-desktop").hidden = false;
+  document.body.classList.add("live-desktop-open");
+  $("live-desktop").scrollIntoView({block:"nearest"});
+  $("live-desktop").focus();
+}
+$("open-desktop").onclick = e => { e.preventDefault(); openLiveDesktop(); };
+$("close-live-desktop").onclick = () => { closeLiveDesktop(); detail(); $("open-desktop").focus(); };
 function detail() {
   const comp = current(),
     job = currentRun();
+  if (liveComputer !== null && (comp?.id !== liveComputer || comp?.sleeping || !!comp?.agent_run_id !== liveOwned)) closeLiveDesktop();
   $("empty-screen").classList.toggle("hidden", !!comp);
   $("desktop-screen").classList.toggle("hidden", !comp || comp.sleeping);
   $("open-desktop").classList.toggle("disabled", !comp || comp.sleeping);
@@ -728,6 +756,7 @@ function closePanel(){
 }
 function openPanel(path,nav){
   const info=panelPaths.get(path);if(!info)return;
+  closeLiveDesktop();
   activePanel=path;document.body.classList.add("panel-open");$("panel-hint").hidden=true;
   let frame=panelFrames.get(path);
   if(!frame){
@@ -758,13 +787,16 @@ async function focusComputerFromPanel(value) {
     const comp=result[1].find(c=>c.id===id);
     if(!comp){notice("الجهاز غير متاح؛ حدّث قائمة الأجهزة");return;}
     [servers,computers]=result;selectedId=comp.id;selectedServer=comp.provider;shotMachine=null;
-    closePanel();tree();detail();$("desktop-title").scrollIntoView({block:"nearest"});
+    closePanel();tree();detail();$("desktop-title").scrollIntoView({block:"nearest"});return comp;
   } catch { notice("تعذّر تحميل الجهاز؛ أعد المحاولة"); }
 }
 addEventListener("message",e=>{
   if(e.origin!==location.origin)return;
   const entry=Array.from(panelFrames.entries()).find(([,frame])=>frame.contentWindow===e.source);if(!entry)return;
   if(e.data?.type==="deskswarm:panel-height"&&entry[0]===activePanel){const height=Number(e.data.height);if(Number.isFinite(height)&&height>0){entry[1].dataset.contentHeight=String(height);fitPanel(entry[1],height)}}
+  if(e.data?.type==="deskswarm:open-computer"){
+    void focusComputerFromPanel(e.data.id).then(comp=>{if(comp)openLiveDesktop()});return;
+  }
   if(e.data?.type!=="deskswarm:navigate"||typeof e.data.path!=="string")return;
   const url=new URL(e.data.path,location.origin);if(url.origin!==location.origin)return;
   if(panelPaths.has(url.pathname))openPanel(url.pathname);

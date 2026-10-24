@@ -22,6 +22,10 @@
     if(event.data.active)requestAnimationFrame(()=>{previous=0;resize()});
   });
   document.addEventListener('click',event=>{
+    const computer=event.target.closest?.('[data-open-computer]');
+    if(computer && event.button===0 && !event.ctrlKey && !event.metaKey && !event.shiftKey && !event.altKey){
+      event.preventDefault();parent.postMessage({type:'deskswarm:open-computer',id:Number(computer.dataset.openComputer)},location.origin);return;
+    }
     const link=event.target.closest?.('a[href]');
     if(!link || event.defaultPrevented || event.button!==0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey || link.hasAttribute('download'))return;
     const url=new URL(link.href,location.href);

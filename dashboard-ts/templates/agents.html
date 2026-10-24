@@ -221,8 +221,8 @@
         }
       }
     </style>
-    <link rel="stylesheet" href="/static/panels.css?v=20261024-ar-mobile2" />
-    <script src="/static/panels.js?v=20261024-ar-mobile2"></script>
+    <link rel="stylesheet" href="/static/panels.css?v=20261024-inline" />
+    <script src="/static/panels.js?v=20261024-inline"></script>
   </head>
   <body class="agents-view">
     <header>
@@ -322,7 +322,7 @@
             <div class="row">
               <button id="stop" class="danger">إيقاف Agent</button
               ><button id="takeover">استلام التحكم</button
-              ><a id="watch" class="button" target="_blank" rel="noopener"
+              ><a id="watch" class="button"
                 >متابعة الجهاز</a
               ><a id="download" class="button hidden">تنزيل النتيجة</a
               ><button id="release" class="hidden">إنهاء التحكم اليدوي</button>
@@ -838,6 +838,7 @@
             $("stop").disabled = !r.lease || r.status === "stopping";
             $("takeover").disabled = !r.lease || r.status === "stopping";
             $("watch").href = r.viewer_url || "#";
+            $("watch").dataset.openComputer = String(r.computer_id);
             $("watch").textContent = r.lease ? "متابعة الجهاز" : "فتح الجهاز";
             $("download").classList.toggle("hidden", !!r.lease);
             $("download").href = `/api/v1/agents/runs/${r.id}/result`;

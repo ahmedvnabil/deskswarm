@@ -35,3 +35,18 @@ Live validation: device selection auto-close, explicit close, Escape, desktop
 restoration, no page overflow at effective widths 354px and 291px, and 72px
 preview measured in Agents and Cloudflare. Full automated suite: 326 passed;
 TypeScript and dashboard JavaScript syntax checks passed.
+
+## Inline desktop session
+
+The main Open screen action mounts the noVNC session inside the current workspace.
+A Return to preview button disconnects the frame. Opening a settings/Agents panel,
+changing the selected computer, or changing agent ownership removes the old frame
+source. Agent-owned sessions request view-only mode. The backend's existing
+ownership controls remain authoritative.
+
+Agents and embedded fleet-management actions request the same inline view through
+the first-party panel bridge. Messages require the same origin and a registered
+panel window; computer IDs are resolved against the server inventory before opening.
+Live validation confirmed an encrypted noVNC connection, the Agents action, return
+to preview, and source removal on selecting a different device. No task was run and
+no desktop files were changed for this check. Full suite: 326 passed.

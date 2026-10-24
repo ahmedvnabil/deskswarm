@@ -4,8 +4,8 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DeskSwarm — أجهزتك وسيرفراتك</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-drawer" />
-    <script src="/static/dashboard.js?v=20261024-drawer" defer></script>
+    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-inline" />
+    <script src="/static/dashboard.js?v=20261024-inline" defer></script>
   </head>
   <body data-initial-panel="{{ initial_panel|e }}">
     <header class="topbar">
@@ -92,6 +92,7 @@
           </div>
           <div id="notice" role="status" aria-live="polite"></div>
           <div class="screen-stage">
+            <iframe id="live-desktop" title="شاشة الكمبيوتر التفاعلية" hidden allow="clipboard-read; clipboard-write"></iframe>
             <img id="desktop-screen" alt="معاينة شاشة الجهاز المحدد" />
             <div id="empty-screen" class="empty-screen">
               <img
@@ -107,13 +108,14 @@
           <div class="screen-footer">
             <span class="muted" id="screen-caption"
               >معاينة الشاشة تُحدّث تلقائيًا</span
-            ><a id="open-desktop" class="outline" target="_blank" rel="noopener"
+            ><a id="open-desktop" class="outline"
               ><img
                 class="icon"
                 src="/static/icons/device-desktop.svg"
                 alt=""
               />فتح الشاشة</a
             >
+            <button id="close-live-desktop" class="outline" hidden>الرجوع للمعاينة</button>
           </div>
           <div class="desktop-tools">
             <button id="new-desktop">
