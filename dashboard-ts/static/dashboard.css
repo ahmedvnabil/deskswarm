@@ -1045,3 +1045,18 @@ body.panel-open{--preview-height:clamp(130px,19vh,180px)}body.panel-open:has(.em
 
 .utility-dialog{max-height:85vh;overflow:auto}.utility-dialog .file-row{padding:5px 0;gap:8px}.utility-dialog .file-row>span{min-width:0;overflow-wrap:anywhere}.utility-dialog .file-row button{margin-inline-start:auto;min-height:30px}.utility-actions{margin:8px 0;gap:6px}
 @media(max-width:540px){.workspace{padding:8px!important;min-width:0}.server-panel{padding:8px!important;max-height:210px!important}.server-panel h1{font-size:16px}.server-panel #server-tree{max-height:95px}.rail{width:48px}.app-shell{grid-template-columns:48px minmax(0,1fr)}.desktop-heading h2{font-size:15px;overflow-wrap:anywhere}.desktop-tools{flex-wrap:wrap}.desktop-tools button{font-size:11px;padding:5px 7px}.workbench-tabs{flex-wrap:wrap}.connection-dialog{transform:none!important;width:calc(100vw - 16px)}dialog{padding:12px}.utility-dialog{max-height:85dvh}.screen-stage{min-height:130px}.agent-panel>button{min-width:100px}}
+
+.mobile-server-menu{display:none}.drawer-heading{display:flex;align-items:center;justify-content:space-between;gap:8px}
+@media(max-width:720px){
+ .mobile-server-menu{display:inline-flex;align-items:center;gap:4px;font-size:11px;padding:5px 7px;white-space:nowrap}
+ .topbar{gap:6px;padding:0 8px}.topbar .brand{font-size:17px}.account{gap:5px}
+ #server-drawer{inset:0 0 0 auto;margin:0;width:min(340px,92vw);max-width:92vw;height:100dvh;max-height:100dvh;border-radius:0;padding:12px;border:0;overflow:auto}
+ #server-drawer::backdrop{background:#192c3e66}
+ #server-drawer .server-panel{display:flex;position:static;padding:8px 0!important;height:calc(100dvh - 65px);max-height:none!important;border:0}
+ #server-drawer #server-tree{flex:1;max-height:none!important;overflow:auto}
+ #server-drawer .server-panel>h1{display:none}
+ .workspace{grid-row:1!important}
+ body.panel-open,body.panel-open:has(.empty-screen:not(.hidden)){--preview-height:72px}
+ body.panel-open .screen-stage{height:var(--preview-height)!important;min-height:0!important;max-height:var(--preview-height)!important}
+ body.panel-open .empty-screen{padding:4px}body.panel-open .empty-screen h3{font-size:12px}body.panel-open .empty-screen p,body.panel-open .empty-screen button{display:none}
+}

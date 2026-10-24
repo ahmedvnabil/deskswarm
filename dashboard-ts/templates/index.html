@@ -4,11 +4,12 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>DeskSwarm — أجهزتك وسيرفراتك</title>
-    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-ar-mobile2" />
-    <script src="/static/dashboard.js?v=20261024-ar-mobile2" defer></script>
+    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-drawer" />
+    <script src="/static/dashboard.js?v=20261024-drawer" defer></script>
   </head>
   <body data-initial-panel="{{ initial_panel|e }}">
     <header class="topbar">
+      <button id="server-menu" class="mobile-server-menu" aria-controls="server-drawer" aria-expanded="false" aria-label="فتح قائمة الأجهزة">☰ الأجهزة</button>
       <a class="brand" href="/">Desk<span>Swarm</span></a>
       <div class="account">
         <span class="avatar">{{ (actor or 'U') | first | upper }}</span>
@@ -28,6 +29,10 @@
         <time id="clock"></time>
       </div>
     </header>
+    <dialog id="server-drawer" aria-label="السيرفرات والأجهزة">
+      <div class="drawer-heading"><strong>السيرفرات والأجهزة</strong><button type="button" id="close-server-drawer" aria-label="إغلاق قائمة الأجهزة">✕</button></div>
+      <div id="server-drawer-content"></div>
+    </dialog>
     <div class="app-shell">
       <nav class="rail" aria-label="التنقل الرئيسي">
         <button class="rail-link" id="nav-desktops">
@@ -44,7 +49,7 @@
           <img src="/static/icons/settings.svg" alt="" /><span>الإعدادات</span>
         </button>
       </nav>
-      <aside class="server-panel">
+      <aside class="server-panel" id="server-panel">
         <h1>
           السيرفرات <img class="icon" src="/static/icons/search.svg" alt="" />
         </h1>

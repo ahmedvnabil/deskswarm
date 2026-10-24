@@ -102,6 +102,27 @@ for (const d of document.querySelectorAll("dialog"))
         d.close();
     }
   });
+// Native modal drawer supplies Escape, focus containment and an inert background.
+const phoneLayout = matchMedia("(max-width: 720px)");
+const serverPanel = $("server-panel");
+const panelAnchor = document.createComment("server-panel-home");
+serverPanel.before(panelAnchor);
+function closeServerDrawer() { if ($("server-drawer").open) $("server-drawer").close(); }
+function placeServerPanel() {
+  closeServerDrawer();
+  if (phoneLayout.matches) $("server-drawer-content").append(serverPanel);
+  else panelAnchor.after(serverPanel);
+}
+$("server-menu").onclick = () => {
+  if (!phoneLayout.matches) return;
+  $("server-drawer").showModal();
+  $("server-menu").setAttribute("aria-expanded", "true");
+  $("server-search").focus();
+};
+$("close-server-drawer").onclick = closeServerDrawer;
+$("server-drawer").addEventListener("close", () => $("server-menu").setAttribute("aria-expanded", "false"));
+phoneLayout.addEventListener("change", placeServerPanel);
+placeServerPanel();
 const collapsedServers = new Set();
 try{for(const name of JSON.parse(localStorage.getItem("deskswarm:collapsed-servers")||"[]"))if(typeof name==="string")collapsedServers.add(name);}catch{}
 function rememberGroups(){try{localStorage.setItem("deskswarm:collapsed-servers",JSON.stringify([...collapsedServers]));}catch{}}
@@ -168,6 +189,7 @@ function tree() {
         "",
         () => {
           notice("");
+          closeServerDrawer();
           selectedId = comp.id;
           selectedServer = comp.provider;
           shotMachine = null;

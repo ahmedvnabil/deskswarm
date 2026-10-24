@@ -20,3 +20,18 @@ run. Connections tables stayed within the page. A 17px Cloudflare overflow at
 the smaller width was found and corrected. Three fleet images were loaded across
 successive frame tokens during live polling. These checks emulate phone-sized
 browser viewports; they are not physical iOS/Android device tests.
+
+## Mobile device drawer
+
+At widths up to 720px, the server tree moves into a native modal dialog opened
+by the top-bar Devices button. Choosing a device closes it; Escape, the close
+button and backdrop also dismiss it. The native dialog contains keyboard focus
+and makes the background inert. Crossing back to desktop closes the dialog and
+returns the same server tree to its original position, preserving search/group
+state. The mobile workspace preview is 72px tall while a panel is open; ordinary
+desktop viewing retains its larger preview.
+
+Live validation: device selection auto-close, explicit close, Escape, desktop
+restoration, no page overflow at effective widths 354px and 291px, and 72px
+preview measured in Agents and Cloudflare. Full automated suite: 326 passed;
+TypeScript and dashboard JavaScript syntax checks passed.
