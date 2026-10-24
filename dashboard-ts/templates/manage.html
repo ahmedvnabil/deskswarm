@@ -18,10 +18,10 @@
   .wall-sm .tile-tools { display: none; }
   .wall-sm .tile-shot  { width: 100%; }
 </style>
-<link rel="stylesheet" href="/static/panels.css">
-<script src="/static/panels.js"></script>
+<link rel="stylesheet" href="/static/panels.css?v=20261024-compact">
+<script src="/static/panels.js?v=20261024-compact"></script>
 </head>
-<body class="bg-neutral-950 text-neutral-200 min-h-screen">
+<body class="manage-view bg-neutral-950 text-neutral-200 min-h-screen">
   <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-20 backdrop-blur">
 <a href="/" class="text-cyan-300 text-sm px-3">العودة للوحة الجديدة</a>
 <a href="/agents" class="text-amber-400 hover:text-amber-300 text-sm px-3">Agents →</a>
@@ -53,8 +53,8 @@
     <section>
       <div class="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <div class="flex items-center gap-2 text-xs">
-          <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase mr-1">Wall</h2>
-          <input id="wall-filter" oninput="applyWallFilter()" placeholder="filter…"
+          <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase mr-1">الأجهزة</h2>
+          <input id="wall-filter" oninput="applyWallFilter()" placeholder="بحث في الأجهزة…" aria-label="بحث في الأجهزة"
             class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 w-40">
           <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
           <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1" title="an MCP client is working in it">in use</button>
@@ -65,8 +65,8 @@
           <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
           <button type="button" onclick="setWallSize('md')" data-size="md" class="wall-size bg-neutral-800 rounded px-2 py-1">M</button>
           <button type="button" onclick="setWallSize('lg')" data-size="lg" class="wall-size bg-neutral-800 rounded px-2 py-1">L</button>
-          <button type="button" id="legend-toggle" onclick="showLegend()" title="what am I looking at?"
-            class="hidden text-neutral-600 hover:text-neutral-300 px-1">?</button>
+          <button type="button" id="legend-toggle" onclick="showLegend()" title="دليل الحالات" aria-controls="wall-legend" aria-expanded="false"
+            class="hidden text-neutral-600 hover:text-neutral-300 px-1">دليل الحالات</button>
         </div>
         <form onsubmit="addComputer(event)" class="flex items-center gap-2">
           <input id="new-computer-name" required placeholder="name, or agent-{1..10}"
@@ -137,9 +137,8 @@
     </section>
 
 
-    <section>
+    <section><details><summary>النشاط الأخير</summary>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Live activity</h2>
         <span class="text-xs text-neutral-600">every call an outside client makes</span>
       </div>
       {# hx-include carries the machine filter (rendered inside this div) into
@@ -148,34 +147,31 @@
            hx-swap="innerHTML" hx-include="#activity-filters">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
-    </section>
+    </details></section>
 
-    <section>
+    <section><details><summary>مفاتيح MCP</summary>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">MCP keys</h2>
         <span class="text-xs text-neutral-600">one machine each · revocable</span>
       </div>
       <div id="keys"><div class="text-neutral-600 text-sm">loading...</div></div>
-    </section>
+    </details></section>
 
-    <section>
+    <section><details><summary>روابط المشاركة</summary>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Shared links</h2>
         <span class="text-xs text-neutral-600">a screen for a person, not a key for a program</span>
       </div>
       <div id="shares"><div class="text-neutral-600 text-sm">loading...</div></div>
-    </section>
+    </details></section>
 
-    <section>
+    <section><details><summary>سجل التغييرات</summary>
       <div class="flex items-center justify-between mb-3">
-        <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase">Audit log</h2>
         <span class="text-xs text-neutral-600">every change, and every guest</span>
       </div>
       <div id="audit" hx-get="/partials/audit" hx-trigger="load, every 15s, refresh"
            hx-swap="innerHTML">
         <div class="text-neutral-600 text-sm">loading...</div>
       </div>
-    </section>
+    </details></section>
 
   </main>
 
@@ -199,23 +195,19 @@
   tick(); setInterval(tick, 1000);
   setWallSize(localStorage.getItem('wallSize') || 'md');
 
-  // The legend starts hidden in the markup and is revealed here, so someone
-  // who dismissed it never sees it flash on the way past.
-  if(localStorage.getItem('wallLegend') === 'hidden'){
-    document.getElementById('legend-toggle').classList.remove('hidden');
-  } else {
-    document.getElementById('wall-legend').classList.remove('hidden');
-  }
+  // Keep explanatory content on demand so fleet controls stay in view.
+  document.getElementById('legend-toggle').classList.remove('hidden');
   function dismissLegend(){
     localStorage.setItem('wallLegend', 'hidden');
     document.getElementById('wall-legend').classList.add('hidden');
     const b = document.getElementById('legend-toggle');
-    if(b) b.classList.remove('hidden');
+    if(b) { b.classList.remove('hidden'); b.setAttribute('aria-expanded','false'); }
   }
   function showLegend(){
+    if(!document.getElementById('wall-legend').classList.contains('hidden')) return dismissLegend();
     localStorage.removeItem('wallLegend');
     document.getElementById('wall-legend').classList.remove('hidden');
-    document.getElementById('legend-toggle').classList.add('hidden');
+    document.getElementById('legend-toggle').setAttribute('aria-expanded','true');
   }
 
   // ---------------------------------------------------------------- modal

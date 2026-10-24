@@ -221,18 +221,17 @@
         }
       }
     </style>
-    <link rel="stylesheet" href="/static/panels.css" />
-    <script src="/static/panels.js"></script>
+    <link rel="stylesheet" href="/static/panels.css?v=20261024-compact" />
+    <script src="/static/panels.js?v=20261024-compact"></script>
   </head>
-  <body>
+  <body class="agents-view">
     <header>
       <h1>DeskSwarm <span class="muted">/ Agents</span></h1>
       <a href="/">Back to desktops</a>
     </header>
     <main>
       <p class="muted">
-        Give one agent a desktop and a task. Follow its progress, take control
-        when needed, and keep the results.
+        اختَر جهازًا وموديلًا، اكتب المهمة وتابع التنفيذ أو استلم التحكم.
       </p>
       <div id="notice" role="status" aria-live="polite"></div>
       <section class="panel" dir="rtl" aria-labelledby="provider-heading">
@@ -259,34 +258,36 @@
       <div class="columns">
         <aside>
           <section class="panel">
-            <h2>Recent runs</h2>
+            <h2>المهام الأخيرة</h2>
             <div id="runs" class="empty">Loading…</div>
           </section>
         </aside>
         <div>
           <section class="panel">
-            <h2>Start a task</h2>
+            <h2>مهمة جديدة</h2>
             <form id="task-form">
-              <label for="machine">Desktop</label
+              <label for="execution-target">مكان التشغيل</label>
+              <select id="execution-target" aria-describedby="target-help"><option value="linux">الأجهزة المتصلة — Linux وProxmox</option><option value="cloudflare-linux" disabled>Cloudflare Linux — تجهيز فقط</option><option value="cloudflare-browser" disabled>Cloudflare Browser — تجهيز فقط</option></select>
+              <small id="target-help">خيارات Cloudflare لم تُفعّل بعد. <a href="/settings/cloudflare">افتح تجهيزات Cloudflare</a></small>
+              <label for="machine">الجهاز</label
               ><select id="machine" required></select>
-              <label for="model">Model</label
+              <label for="model">الموديل</label
               ><select id="model" required></select
               ><small
-                >Models are configured below. One agent can own a desktop at a
-                time.</small
+                >Agent واحد لكل جهاز في نفس الوقت.</small
               >
-              <label for="task">What should the agent do?</label
+              <label for="task">المهمة المطلوبة</label
               ><textarea
                 id="task"
                 required
                 maxlength="20000"
-                placeholder="Create a report, test an application, or work with files. Describe the result you want to download."
+                placeholder="اكتب المهمة والنتيجة المطلوبة، مثل تقرير أو اختبار تطبيق."
               ></textarea>
               <details>
-                <summary>Execution limits</summary>
+                <summary>حدود التنفيذ</summary>
                 <div class="row">
                   <label
-                    >Maximum model turns<input
+                    >أقصى خطوات للموديل<input
                       id="max-steps"
                       class="limit"
                       type="number"
@@ -294,7 +295,7 @@
                       max="100"
                       value="30" /></label
                   ><label
-                    >Time limit (seconds)<input
+                    >المدة بالثواني<input
                       id="max-seconds"
                       class="limit"
                       type="number"
@@ -309,7 +310,7 @@
                 >
               </details>
               <button class="primary" id="start" type="submit">
-                Run agent
+                تشغيل Agent
               </button>
             </form>
           </section>
@@ -320,17 +321,17 @@
             </div>
             <p id="run-task" class="muted"></p>
             <div class="row">
-              <button id="stop" class="danger">Stop agent</button
-              ><button id="takeover">Take control</button
+              <button id="stop" class="danger">إيقاف Agent</button
+              ><button id="takeover">استلام التحكم</button
               ><a id="watch" class="button" target="_blank" rel="noopener"
                 >Watch desktop</a
-              ><a id="download" class="button hidden">Download results</a
+              ><a id="download" class="button hidden">تنزيل النتيجة</a
               ><button id="release" class="hidden">
                 Release manual control
               </button>
             </div>
             <p id="run-hint" class="muted"></p>
-            <pre id="run-summary"></pre>
+            <pre id="run-summary" tabindex="0"></pre>
             <figure style="margin: 18px 0">
               <img
                 id="desktop-preview"
@@ -351,10 +352,14 @@
             <h3>Activity</h3>
             <ol id="events" class="events"></ol>
             <p id="outputs" class="muted"></p>
+            <p class="muted">
+              تنزيل النتيجة يشمل ملف تحقق بأسماء الملفات وأحجامها وبصماتها، مع
+              تمييز النتائج الجزئية للمهام المتوقفة.
+            </p>
           </section>
           <section class="panel">
             <details id="settings">
-              <summary>Model connections</summary>
+              <summary>إعدادات الموديلات</summary>
               <p class="muted">
                 Configure a Responses or Chat Completions endpoint. API keys are
                 encrypted on this server and are never returned to the browser.
@@ -645,7 +650,7 @@
             v.hadFailure = false;
           v.retry.hidden = !v.hadFailure;
           const l = s.login;
-          v.loginBox.classList.toggle("hidden", !l);
+          v.loginBox.classList.toggle("hidden", !l || ["completed","cancelled"].includes(l.state));
           if (l) {
             v.loginText.textContent =
               l.reason +

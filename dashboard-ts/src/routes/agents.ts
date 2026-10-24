@@ -30,6 +30,7 @@ import {
   publicModel,
   runById,
 } from "../agents/store";
+import { artifactManifest } from "../agents/artifacts";
 import { resultDir, scheduleRun, stopRun } from "../agents/runner";
 
 import { pageView } from "../page-view";
@@ -330,14 +331,19 @@ agentRoutes.get("/api/v1/agents/runs/:id/result", async (c) => {
       ),
     ),
   );
-  for (const file of all<{ id: number; name: string; disk_name: string }>(
+  const files = all<{ id: number; name: string; disk_name: string }>(
     "SELECT id,name,disk_name FROM agent_artifacts WHERE run_id=?",
     job.id,
-  ))
-    pack.entry(
-      { name: `files/${file.id}-${file.name}` },
-      readFileSync(join(resultDir(job.id), file.disk_name)),
-    );
+  ).map((file) => ({
+    ...file,
+    data: readFileSync(join(resultDir(job.id), file.disk_name)),
+  }));
+  for (const file of files)
+    pack.entry({ name: `files/${file.id}-${file.name}` }, file.data);
+  pack.entry(
+    { name: "manifest.json" },
+    JSON.stringify(artifactManifest(job, files), null, 2),
+  );
   pack.finalize();
   await done;
   return c.body(gzipSync(Buffer.concat(chunks)), 200, {

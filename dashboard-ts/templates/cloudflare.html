@@ -4,8 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Cloudflare — DeskSwarm</title>
-    <link rel="stylesheet" href="/static/dashboard.css" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-compact" />
     <style>
+      #prep-form {
+        display: block;
+      }
+      #prep-form label {
+        margin-bottom: 12px;
+      }
+      #prep-services label {
+        grid-template-columns: auto 1fr;
+        padding: 10px 0;
+        border-bottom: 1px solid #dce5eb;
+      }
+      #prep-services small {
+        grid-column: 1 / -1;
+        line-height: 1.8;
+      }
       body {
         display: block;
         overflow: auto;
@@ -109,9 +124,9 @@
         }
       }
     </style>
-  <link rel="stylesheet" href="/static/panels.css">
-<script src="/static/panels.js"></script>
-</head>
+    <link rel="stylesheet" href="/static/panels.css?v=20261024-compact" />
+    <script src="/static/panels.js?v=20261024-compact"></script>
+  </head>
   <body>
     <main>
       <a href="/">← لوحة التحكم</a> ·
@@ -121,21 +136,191 @@
         Worker يستقبل الطلبات وDurable Objects تنسّق مسارات الأجهزة. خدمة
         DeskSwarm الحالية تظل على Linux لتشغيل Docker والـAgents وحفظ البيانات.
       </p>
-      <section aria-labelledby="quick-title" class="cloudflare-quick">
-        <h2 id="quick-title">ابدأ بسرعة — من السيرفر للنشر</h2>
-        <p>ابدأ بسيرفر Linux عليه DeskSwarm شغّال. ربط سيرفر Docker وحده لا يثبّت لوحة التطبيق عليه؛ تقدر تختار اللوحة المحلية الحالية بدلًا منه.</p>
-        <ol class="setup-steps">
-          <li><strong>١. اختَر سيرفر Linux</strong><p>اربطه عبر SSH أو NetBird، أو استخدم Docker المحلي، ثم اكتشف خدمة DeskSwarm.</p><div class="actions"><a class="button" href="/settings/connections">ربط سيرفر Linux / NetBird</a><button type="button" data-setup-target="tunnel-setup" data-setup-focus="tunnel-server">اختيار السيرفر واكتشاف الخدمة</button></div></li>
-          <li><strong>٢. اربط حساب Cloudflare</strong><p>أدخل API Token، اكتشف الحساب واختر اسم Worker. عنوان Linux يتجهّز تلقائيًا بعد إنشاء Tunnel.</p><button type="button" data-setup-target="account-setup" data-setup-focus="cloudflare-token">إعداد الحساب</button></li>
-          <li><strong>٣. أنشئ Tunnel وانشر التطبيق</strong><p>حمّل الدومينات، اختر عنوانًا جديدًا، وافحص الإعدادات. خيار نشر Worker مفعّل لتكمل العملية من هنا.</p><button type="button" id="quick-tunnel" data-setup-target="tunnel-setup" data-setup-focus="discover-zones">إعداد Tunnel + نشر Worker</button></li>
-        </ol>
-        <div class="actions"><button type="button" data-setup-target="release-setup" data-setup-focus="refresh">متابعة النشر والإصدارات</button><a class="button" href="https://deploy.workers.cloudflare.com/?url=https://github.com/zadstack/deskswarm" target="_blank" rel="noopener noreferrer">☁ Deploy to Cloudflare ↗</a></div>
-        <p><small>زر Cloudflare الخارجي مسار بديل لمن لديه عنوان HTTPS جاهز؛ يفتح Cloudflare في تبويب جديد ولا يسجّل النشر في سجل DeskSwarm. للمسار التلقائي استخدم الخطوات أعلاه. الأجهزة والبيانات تظل على Linux.</small></p>
+      <section id="cloud-preparation" dir="rtl" aria-labelledby="prep-title">
+        <h2 id="prep-title">خدمات Cloudflare</h2>
+        <p class="prep-summary">اختَر الخدمات المطلوبة. تُحفظ على السيرفر كتجهيز فقط، بدون تغيير صلاحيات أو إنشاء موارد.</p>
+        <form id="prep-form">
+          <div id="prep-services"></div>
+          <details id="prep-advanced"><summary>الأسماء والحدود المقترحة — مُعبأة تلقائيًا</summary>          <div
+            style="
+              display: grid;
+              grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+              gap: 6px;
+            "
+          >
+            <label
+              >اسم Worker المقترح<input
+                id="prep-worker"
+                required
+                pattern="[a-z][a-z0-9-]{2,62}"
+            /></label>
+            <label
+              >حاوية R2 المقترحة<input
+                id="prep-bucket"
+                required
+                pattern="[a-z][a-z0-9-]{2,62}"
+            /></label>
+            <label
+              >أقصى أجهزة سحابية — مقترح<input
+                id="prep-machines"
+                type="number"
+                min="1"
+                max="10"
+                required
+            /></label>
+            <label
+              >توقف الخمول بالدقائق — مقترح<input
+                id="prep-idle"
+                type="number"
+                min="1"
+                max="60"
+                required
+            /></label>
+            <label
+              >مدة المتصفح بالدقائق — مقترح<input
+                id="prep-browser"
+                type="number"
+                min="1"
+                max="60"
+                required
+            /></label>
+            <label
+              >احتفاظ بالنتائج بالأيام — مقترح<input
+                id="prep-retention"
+                type="number"
+                min="1"
+                max="365"
+                required
+            /></label>
+            <label
+              >بادئة ملفات النتائج<input
+                id="prep-prefix"
+                required
+                pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}"
+            /></label>
+            <label
+              >موديل Workers AI لاحقًا<input
+                id="prep-ai"
+                maxlength="200"
+                placeholder="اختياري — يحدد عند اختبار التكامل"
+            /></label>
+          </div>
+          </details>
+          <p>
+            التشغيل الافتراضي الحالي: <strong>Linux / Proxmox</strong>. الحدود
+            والاحتفاظ أعلاه لن تُطبّق قبل تفعيل التكامل، ولا تحذف الملفات
+            الحالية.
+          </p>
+          <div class="actions"><button type="submit" id="prep-save">حفظ الإعدادات على السيرفر</button><small>الإعدادات فقط؛ التشغيل السحابي غير مفعّل.</small></div>
+          <p id="prep-notice" role="status" aria-live="polite"></p>
+        </form>
+        <details>
+          <summary>Durable Objects وملفات النتائج: هنستفيد بإيه؟</summary>
+          <p>
+            <strong>Durable Objects:</strong> لكل جهاز أو جلسة منسّق واحد؛ يساعد
+            في منع تشغيل مهمتين متعارضتين وحفظ حالة الجلسة ومراجع النتائج بعد
+            إعادة اتصال المتصفح. حاليًا ملكية المهام على CT 401. يوجد نموذج تنسيق مُختبر محليًا فقط في الكود؛ الطوابير والاستئناف وإدارة التنفيذ
+            السحابي لم تتفعّل.
+          </p>
+          <p>
+            <strong>Artifacts:</strong> ملفات المهمة الفعلية مثل التقارير والصور
+            والكود، منفصلة عن سجل المحادثة. تنزيل نتيجة Agent يتضمن الآن
+            manifest بالأسماء والحجم وبصمة SHA-256، حتى للنتائج الجزئية. لاحقًا
+            تحفظ R2 الملفات وتحتفظ Durable Objects بالمراجع والحالة؛ المنسّق
+            وحده لا يحفظ قرص Linux.
+          </p>
+          <p>
+            يمكن الرجوع بإلغاء اختيار الخدمات وحفظ التجهيزات؛ الأجهزة الحالية
+            والمفاتيح لا تتغير.
+          </p>
+        </details>
       </section>
+      <section aria-labelledby="quick-title" class="cloudflare-quick"><details><summary id="quick-title">إعداد الربط والنشر خطوة بخطوة</summary>
+
+        <p>
+          ابدأ بسيرفر Linux عليه DeskSwarm شغّال. ربط سيرفر Docker وحده لا يثبّت
+          لوحة التطبيق عليه؛ تقدر تختار اللوحة المحلية الحالية بدلًا منه.
+        </p>
+        <ol class="setup-steps">
+          <li>
+            <strong>١. اختَر سيرفر Linux</strong>
+            <p>
+              اربطه عبر SSH أو NetBird، أو استخدم Docker المحلي، ثم اكتشف خدمة
+              DeskSwarm.
+            </p>
+            <div class="actions">
+              <a class="button" href="/settings/connections"
+                >ربط سيرفر Linux / NetBird</a
+              ><button
+                type="button"
+                data-setup-target="tunnel-setup"
+                data-setup-focus="tunnel-server"
+              >
+                اختيار السيرفر واكتشاف الخدمة
+              </button>
+            </div>
+          </li>
+          <li>
+            <strong>٢. اربط حساب Cloudflare</strong>
+            <p>
+              أدخل API Token، اكتشف الحساب واختر اسم Worker. عنوان Linux يتجهّز
+              تلقائيًا بعد إنشاء Tunnel.
+            </p>
+            <button
+              type="button"
+              data-setup-target="account-setup"
+              data-setup-focus="cloudflare-token"
+            >
+              إعداد الحساب
+            </button>
+          </li>
+          <li>
+            <strong>٣. أنشئ Tunnel وانشر التطبيق</strong>
+            <p>
+              حمّل الدومينات، اختر عنوانًا جديدًا، وافحص الإعدادات. خيار نشر
+              Worker مفعّل لتكمل العملية من هنا.
+            </p>
+            <button
+              type="button"
+              id="quick-tunnel"
+              data-setup-target="tunnel-setup"
+              data-setup-focus="discover-zones"
+            >
+              إعداد Tunnel + نشر Worker
+            </button>
+          </li>
+        </ol>
+        <div class="actions">
+          <button
+            type="button"
+            data-setup-target="release-setup"
+            data-setup-focus="refresh"
+          >
+            متابعة النشر والإصدارات</button
+          ><a
+            class="button"
+            href="https://deploy.workers.cloudflare.com/?url=https://github.com/zadstack/deskswarm"
+            target="_blank"
+            rel="noopener noreferrer"
+            >☁ Deploy to Cloudflare ↗</a
+          >
+        </div>
+        <p>
+          <small
+            >زر Cloudflare الخارجي مسار بديل لمن لديه عنوان HTTPS جاهز؛ يفتح
+            Cloudflare في تبويب جديد ولا يسجّل النشر في سجل DeskSwarm. للمسار
+            التلقائي استخدم الخطوات أعلاه. الأجهزة والبيانات تظل على
+            Linux.</small
+          >
+        </p>
+      </details></section>
       <section id="account-setup" tabindex="-1">
         <h2>ربط الحساب</h2>
         <p>
-          أدخل API Token محدود الصلاحيات وAccount ID واسم Worker. يمكنك إنشاء عنوان الخدمة تلقائيًا من قسم Tunnel أدناه، أو اختبار عنوان HTTPS موجود. فعّل workers.dev للحساب. المفتاح يُحفظ مشفّرًا ولا يظهر بعد الحفظ.
+          أدخل API Token محدود الصلاحيات وAccount ID واسم Worker. يمكنك إنشاء
+          عنوان الخدمة تلقائيًا من قسم Tunnel أدناه، أو اختبار عنوان HTTPS
+          موجود. فعّل workers.dev للحساب. المفتاح يُحفظ مشفّرًا ولا يظهر بعد
+          الحفظ.
         </p>
         <div class="actions" style="margin-bottom: 16px">
           <button id="discover-accounts" type="button">
@@ -185,7 +370,7 @@
         <p id="connection-message" role="status" aria-live="polite"></p>
         <p id="saved"></p>
       </section>
-      <section id="tunnel-setup" tabindex="-1">
+      <section id="tunnel-setup" tabindex="-1"><details><summary>ربط Tunnel ودومين</summary>
         <h2>إعداد Cloudflare Tunnel تلقائيًا</h2>
         <p>
           اختر السيرفر وخدمة DeskSwarm المكتشفة، والدومين واسم النطاق الفرعي.
@@ -252,7 +437,7 @@
           الاحتفاظ بكلمة المرور الحالية.
         </p>
         <div id="tunnels"></div>
-      </section>
+      </details></section>
       <section id="release-setup" tabindex="-1">
         <h2>النشر والإصدارات</h2>
         <p>
@@ -274,6 +459,82 @@
       </section>
     </main>
     <script>
+      (() => {
+        const el = (id) => document.getElementById(id),
+          note = (message) => {
+            el("prep-notice").textContent = message;
+          };
+        async function request(method = "GET", body) {
+          const r = await fetch("/api/v1/cloudflare/preparation", {
+            method,
+            headers: { "content-type": "application/json" },
+            body: body ? JSON.stringify(body) : undefined,
+          });
+          const b = await r.json().catch(() => { throw Error("تعذّر الوصول للخدمة؛ أعد المحاولة بعد لحظة"); });
+          if (!r.ok || !b.ok) throw Error(b.error || "تعذر تحميل التجهيزات");
+          return b.data;
+        }
+        async function load() {
+          const p = await request(),
+            s = p.settings;
+          for (const [id, key] of [
+            ["worker", "worker_name"],
+            ["bucket", "bucket_name"],
+            ["machines", "max_machines"],
+            ["idle", "idle_minutes"],
+            ["browser", "browser_minutes"],
+            ["retention", "retention_days"],
+            ["prefix", "artifact_prefix"],
+            ["ai", "ai_model"],
+          ])
+            el("prep-" + id).value = s[key];
+          el("prep-services").replaceChildren(
+            ...p.services.map((service) => {
+              const row=document.createElement("div"),label=document.createElement("label"),box=document.createElement("input"),title=document.createElement("span"),badge=document.createElement("small"),details=document.createElement("details"),summary=document.createElement("summary"),help=document.createElement("p");
+            row.className="prep-service-row";box.type="checkbox";box.name="prep-service";box.value=service.id;box.checked=s.selected.includes(service.id);
+            title.textContent=service.name;badge.textContent=service.ready?"إدارة موجودة":"تجهيز فقط";label.append(box,title,badge);
+            summary.textContent="التفاصيل";help.textContent=service.purpose+" الصلاحيات عند التفعيل: "+service.permissions.join("، ");details.append(summary,help);row.append(label,details);return row;
+            }),
+          );
+          note(
+            p.updated_at
+              ? "آخر حفظ محلي: " + new Date(p.updated_at).toLocaleString()
+              : "إعدادات مقترحة؛ احفظها لتجهيز الحزمة.",
+          );
+        }
+        el("prep-form").onsubmit = async (event) => {
+          event.preventDefault();
+          el("prep-save").disabled = true;
+          try {
+            await request("POST", {
+              selected: [
+                ...document.querySelectorAll(
+                  'input[name="prep-service"]:checked',
+                ),
+              ].map((x) => x.value),
+              worker_name: el("prep-worker").value,
+              bucket_name: el("prep-bucket").value,
+              max_machines: Number(el("prep-machines").value),
+              idle_minutes: Number(el("prep-idle").value),
+              browser_minutes: Number(el("prep-browser").value),
+              retention_days: Number(el("prep-retention").value),
+              artifact_prefix: el("prep-prefix").value,
+              ai_model: el("prep-ai").value,
+              default_target: "linux",
+            });
+            note(
+              "تم حفظ التجهيزات محليًا. لم تتغير الصلاحيات ولم تُنشأ موارد Cloudflare.",
+            );
+          } catch (error) {
+            note(error.message);
+          } finally {
+            el("prep-save").disabled = false;
+          }
+        };
+        load().catch((error) => note(error.message));
+      })();
+    </script>
+    <script>
       const form = document.querySelector("#connection"),
         save = document.querySelector("#save"),
         message = document.querySelector("#message"),
@@ -281,9 +542,10 @@
       let ticket = "",
         busy = false;
       const el = (id) => document.getElementById(id);
-      document.querySelectorAll("[data-setup-target]").forEach(button => {
+      document.querySelectorAll("[data-setup-target]").forEach((button) => {
         button.addEventListener("click", () => {
-          el(button.dataset.setupTarget).scrollIntoView({ block: "start" });
+          const target=el(button.dataset.setupTarget);const disclosure=target.querySelector("details");if(disclosure)disclosure.open=true;
+          target.scrollIntoView({ block: "start" });
           el(button.dataset.setupFocus).focus({ preventScroll: true });
         });
       });
@@ -296,7 +558,7 @@
           headers: body ? { "Content-Type": "application/json" } : {},
           body: body ? JSON.stringify(body) : undefined,
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => { throw Error("تعذّر الوصول للخدمة؛ أعد المحاولة بعد لحظة"); });
         if (!res.ok || !data.ok) throw Error(data.error || "تعذّر الطلب");
         return data.data;
       }
@@ -430,7 +692,11 @@
         };
       status().catch((e) => note(e.message));
       setInterval(() => {
-        if (!document.hidden && document.documentElement.dataset.panelActive !== "false") status().catch(() => {});
+        if (
+          !document.hidden &&
+          document.documentElement.dataset.panelActive !== "false"
+        )
+          status().catch(() => {});
       }, 2500);
     </script>
     <script>
@@ -613,6 +879,7 @@
             el("tunnel-zone").value = tunnel.zone;
             el("tunnel-hostname").value = tunnel.hostname;
             invalidateTunnel();
+            const disclosure=tf.closest("details");if(disclosure)disclosure.open=true;
             tf.scrollIntoView({ behavior: "smooth" });
             tunnelNote(
               "تم ملء الإعدادات المحفوظة. افحصها ثم شغّل الربط لاستكمال الموارد الموجودة.",
@@ -665,24 +932,52 @@
       async function refreshServers() {
         const response = await fetch("/api/v1/servers");
         const servers = await response.json();
-        if (!response.ok || !servers.ok) throw Error("تعذّر تحميل السيرفرات؛ أعد المحاولة");
-        const selector = el("tunnel-server"), selected = selector.value;
-        selector.replaceChildren(new Option("Local — سيرفر Docker الحالي", "0"));
+        if (!response.ok || !servers.ok)
+          throw Error("تعذّر تحميل السيرفرات؛ أعد المحاولة");
+        const selector = el("tunnel-server"),
+          selected = selector.value;
+        selector.replaceChildren(
+          new Option("Local — سيرفر Docker الحالي", "0"),
+        );
         for (const server of servers.data || [])
           if (server.id) selector.add(new Option(server.name, server.id));
-        if (Array.from(selector.options).some(option => option.value === selected)) selector.value = selected;
-        else { tunnelTicket = ""; el("start-tunnel").disabled = true; el("tunnel-backend").replaceChildren(new Option("اكتشف الخدمات أولًا", "")); }
+        if (
+          Array.from(selector.options).some(
+            (option) => option.value === selected,
+          )
+        )
+          selector.value = selected;
+        else {
+          tunnelTicket = "";
+          el("start-tunnel").disabled = true;
+          el("tunnel-backend").replaceChildren(
+            new Option("اكتشف الخدمات أولًا", ""),
+          );
+        }
       }
-      addEventListener("message", event => {
-        if (event.source === parent && event.origin === location.origin && event.data?.type === "deskswarm:panel-active" && event.data.active)
-          refreshServers().catch(error => tunnelNote(error.message));
+      addEventListener("message", (event) => {
+        if (
+          event.source === parent &&
+          event.origin === location.origin &&
+          event.data?.type === "deskswarm:panel-active" &&
+          event.data.active
+        )
+          refreshServers().catch((error) => tunnelNote(error.message));
       });
       (async () => {
-        try { await refreshServers(); await tunnelStatus(); }
-        catch (error) { tunnelNote(error.message); }
+        try {
+          await refreshServers();
+          await tunnelStatus();
+        } catch (error) {
+          tunnelNote(error.message);
+        }
       })();
       setInterval(() => {
-        if (!document.hidden && document.documentElement.dataset.panelActive !== "false") tunnelStatus().catch(() => {});
+        if (
+          !document.hidden &&
+          document.documentElement.dataset.panelActive !== "false"
+        )
+          tunnelStatus().catch(() => {});
       }, 4000);
     </script>
   </body>

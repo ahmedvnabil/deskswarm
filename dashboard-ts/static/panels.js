@@ -1,5 +1,8 @@
 /** Trusted first-party panel bridge. Only the parent may route or activate a view. */
 (() => {
+  document.addEventListener('invalid',event=>{
+    let parent=event.target.closest?.('details');while(parent){parent.open=true;parent=parent.parentElement?.closest('details');}
+  },true);
   const embedded = new URLSearchParams(location.search).get('embedded') === '1';
   if (!embedded || window.parent === window) return;
   document.documentElement.dataset.embedded = 'true';

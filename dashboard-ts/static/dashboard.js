@@ -61,7 +61,11 @@ async function api(path, method = "GET", data) {
     location.href = "/login?next=%2F";
     throw Error("سجّل الدخول للمتابعة");
   }
-  const body = await res.json();
+  const body = await res.json().catch(() => {
+    throw Error(res.status >= 500
+      ? "الخدمة غير متاحة مؤقتًا؛ انتظر لحظة وأعد المحاولة"
+      : "تعذّر قراءة الرد؛ حدّث الصفحة وأعد المحاولة");
+  });
   if (!res.ok || !body.ok) throw Error(body.error || "تعذّر تنفيذ الطلب");
   return body.data;
 }
@@ -98,6 +102,9 @@ for (const d of document.querySelectorAll("dialog"))
         d.close();
     }
   });
+const collapsedServers = new Set();
+try{for(const name of JSON.parse(localStorage.getItem("deskswarm:collapsed-servers")||"[]"))if(typeof name==="string")collapsedServers.add(name);}catch{}
+function rememberGroups(){try{localStorage.setItem("deskswarm:collapsed-servers",JSON.stringify([...collapsedServers]));}catch{}}
 function tree() {
   const query = $("server-search").value.trim().toLowerCase();
   const groups = [];
@@ -115,14 +122,21 @@ function tree() {
       () => {
         notice("");
         selectedServer = server.provider;
-        selectedId = children[0]?.id || null;
+        if(children.length){
+          if(collapsedServers.has(server.provider)){collapsedServers.delete(server.provider);selectedId=children[0].id;}
+          else collapsedServers.add(server.provider);
+          rememberGroups();
+        } else selectedId = null;
         shotMachine = null;
         tree();
         detail();
       },
       "server-row" + (server.provider === selectedServer ? " selected" : ""),
     );
-    b.prepend(icon("chevron-down"), icon("server"));
+    const expanded=children.length>0 && (!!query || !collapsedServers.has(server.provider));
+    if(children.length){b.prepend(icon("chevron-down"),icon("server"));b.setAttribute("aria-expanded",String(expanded));}
+    else b.prepend(icon("server"));
+    b.title=server.status==="unreachable"?"تعذر الاتصال بالسيرفر":server.name;
     const label = node("span", server.name, "server-label");
     label.dir = "ltr";
     b.append(
@@ -135,7 +149,7 @@ function tree() {
     );
     b.setAttribute("aria-label", `السيرفر ${server.name}`);
     group.append(b);
-    for (const comp of children.filter(
+    for (const comp of (expanded?children:[]).filter(
       (c) =>
         !query ||
         server.name.toLowerCase().includes(query) ||
@@ -174,9 +188,7 @@ function tree() {
       );
       group.append(row);
     }
-    if (!children.length)
-      group.append(node("p", "لا توجد أجهزة بعد", "muted sidebar-note"));
-    if (server.status === "unreachable")
+    if (server.status === "unreachable" && server.provider===selectedServer)
       group.append(node("p", "تعذّر الاتصال بالسيرفر", "muted sidebar-note"));
     groups.push(group);
   }

@@ -208,3 +208,8 @@ Agents, Settings, Connections/NetBird and Cloudflare open as tabs below the devi
 preview, with one sidebar and shared compact light identity. Tabs preserve form drafts
 while switching; bookmarked views use the same shell without redirects. See
 [connections and workspace behavior](docs/CONNECTIONS.md#unified-workspace-below-the-device-preview).
+
+Cloudflare service preparation is available in Settings → Cloudflare without
+changing API permissions or creating resources. See [the preparation guide](docs/CLOUDFLARE-PREPARATION.md)
+for what is implemented, the local Durable Object prototype, artifact manifests,
+and the live activation work still required.

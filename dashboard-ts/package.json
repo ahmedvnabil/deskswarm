@@ -7,7 +7,8 @@
     "start": "bun run src/server.ts",
     "dev": "bun --watch src/server.ts",
     "test": "bun test",
-    "test:cloudflare-edge": "node scripts/test-cloudflare-edge.mjs"
+    "test:cloudflare-edge": "node scripts/test-cloudflare-edge.mjs",
+    "test:cloudflare-preparation": "node scripts/test-cloudflare-preparation.mjs"
   },
   "dependencies": {
     "dockerode": "^4.0.2",

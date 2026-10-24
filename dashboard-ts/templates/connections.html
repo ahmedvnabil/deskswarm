@@ -4,7 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>الاتصالات — DeskSwarm</title>
-    <link rel="stylesheet" href="/static/dashboard.css" />
+    <link rel="stylesheet" href="/static/dashboard.css?v=20261024-compact" />
     <style>
       body {
         display: block;
@@ -122,8 +122,8 @@
         }
       }
     </style>
-  <link rel="stylesheet" href="/static/panels.css">
-<script src="/static/panels.js"></script>
+  <link rel="stylesheet" href="/static/panels.css?v=20261024-compact">
+<script src="/static/panels.js?v=20261024-compact"></script>
 </head>
   <body>
     <main>
@@ -143,11 +143,11 @@
         <div class="actions">
           <label
             >بحث في الأجهزة<input
-              id="search"
+              id="search" aria-label="بحث في الأجهزة"
               type="search"
               placeholder="الاسم أو عنوان الشبكة" /></label
           ><label
-            >عرض<select id="filter">
+            >عرض<select id="filter" aria-label="عرض الأجهزة">
               <option value="all">كل الأجهزة</option>
               <option value="needs">محتاج تجهيز</option><option value="failed">فشل الاتصال</option>
               <option value="offline">غير متصل</option>

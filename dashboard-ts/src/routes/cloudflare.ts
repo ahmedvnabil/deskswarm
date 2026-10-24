@@ -4,6 +4,10 @@ import { requireToken } from "../security";
 import { pageView } from "../page-view";
 import * as cf from "../cloudflare/control";
 import * as tunnels from "../cloudflare/tunnels";
+import {
+  preparation,
+  savePreparation,
+} from "../cloudflare/preparation";
 import { tunnelHost } from "../cloudflare/tunnel-host";
 export const cloudflareRoutes = new Hono<Env>();
 cloudflareRoutes.use("/api/v1/cloudflare/*", async (c, next) => {
@@ -12,7 +16,9 @@ cloudflareRoutes.use("/api/v1/cloudflare/*", async (c, next) => {
   c.set("auditDetail", "Cloudflare control operation; credentials omitted");
   return next();
 });
-cloudflareRoutes.get("/settings/cloudflare", c=>pageView(c,"cloudflare.html","/settings/cloudflare"));
+cloudflareRoutes.get("/settings/cloudflare", (c) =>
+  pageView(c, "cloudflare.html", "/settings/cloudflare"),
+);
 cloudflareRoutes.get("/api/v1/cloudflare/status", (c) =>
   ok(c, {
     connection: cf.publicConfig(),
@@ -175,6 +181,30 @@ cloudflareRoutes.post(
       return ok(c, await tunnels.check(Number(c.req.param("id"))));
     } catch {
       return fail(c, "تعذّر الفحص؛ انتظر العملية الجارية أو راجع النفق", 409);
+    }
+  },
+);
+
+cloudflareRoutes.get("/api/v1/cloudflare/preparation", (c) =>
+  ok(c, preparation()),
+);
+cloudflareRoutes.post(
+  "/api/v1/cloudflare/preparation",
+  requireToken,
+  async (c) => {
+    try {
+      const result = savePreparation(await jsonBody(c));
+      c.set(
+        "auditDetail",
+        "Offline Cloudflare preparation saved; no external resources or permissions changed",
+      );
+      return ok(c, result);
+    } catch {
+      return fail(
+        c,
+        "إعدادات غير صالحة. راجع الأسماء والحدود؛ التشغيل الافتراضي يظل Linux.",
+        400,
+      );
     }
   },
 );

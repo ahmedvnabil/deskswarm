@@ -201,6 +201,12 @@ test("executes tools, insists on verification, and downloads real UTF-8 bytes", 
   ).toBe("مرحبًا من الوكيل");
   expect(files.get("report.md")).toContain("completed");
   expect(files.get("activity.json")).toContain("save_result");
+  const manifest = JSON.parse(files.get("manifest.json")!);
+  expect(manifest.partial).toBe(false);
+  expect(manifest.files[0].bytes).toBe(Buffer.byteLength("مرحبًا من الوكيل"));
+  expect(manifest.files[0].sha256).toBe(
+    new Bun.CryptoHasher("sha256").update("مرحبًا من الوكيل").digest("hex"),
+  );
 });
 
 test("step limit fails without replay and restart retains ownership for explicit acknowledgement", async () => {
