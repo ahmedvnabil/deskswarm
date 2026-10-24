@@ -102,7 +102,8 @@ results. One managed agent owns each desktop; another managed run and external
 MCP actions are refused until the current action drains.
 
 See [Agents setup, limits and live validation](docs/AGENTS.md), including the
-optional local gateway for an already signed-in Codex CLI.
+optional private gateways for signed-in Codex and Claude Code CLIs, including
+independent services on the permanent Linux host.
 
 ## Connect an external agent
 

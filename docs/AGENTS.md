@@ -149,8 +149,8 @@ supported flow, then run the restricted model gateway there, or configure a norm
 API provider in Model connections. Never silently copy a personal CLI auth file
 into a desktop or dashboard container. See [official Codex authentication](https://learn.chatgpt.com/docs/auth)
 for device-code login on a headless host. The built-in API connections currently
-accept Responses or Chat Completions; a Claude CLI or Anthropic Messages endpoint
-needs an appropriate adapter rather than being entered as a Chat endpoint.
+accept Responses or Chat Completions; Claude Code can use the private adapter described below. An Anthropic Messages
+endpoint still needs an adapter rather than being entered as a Chat endpoint.
 
 A temporary operator-assisted test can reuse an already signed-in local Codex
 CLI through a pinned SSH reverse Unix socket. A token-protected gateway remains
@@ -220,3 +220,48 @@ through Cloudflare. Process inspection showed the CLI running under the dedicate
 CT service user. The model inspected the desktop, wrote a UTF-8 Markdown report,
 read it back and saved it; the completed run's downloaded archive contained the
 verified Arabic report. No operator-host gateway participated in that run.
+
+
+## Independent Claude Code alongside Codex
+
+Run `scripts/local-claude-provider.ts` with Bun on the trusted Linux control-plane
+host. Create a separate service user with a persistent HOME and CLAUDE_CONFIG_DIR,
+then run `claude auth login --claudeai` as that user and complete the official
+browser approval. On a remote host, keep stdin interactive while pasting the
+one-time callback code; do not copy a laptop auth cache. Verify `claude auth status`
+as the service user. See [Claude authentication](https://code.claude.com/docs/en/authentication).
+
+Set DESKSWARM_CLAUDE_GATEWAY_TOKEN to a random secret of at least 32 characters,
+DESKSWARM_CLAUDE_GATEWAY_HOST to the private Docker bridge address,
+DESKSWARM_CLAUDE_GATEWAY_PORT (default 8790), and optionally DESKSWARM_CLAUDE_BIN.
+Use a boot-enabled service with the same hardening and dedicated writable home
+as the Codex service. Keep auth outside dashboard/desktop containers. The gateway
+requires a token for health checks and inference, serializes requests, and uses
+restricted CLI sessions with host tools, MCP servers, hooks and persistence disabled.
+It supplies inline desktop screenshots and converts structured output to Chat
+Completions function calls; DeskSwarm executes those calls on the selected desktop.
+
+Add a second Model connection using the private `/v1` URL, Chat Completions,
+model `default`, vision enabled, and the gateway token. The Agents model selector
+can then switch between Claude and Codex without replacing either connection.
+Removing this model connection and stopping its service leaves Codex available.
+
+### Deployment architecture
+
+This is one application with two deployment layers. The Cloudflare Worker and
+Durable Object provide the public gateway; the full dashboard, authoritative
+SQLite database, files and agent runner live on CT 401. The origin and Worker
+URLs reach the same application and data. Claude and Codex are separate private
+model services on that CT, each with its own login and service account. Neither
+requires a running laptop or reverse SSH relay.
+
+
+Live Claude validation on 2026-10-24: independent login succeeded under
+`deskswarm-claude`; the boot-enabled private service on port 8790 ran alongside
+Codex on 8789 with the former Mac relay stopped. Through the public Worker URL,
+Claude run #15 inspected desktop ct-team-01, created a UTF-8 Markdown report,
+corrected an initially incorrect artifact path, saved the actual file, and
+completed. The downloaded archive was checked for the expected Arabic text.
+Both model choices were verified in the Agents screen. Initial provider failures
+remain visible in run history; no desktop actions were silently replayed.
+All 313 application tests and the TypeScript check passed.
