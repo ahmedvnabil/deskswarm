@@ -132,15 +132,31 @@
       <p>حسابات محفوظة، أجهزة مكتشفة، وخطوة واضحة لتجهيز كل اتصال.</p>
       <section>
         <h2>الخدمات والسيرفرات</h2>
-        <div id="overview" class="cards"></div>
+        <div id="overview" class="connection-summary"></div>
         <p>
           <a href="/settings/cloudflare">Cloudflare Tunnel والنشر التلقائي ←</a>
         </p>
         <p><a href="/?connect_server=1">ربط سيرفر Linux عبر SSH من لوحة التحكم ←</a></p>
       </section>
       <section>
-        <h2>NetBird</h2>
-        <p>
+        <h2>السيرفرات والأجهزة</h2>
+        <div class="actions">
+          <label
+            >بحث في الأجهزة<input
+              id="search"
+              type="search"
+              placeholder="الاسم أو عنوان الشبكة" /></label
+          ><label
+            >عرض<select id="filter">
+              <option value="all">كل الأجهزة</option>
+              <option value="needs">محتاج تجهيز</option><option value="failed">فشل الاتصال</option>
+              <option value="offline">غير متصل</option>
+              <option value="ready">جاهز</option>
+            </select></label
+          >
+        </div>
+        <div class="actions"><p id="fleet-counts" role="status"></p><button type="button" id="refresh-table">تحديث الجدول</button><span id="table-refreshed" class="muted"></span></div><p id="message" role="status" aria-live="polite"></p><div class="server-table-wrap"><table class="server-table"><thead><tr><th scope="col">السيرفر / العنوان</th><th scope="col">الحالة</th><th scope="col">سبب التعطل / آخر فحص</th><th scope="col">الإجراءات</th></tr></thead><tbody id="peers"></tbody></table></div>
+        <details class="account-settings"><summary>إعداد حساب NetBird والمزامنة</summary>        <p>
           اربط Personal Access Token لقراءة الأجهزة من NetBird Cloud أو خادمك
           الخاص. الربط هنا يقرأ القائمة؛ الوصول إلى الأجهزة يحتاج NetBird
           شغّالًا على سيرفر DeskSwarm وسياسة شبكة تسمح بـSSH. «غير مجهّز» يعني
@@ -167,24 +183,29 @@
             ><button id="sync" type="button" disabled>مزامنة الأجهزة</button>
           </div>
         </form>
-        <p id="message" role="status" aria-live="polite"></p>
+
         <p id="sync-state"></p>
-        <div class="actions">
-          <label
-            >بحث في الأجهزة<input
-              id="search"
-              type="search"
-              placeholder="الاسم أو عنوان الشبكة" /></label
-          ><label
-            >عرض<select id="filter">
-              <option value="all">كل الأجهزة</option>
-              <option value="unconfigured">غير مجهّز</option>
-              <option value="offline">غير متصل</option>
-              <option value="configured">مربوط بـSSH</option>
-            </select></label
-          >
-        </div>
-        <div id="peers"></div>
+</details>
+      </section>
+      <section id="proxmox-panel">
+        <h2>Proxmox · إنشاء CT سريع</h2>
+        <p>استخدم سيرفر Proxmox المربوط عبر SSH. ينشئ CT غير مميّز مع nesting، ويثبّت Docker وSSH ويربطه تلقائيًا لتشغيل أجهزة DeskSwarm داخله.</p>
+        <form id="proxmox-form">
+          <label>سيرفر Proxmox<select name="server_id" id="pve-server" required></select></label>
+          <div class="actions"><button type="button" id="pve-discover">اختبار واكتشاف الإعدادات</button></div>
+          <label>اسم CT<input name="hostname" value="deskswarm-ct" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}" required></label>
+          <label>قالب النظام<select name="template" required><option value="">اكتشف القوالب أولًا</option></select></label>
+          <label>التخزين<select name="storage" required></select></label>
+          <label>شبكة bridge<select name="bridge" required></select></label>
+          <label>المعالجات<input name="cores" type="number" value="2" min="1" max="32" required></label>
+          <label>الذاكرة MB<input name="memory" type="number" value="4096" min="1024" max="65536" required></label>
+          <label>القرص GB<input name="disk" type="number" value="24" min="8" max="512" required></label>
+          <label><span><input name="start_desktop" type="checkbox" checked> إنشاء أول كمبيوتر داخل CT بعد التجهيز</span></label>
+          <div class="actions wide"><button type="button" id="pve-save" disabled>حفظ الإعدادات</button><button type="submit" id="pve-create" class="primary" disabled>إنشاء CT وتجهيزه</button></div>
+        </form>
+        <p id="pve-message" role="status" aria-live="polite"></p>
+        <p class="muted">الشبكة تستخدم DHCP. إنشاء CT يستهلك الموارد المحددة، وبناء أول صورة قد يستغرق دقائق. لا تُحذف الموارد تلقائيًا عند التعطل.</p>
+        <div id="pve-jobs" aria-live="polite"></div>
       </section>
       <section>
         <h2>الإعدادات الافتراضية للربط</h2>
@@ -241,92 +262,54 @@
       function values() {
         return Object.fromEntries(new FormData(form));
       }
+      const isReady = p => p.server_status === "connected";
+      const pendingRetries = new Set();
       function render() {
-        const q = $("search").value.toLowerCase(),
-          f = $("filter").value;
-        const shown = inventory.filter(
-          (p) =>
-            (p.name + " " + p.ip).toLowerCase().includes(q) &&
-            (f === "all" ||
-              (f === "offline" && !p.connected) ||
-              f === p.readiness),
-        );
+        const q = $("search").value.trim().toLowerCase(), f = $("filter").value;
+        const supported = inventory.filter(p => p.linux || p.server_id);
+        const ready = supported.filter(isReady).length;
+        $("fleet-counts").textContent = `${supported.length} سيرفر · ${ready} جاهز · ${supported.length - ready} محتاج تجهيز`;
+        const shown = inventory.filter(p => (p.name + " " + p.ip + " " + (p.diagnostic?.message || "")).toLowerCase().includes(q) &&
+          (f === "all" || (f === "ready" && isReady(p)) || (f === "needs" && !isReady(p) && (p.linux || p.server_id)) || (f === "failed" && !isReady(p) && !!p.diagnostic) || (f === "offline" && !p.connected)));
         $("peers").replaceChildren();
         for (const p of shown) {
-          const row = node("div");
-          row.className = "peer";
-          const info = node("div");
-          info.append(
-            node("strong", p.name),
-            node(
-              "p",
-              `${p.ip || "لا يوجد عنوان"} · ${p.os || "نظام غير معروف"}`,
-            ),
-            node(
-              "p",
-              `${p.connected ? "متصل حسب آخر مزامنة" : "غير متصل"} · ${p.readiness === "configured" ? "مربوط بـSSH" : "غير مجهّز لـDeskSwarm"}`,
-            ),
-          );
-          if (p.server_checked_at)
-            info.append(
-              node(
-                "p",
-                `آخر فحص SSH/Docker: ${p.server_checked_at} · ${p.server_status === "connected" ? "جاهز — نجح SSH وDocker" : "فشل الاتصال"}`,
-              ),
-            );
-          if (p.last_seen) info.append(node("p", "آخر ظهور: " + p.last_seen));
-          if (p.netbird_ssh) info.append(node("p", `آخر فحص NetBird SSH: ${p.netbird_ssh.checked_at} · لم يتوفر خادم NetBird SSH متوافق؛ يلزم تفعيله وإعداد سياسة الوصول على الجهاز.`));
-          if (p.diagnostic && (!p.server_checked_at || p.server_status !== "connected" || p.diagnostic.checked_at > p.server_checked_at)) {
-            info.append(node("p", "آخر تشخيص: " + p.diagnostic.message));
-            info.append(node("p", `${p.diagnostic.checked_at}${p.diagnostic.username ? " · المستخدم: " + p.diagnostic.username : ""}`));
-          }
-          row.append(info);
+          const row = node("tr"), name = node("td"), state = node("td"), detail = node("td"), actions = node("td");
+          name.append(node("strong", p.name), node("small", p.ip || "بدون عنوان"));
+          const badge = node("span", isReady(p) ? "جاهز" : p.linux ? "محتاج تجهيز" : "غير مدعوم");
+          badge.className = "state-badge " + (isReady(p) ? "ready" : "pending");
+          state.append(badge, node("small", p.direct_server ? "اتصال SSH مباشر" : p.connected ? "NetBird: متصل حسب آخر مزامنة" : "NetBird: غير متصل"));
+          const diagnostic = p.diagnostic && (!isReady(p) || !p.server_checked_at || p.diagnostic.checked_at > p.server_checked_at);
+          detail.append(node("span", diagnostic ? p.diagnostic.message : isReady(p) ? "نجح SSH وDocker" : p.linux ? "جهّز بيانات SSH واختبر Docker" : "يتطلب Linux لتشغيل الأجهزة"));
+          const when = diagnostic ? p.diagnostic.checked_at : p.server_checked_at;
+          if (when) detail.append(node("small", "آخر فحص: " + new Date(when).toLocaleString("ar-EG", {timeZone:"Asia/Dubai"}) + (diagnostic && p.diagnostic.username ? " · " + p.diagnostic.username : "")));
+          if (p.netbird_ssh) detail.append(node("small", "آخر فحص NetBird SSH: الخدمة غير متاحة على الجهاز"));
           if (p.retry_available) {
-            const retry = node("button", "إعادة محاولة الربط");
+            const retry = node("button", pendingRetries.has(p.id) ? "جارٍ الفحص…" : "إعادة المحاولة");
+            retry.disabled = pendingRetries.has(p.id);
             retry.onclick = async () => {
-              retry.disabled = true;
-              retry.textContent = "جارٍ إعادة المحاولة…";
-              let message;
-              try { await api("netbird/peers/" + encodeURIComponent(p.id) + "/retry", {}); message = "نجح الربط وفحص SSH وDocker"; }
+              pendingRetries.add(p.id); render(); let message;
+              try { await api(p.direct_server ? "servers/" + p.server_id + "/test" : "netbird/peers/" + encodeURIComponent(p.id) + "/retry", {}); message = "نجح الربط وفحص SSH وDocker"; }
               catch (error) { message = error.message; }
-              finally { await load(); note(message); }
+              finally { pendingRetries.delete(p.id); try { await load(); } catch(e) { render(); } note(message); }
             };
-            row.append(retry);
-            if (!p.server_id) info.append(node("p", "إعادة المحاولة تستخدم بيانات SSH السابقة المحفوظة مشفّرة؛ حدّث بيانات الربط إذا تغيّر المفتاح أو البصمة."));
+            actions.append(retry);
+          }
+          if (!p.server_id && p.connectable) {
+            const setup = node("a", "تجهيز SSH"); setup.href = "/?connect_peer=" + encodeURIComponent(p.id); actions.append(setup);
           }
           if (p.server_id) {
-            const check = node("button", "اختبار SSH وDocker");
-            check.onclick = async () => {
-              check.disabled = true;
-              try {
-                await api("servers/" + p.server_id + "/test", {});
-                await load();
-                note("نجح اتصال SSH وDocker للجهاز");
-              } catch (e) {
-                note(e.message);
-                check.disabled = false;
-              }
-            };
-            row.append(check);
-          } else if (p.connectable) {
-            const a = node("a", "تجهيز ربط SSH");
-            a.href = "/?connect_peer=" + encodeURIComponent(p.id);
-            row.append(a);
-          } else row.append(node("span", "يتطلب Linux وعنوان شبكة صالحًا"));
-          $("peers").append(row);
+            const remove = node("button", "إزالة الربط"); remove.className = "quiet";
+            remove.onclick = async () => { remove.disabled = true; try { await api("servers/" + p.server_id, undefined, "DELETE"); await load(); note("تمت إزالة الربط"); } catch(e) { note(e.message); remove.disabled = false; } };
+            actions.append(remove);
+          }
+          row.append(name,state,detail,actions); $("peers").append(row);
         }
-        if (!shown.length)
-          $("peers").append(
-            node(
-              "p",
-              config
-                ? "لا توجد أجهزة مطابقة؛ جرّب المزامنة أو غيّر الفلتر. الأجهزة التي لم تثبّت NetBird عليها لن تظهر في حسابه."
-                : "اربط NetBird لعرض الأجهزة وحالة تجهيزها.",
-            ),
-          );
+        if (!shown.length) { const tr=node("tr"),td=node("td","لا توجد نتائج مطابقة للبحث أو الفلتر");td.colSpan=4;tr.append(td);$("peers").append(tr); }
       }
       async function load() {
         const data = await api("connections/status");
+        if (!$("pve-server").options.length) { for (const server of data.servers) { const option=node("option",server.name);option.value=server.id;$("pve-server").append(option); } const suggested=data.servers.find(s=>/pve|proxmox/i.test(s.name));if(suggested)$("pve-server").value=suggested.id; }
+
         $("overview").replaceChildren();
         for (const title of [
           data.cloudflare
@@ -340,16 +323,12 @@
           card.className = "card";
           $("overview").append(card);
         }
-        for (const server of data.servers) {
-          const card=node("div");card.className="card";card.append(node("strong",server.name),node("p",server.status === "connected" ? "جاهز — نجح SSH وDocker" : "تعذّر الاتصال — راجع التشخيص أدناه"));
-          const remove=node("button","إزالة ربط SSH");remove.onclick=async()=>{remove.disabled=true;try{await api("servers/"+server.id,undefined,"DELETE");await load();note("تمت إزالة الربط")}catch(e){note(e.message);remove.disabled=false}};
-          card.append(remove);$("overview").append(card);
-        }
         for (const key of ["ssh_user", "ssh_port"])
           $("preferences").elements[key].value = data.preferences[key];
         const list = await api("netbird/peers");
         config = list.connection;
         inventory = list.peers;
+        for (const server of data.servers) if (!inventory.some(p => p.server_id === server.id)) inventory.push({id:"server:"+server.id,name:server.name,ip:server.host,linux:true,server_id:server.id,server_status:server.status,server_checked_at:server.checked_at,retry_available:true,direct_server:true,connected:false,diagnostic:server.status === "connected" ? null : {message:"تعذّر الوصول إلى SSH أو Docker؛ أعد الفحص أو حدّث بيانات الربط",checked_at:server.checked_at}});
         $("sync").disabled = !config;
         if (config) {
           form.elements.base_url.value = config.base_url;
@@ -358,6 +337,7 @@
             "آخر مزامنة: " +
             config.checked_at;
         } else $("sync-state").textContent = "لا يوجد حساب NetBird محفوظ";
+        $("table-refreshed").textContent="آخر تحديث للجدول: "+new Date().toLocaleTimeString("ar-EG",{timeZone:"Asia/Dubai"});
         render();
       }
       form.oninput = () => {
@@ -405,6 +385,7 @@
           await load().catch((e) => note(e.message));
         }
       };
+      $("refresh-table").onclick=async()=>{ $("refresh-table").disabled=true;try{if(config)await api("netbird/sync",{});await load();}catch(e){note(e.message);}finally{$("refresh-table").disabled=false;}};
       $("search").oninput = render;
       $("filter").onchange = render;
       $("preferences").onsubmit = async (e) => {
@@ -419,7 +400,36 @@
           $("preference-message").textContent = e.message;
         }
       };
-      load().catch((e) => note(e.message));
+      let pveInventory = null, pveSettings = null, pvePolling = false;
+      const pveForm = $("proxmox-form");
+      function pveValues() { const result=Object.fromEntries(new FormData(pveForm)); result.start_desktop=pveForm.elements.start_desktop.checked; return result; }
+      function fillOptions(name,items,current) { const select=pveForm.elements[name];select.replaceChildren();for(const item of items){const option=node("option",item.label);option.value=item.value;select.append(option);}if(current && items.some(i=>i.value===current))select.value=current; }
+      async function discoverPve() {
+        $("pve-discover").disabled=true;
+        try { const values=pveValues();pveInventory=await api("connections/proxmox/discover",{server_id:values.server_id});
+          fillOptions("template",pveInventory.templates.map(t=>({value:t.volid,label:t.volid})),pveSettings?.template);
+          fillOptions("storage",pveInventory.storages.map(s=>({value:s.name,label:s.name+" · "+Math.floor(s.available/1073741824)+" GB متاح"})),pveSettings?.storage);
+          fillOptions("bridge",pveInventory.bridges.map(b=>({value:b,label:b})),pveSettings?.bridge||"vmbr0");
+          const debian=pveInventory.templates.find(t=>t.volid.includes("debian-13-"));if(!pveSettings?.template&&debian)pveForm.elements.template.value=debian.volid;
+          $("pve-save").disabled=false;$("pve-create").disabled=pvePolling;$("pve-message").textContent=`تم الاتصال بالعقدة ${pveInventory.node} · ${pveInventory.containers.length} CT · الرقم التالي ${pveInventory.nextid}`;
+        }catch(e){$("pve-message").textContent=e.message;$("pve-save").disabled=$("pve-create").disabled=true;}finally{$("pve-discover").disabled=false;}
+      }
+      $("pve-discover").onclick=discoverPve;
+      $("pve-server").onchange=()=>{pveInventory=null;pveSettings=null;$("pve-save").disabled=$("pve-create").disabled=true;};
+      $("pve-save").onclick=async()=>{ $("pve-save").disabled=true;try{await api("connections/proxmox/settings",pveValues());$("pve-message").textContent="تم حفظ إعدادات Proxmox";}catch(e){$("pve-message").textContent=e.message;}finally{$("pve-save").disabled=false;} };
+      pveForm.onsubmit=async e=>{e.preventDefault();$("pve-create").disabled=true;try{const job=await api("connections/proxmox/create",pveValues());$("pve-message").textContent="بدأ تجهيز CT "+job.vmid;await loadPve();}catch(e){$("pve-message").textContent=e.message;$("pve-create").disabled=false;}};
+      async function loadPve(){
+        const data=await api("connections/proxmox");
+        if(data.settings&&!pveSettings){pveSettings=JSON.parse(data.settings.defaults);for(const key of ["server_id","hostname","cores","memory","disk"])pveForm.elements[key].value=pveSettings[key];pveForm.elements.start_desktop.checked=pveSettings.start_desktop;}
+        $("pve-jobs").replaceChildren();
+        for(const job of data.jobs){const row=node("div");row.className="pve-job";row.append(node("strong",`${job.name} · CT ${job.vmid}`),node("p",`${job.status === "running" ? "جارٍ التجهيز" : job.status === "completed" ? "جاهز" : "تعطّل التجهيز"} · ${job.stage}`));if(job.error)row.append(node("p",job.error));if(job.result_server_id)row.append(node("p","سيرفر Docker مربوط: "+job.result_server_id));if(job.computer_id){const link=node("a","فتح الكمبيوتر");link.href="/?computer_id="+job.computer_id;row.append(link);}$("pve-jobs").append(row);}
+        const wasPolling=pvePolling;
+        pvePolling=data.jobs.some(j=>j.status==="running");
+        if(wasPolling&&!pvePolling) await load();
+        $("pve-create").disabled=pvePolling||!pveInventory;
+      }
+      setInterval(()=>{if(pvePolling&&!document.hidden&&document.documentElement.dataset.panelActive!=="false")loadPve().catch(()=>{});},4000);
+      load().then(loadPve).catch((e) => note(e.message));
     </script>
   </body>
 </html>

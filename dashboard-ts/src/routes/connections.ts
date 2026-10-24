@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ok, fail, jsonBody, type Env } from "../http";
 import { requireToken } from "../security";
 import { pageView } from "../page-view";
+import * as proxmox from "../connections/proxmox";
 import * as netbird from "../connections/netbird";
 import { publicConfig, jobs } from "../cloudflare/control";
 import { publicTunnels } from "../cloudflare/tunnels";
@@ -21,6 +22,7 @@ connectionRoutes.get("/api/v1/connections/status", (c) =>
     servers: serverRows().map((s) => ({
       id: s.id,
       name: s.name,
+      host: s.host,
       status: s.status,
       checked_at: s.checked_at,
     })),
@@ -82,3 +84,10 @@ for (const action of ["test", "connection", "sync"] as const) {
     },
   );
 }
+
+connectionRoutes.get("/api/v1/connections/proxmox", c=>ok(c,proxmox.publicProxmox()));
+for(const action of ["discover","settings","create"] as const) connectionRoutes.post(`/api/v1/connections/proxmox/${action}`,requireToken,async c=>{
+  c.set("auditDetail","Proxmox "+action+"; credentials omitted");
+  try{const body=await jsonBody(c);return ok(c,await (action==="discover"?proxmox.discover(Number(body.server_id)):action==="settings"?proxmox.saveProxmox(body):proxmox.createCT(body)))}
+  catch(error){return fail(c,error instanceof Error && /^(اختر|قيمة|موارد|توجد|تعذّر|فشلت|القالب|مساحة|لم )/.test(error.message)?error.message:"تعذّر تنفيذ طلب Proxmox",400)}
+});

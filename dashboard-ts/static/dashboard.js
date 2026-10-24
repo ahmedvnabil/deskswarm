@@ -717,6 +717,16 @@ document.addEventListener("click",e=>{
   if(!panelPaths.has(url.pathname))return;
   e.preventDefault();openPanel(url.pathname);
 });
+async function focusComputerFromPanel(value) {
+  const id=Number(value);if(!Number.isSafeInteger(id)||id<1)return;
+  try {
+    const result=await Promise.all([api("/api/v1/servers"),api("/api/v1/computers")]);
+    const comp=result[1].find(c=>c.id===id);
+    if(!comp){notice("الجهاز غير متاح؛ حدّث قائمة الأجهزة");return;}
+    [servers,computers]=result;selectedId=comp.id;selectedServer=comp.provider;shotMachine=null;
+    closePanel();tree();detail();$("desktop-title").scrollIntoView({block:"nearest"});
+  } catch { notice("تعذّر تحميل الجهاز؛ أعد المحاولة"); }
+}
 addEventListener("message",e=>{
   if(e.origin!==location.origin)return;
   const entry=Array.from(panelFrames.entries()).find(([,frame])=>frame.contentWindow===e.source);if(!entry)return;
@@ -724,7 +734,7 @@ addEventListener("message",e=>{
   if(e.data?.type!=="deskswarm:navigate"||typeof e.data.path!=="string")return;
   const url=new URL(e.data.path,location.origin);if(url.origin!==location.origin)return;
   if(panelPaths.has(url.pathname))openPanel(url.pathname);
-  else if(url.pathname==="/"){const peer=url.searchParams.get("connect_peer");if(peer)preparePeer(peer);else if(url.searchParams.has("connect_server"))$("connect-server").click();else closePanel()}
+  else if(url.pathname==="/"){const peer=url.searchParams.get("connect_peer");if(peer)preparePeer(peer);else if(url.searchParams.has("connect_server"))$("connect-server").click();else if(url.searchParams.has("computer_id"))void focusComputerFromPanel(url.searchParams.get("computer_id"));else closePanel()}
 });
 const initialPanel=document.body.dataset.initialPanel;
 if(panelPaths.has(initialPanel))openPanel(initialPanel);

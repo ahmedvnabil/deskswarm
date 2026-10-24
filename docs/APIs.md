@@ -572,3 +572,9 @@ Authenticated connection testing, encrypted token storage, background deployment
 ## Connections and NetBird
 
 The authenticated inventory, token test/save/sync, and shared SSH default endpoints are documented in [Connections](CONNECTIONS.md#api). Automatic Tunnel discovery/provision/check/stop endpoints are documented in [Cloudflare](CLOUDFLARE.md#discovery-and-tunnel-api).
+
+### Proxmox
+
+Pinned SSH discovery and asynchronous CT creation are documented in
+[Proxmox CT provisioning](PROXMOX.md#api). The connection screen exposes saved
+resource defaults, provisioning stages, and a link to the created desktop.

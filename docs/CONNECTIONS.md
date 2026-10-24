@@ -158,3 +158,16 @@ separately from the regular SSH/Docker result. The Docker-hosted dashboard does
 not invoke the host's NetBird CLI or copy its OIDC session. The retry button uses
 saved pinned SSH credentials; enabling native NetBird SSH requires compatible
 remote clients and access policies. See the [NetBird SSH documentation](https://docs.netbird.io/manage/peers/ssh).
+
+### Compact server table and Proxmox
+
+The inventory is a scrollable table with name/address, readiness, last diagnostic
+and check time, retry and SSH setup actions. Search matches names, addresses and
+failure messages. Filters distinguish ready, needs setup, failed and offline;
+readiness is based on the Docker test, independent of cached NetBird online state.
+Saved SSH servers that are not NetBird peers also appear in the table. Refreshing
+updates NetBird inventory and table data; it does not silently retest every SSH host.
+
+The same screen now includes [Proxmox CT provisioning](PROXMOX.md), with saved
+defaults, discovery, asynchronous progress, Docker registration and an optional
+first desktop inside the CT.

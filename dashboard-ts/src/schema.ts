@@ -13,6 +13,7 @@ import * as audit from "./audit";
 import * as auth from "./auth";
 import * as shares from "./shares";
 import * as keys from "./mcp/keys";
+import { initProxmox } from "./connections/proxmox";
 import { initConnections } from "./connections/netbird";
 import { initTunnels } from "./cloudflare/tunnels";
 import { initCloudflare } from "./cloudflare/control";
@@ -101,6 +102,7 @@ export function initDb(): void {
   initCloudflare();
   initTunnels();
   initConnections();
+  initProxmox();
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
