@@ -291,3 +291,59 @@ quick buttons focused the correct controls, and a Worker name draft survived
 switching to Connections and back without changing the outer workspace URL.
 No live Cloudflare resources were created for this UI validation because no
 Cloudflare account credentials are configured.
+
+## Linux origin through NetBird Reverse Proxy
+
+Cloudflare Tunnel is optional when an existing NetBird reverse proxy can publish
+the Linux dashboard over valid HTTPS. Register and verify a dedicated domain,
+then create an HTTP service targeting the dashboard's NetBird peer and port.
+Keep dashboard authentication enabled. Preserve the full request path, pass the
+Host header and support WebSocket upgrades for noVNC. A NetBird-only service or
+interactive proxy login cannot act as this gateway's public Linux origin.
+
+Set this HTTPS domain as the Cloudflare connection's Linux origin. Test/save and
+deploy Worker + Durable Objects normally. Cloudflare Tunnel write permissions
+are unnecessary for this path; Worker deployment permissions are still required.
+
+Some proxy chains replace both Host and X-Forwarded-Host. If the browser's Worker
+origin is then refused at login or WebSocket upgrade, explicitly configure the
+Linux dashboard with:
+
+```dotenv
+DESKSWARM_ALLOWED_ORIGINS=https://your-worker.your-account.workers.dev
+```
+
+Use complete trusted origins, separated by commas, without paths, trailing
+slashes or wildcards. This only extends browser-origin validation; it does not
+grant a session or MCP authority. Both HTTP mutations and screen WebSockets check
+the same list. HTTPS/HTTP, alternate ports and lookalike domains remain distinct.
+Do not derive this list from arbitrary incoming headers. Recreate the dashboard
+container after changing its environment. Leave it empty for ordinary proxies.
+
+### Live validation and recovery
+
+A real deployment on 2026-10-24 used a permanent AMD64 Proxmox CT, its NetBird
+address, a validated NetBird reverse-proxy domain and a Cloudflare Worker with
+SQLite Durable Objects. Browser login and the noVNC WebSocket connected through
+the Worker. All three existing remote desktops returned PNG screenshots and
+Arabic shell output. A disposable desktop application independently records
+mouse clicks, Arabic entry text, drag selection and scroll adjustment. The live
+result recorded one click, the exact expected Arabic text, selected drag text
+and a positive scroll offset. The temporary MCP key was revoked afterward.
+A successful input response alone is not treated as verification.
+
+![Live input verification through Worker, Durable Object and NetBird](images/cloudflare-netbird-live.png)
+
+Before moving a control plane, back up SQLite consistently and retain its
+`.agent-secret-key`, agent results and any backups. Copy the encryption key only
+to the trusted replacement server. Local Docker desktop volumes do not move with
+the database: preserve them on the original host or migrate them separately.
+Do not operate two independent control planes against the same remote desktops;
+their Agent leases are stored in their own SQLite databases.
+
+For recovery, retain the previous dashboard image and an untouched data backup.
+Worker rollback changes edge code/settings only. On an initial deployment there
+is no earlier Worker version to roll back to; use the working HTTPS Linux origin
+while repairing the edge. Disable the new NetBird proxy service to withdraw its
+public route without deleting desktop volumes. Restore a dashboard code version
+with its matching database backup when reverting the control plane.

@@ -12,6 +12,7 @@ services:
       com.deskswarm.component: dashboard
     environment:
       PORT: 7000
+      DESKSWARM_ALLOWED_ORIGINS: ${DESKSWARM_ALLOWED_ORIGINS:-}
       DESKSWARM_DESKTOP_IMAGE: ${DESKSWARM_DESKTOP_IMAGE:-deskswarm-desktop:0.38.0}
       DESKSWARM_DESKTOP_CONTEXT: /desktop-src
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}

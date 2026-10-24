@@ -92,3 +92,21 @@ test("a forged X-Forwarded-Host does not open the door", async () => {
   });
   expect(r.status).toBe(403);
 });
+
+
+test("explicit deployment origins survive multiple proxy hops without allowing lookalikes", async () => {
+  const previous = process.env.DESKSWARM_ALLOWED_ORIGINS;
+  process.env.DESKSWARM_ALLOWED_ORIGINS = "https://edge.example.com";
+  try {
+    const headers = {host:"origin.example.com", "x-forwarded-host":"origin.example.com"};
+    expect((await post("/api/v1/computers", {json:{name:"edge-origin"},headers:{...headers,Origin:"https://edge.example.com"}})).status).toBe(201);
+    expect((await get("/remote-screen/999/websockify", {headers:{...headers,Origin:"https://edge.example.com"}})).status).toBe(404);
+    for (const Origin of ["https://edge.example.com.evil.test", "http://edge.example.com", "https://edge.example.com:8443", "https://evil.test"]) {
+      expect((await post("/api/v1/computers", {json:{name:"blocked"},headers:{...headers,Origin}})).status).toBe(403);
+      expect((await get("/remote-screen/999/websockify", {headers:{...headers,Origin}})).status).toBe(403);
+    }
+  } finally {
+    if(previous===undefined)delete process.env.DESKSWARM_ALLOWED_ORIGINS;
+    else process.env.DESKSWARM_ALLOWED_ORIGINS=previous;
+  }
+});

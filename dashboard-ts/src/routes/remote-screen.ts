@@ -8,6 +8,7 @@ import { desktopContainerName, detectNetwork } from "../providers/docker";
 import { owner } from "../agents/store";
 import { getComputer } from "../machines";
 import { serverById, forwardScreen, channelSocket } from "../servers";
+import { configuredBrowserOrigin } from "../security";
 import { fail, type Env } from "../http";
 export const remoteScreens = new Hono<Env>();
 function target(id: string) {
@@ -31,7 +32,8 @@ remoteScreens.get(
       sameOrigin =
         ["http:", "https:"].includes(source.protocol) &&
         (source.host === new URL(c.req.url).host ||
-          (!!forwarded && source.host === forwarded));
+          (!!forwarded && source.host === forwarded) ||
+          configuredBrowserOrigin(source.origin));
     } catch {}
     if (!sameOrigin) return fail(c, "Screen origin refused", 403);
     if (!target(c.req.param("id"))) return fail(c, "Screen not found", 404);

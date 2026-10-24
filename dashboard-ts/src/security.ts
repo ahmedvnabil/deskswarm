@@ -92,6 +92,12 @@ export const requireSession: MiddlewareHandler<Env> = async (c, next) => {
   return fail(c, "unauthorized", 401);
 };
 
+/** Exact operator-configured origins for trusted multi-hop proxy deployments. */
+export function configuredBrowserOrigin(origin: string): boolean {
+  return (process.env.DESKSWARM_ALLOWED_ORIGINS || "").split(",")
+    .map(value => value.trim()).filter(value => /^https?:\/\//.test(value)).includes(origin);
+}
+
 const SAFE_METHODS = new Set(["GET", "HEAD", "OPTIONS"]);
 
 /**
@@ -112,9 +118,11 @@ export const blockCrossSite: MiddlewareHandler<Env> = async (c, next) => {
   if (SAFE_METHODS.has(c.req.method)) return next();
   const source = c.req.header("origin") || c.req.header("referer");
   if (!source) return next();
-  let host: string;
+  let host: string, sourceOrigin: string;
   try {
-    host = new URL(source).host;
+    const sourceUrl = new URL(source);
+    host = sourceUrl.host;
+    sourceOrigin = sourceUrl.origin;
   } catch {
     return fail(c, "cross-site request blocked", 403);
   }
@@ -126,7 +134,9 @@ export const blockCrossSite: MiddlewareHandler<Env> = async (c, next) => {
   // X-Forwarded-Host, because it is not a CORS-safelisted header. Anything
   // that *can* set it sends no Origin and was already allowed through.
   const forwarded = (c.req.header("x-forwarded-host") || "").split(",")[0].trim();
-  if (host !== c.req.header("host") && host !== forwarded) {
+  // Explicit public origins support multiple proxy hops that replace Host and
+  // X-Forwarded-Host. Match complete origins, never suffixes or client headers.
+  if (host !== c.req.header("host") && host !== forwarded && !configuredBrowserOrigin(sourceOrigin)) {
     return fail(c, "cross-site request blocked", 403);
   }
   return next();
