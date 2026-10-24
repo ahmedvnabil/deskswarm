@@ -139,13 +139,13 @@ export async function computerViews(
  * Falls back to the whole fleet if Docker can't be asked — over-counting is
  * the safe direction for an admission check.
  */
-export async function budgetedMachineCount(): Promise<number> {
+export async function budgetedMachineCount(forProvider?: string): Promise<number> {
   const counts = await Promise.all(
-    providerNames().map((n) => providerByName(n).awakeMachineCount()),
+    (forProvider ? [forProvider] : providerNames()).map((n) => providerByName(n).awakeMachineCount()),
   );
   // One backend that cannot answer makes the whole number a guess, and
   // over-counting is the safe direction for an admission check.
-  if (counts.some((c) => c === null)) return listComputers().length;
+  if (counts.some((c) => c === null)) return listComputers().filter(c=>!forProvider||c.provider===forProvider).length;
   return (counts as number[]).reduce((a, b) => a + b, 0);
 }
 
@@ -203,12 +203,12 @@ function withCreateLock<T>(fn: () => Promise<T>): Promise<T> {
 export async function createOneComputer(
   name: string,
   image: string | null,
+  providerName = defaultProviderName(),
 ): Promise<ComputerView> {
   const slug = slugify(name);
   const clash = one("SELECT 1 AS x FROM computers WHERE name = ? OR slug = ?", name, slug);
   if (clash) throw new ValidationError(`'${name}' already exists`);
 
-  const providerName = defaultProviderName();
   const backend = providerByName(providerName);
 
   await withCreateLock(async () => {

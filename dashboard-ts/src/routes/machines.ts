@@ -1,7 +1,7 @@
 /** Adding, inspecting, driving and removing machines. */
 
 import { Hono, type Context } from "hono";
-import { providerFor, ClipboardUnavailable } from "./../providers";
+import { providerFor, providerByName, defaultProviderName, ClipboardUnavailable } from "./../providers";
 import * as guards from "./../guards";
 import { one, run } from "./../db";
 import {
@@ -98,13 +98,17 @@ machines.post("/api/v1/computers", requireToken, async (c) => {
   const snapshotName = String(payload.snapshot ?? "").trim();
   if (!name) return fail(c, "name is required");
 
+  let providerName=payload.server_id===undefined ? defaultProviderName() : Number(payload.server_id)===0 ? "docker" : `server:${Number(payload.server_id)}`;
+  try{providerByName(providerName);}catch{return fail(c,"Choose an existing server connection");}
   let image: string | null = null;
   if (snapshotName) {
-    const snap = one<{ image: string }>(
+    const snap = one<{ image: string; provider: string }>(
       "SELECT * FROM snapshots WHERE name = ?",
       snapshotName,
     );
     if (!snap) return fail(c, `unknown snapshot '${snapshotName}'`);
+    if(payload.server_id && snap.provider!==providerName)return fail(c,"Snapshots must stay on their source server");
+    providerName=snap.provider||defaultProviderName();
     image = snap.image;
   }
 
@@ -115,19 +119,19 @@ machines.post("/api/v1/computers", requireToken, async (c) => {
     return fail(c, String(err.message));
   }
 
-  const fleetSize = await budgetedMachineCount();
+  const fleetSize = await budgetedMachineCount(providerName);
   for (const [passed, msg] of [
     guards.checkMemory(names.length, fleetSize),
     guards.checkDisk(),
   ]) {
-    if (!passed) return fail(c, msg, 507);
+    if (!passed && providerName===defaultProviderName()) return fail(c, msg, 507);
   }
 
   const created: unknown[] = [];
   const errors: { name: string; error: string }[] = [];
   for (const n of names) {
     try {
-      created.push(await createOneComputer(n, image));
+      created.push(await createOneComputer(n, image, providerName));
     } catch (err: any) {
       errors.push({
         name: n,

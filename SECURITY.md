@@ -53,3 +53,12 @@ only. Clients that send no `Origin` at all (curl, n8n, cron) still work — they
 are not a CSRF vector, because nobody else controls them.
 
 Regression tests: `tests/test_security.py`.
+
+
+## SSH hosts and remote screen clients
+
+Additional Docker hosts use pinned SSH host keys and encrypted private keys;
+see [Servers](docs/SERVERS.md). Remote desktop screen ports bind to host
+loopback and are forwarded through SSH. The authenticated origin serves its
+own pinned noVNC client assets, never scripts from a remote desktop or Agent.
+Guest control grants are scoped to one desktop and checked on new requests.

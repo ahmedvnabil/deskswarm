@@ -7,11 +7,40 @@
  */
 
 import Docker from "dockerode";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { Readable } from "node:stream";
 
+export interface DockerContext {
+  client: Docker;
+  serverId: number;
+  limitsSupported: boolean | null;
+}
+const contexts = new AsyncLocalStorage<DockerContext>();
+const busy = new Map<number, number>();
+export const dockerContext = () => contexts.getStore();
+export const serverBusy = (id: number) => (busy.get(id) || 0) > 0;
+export function withDockerContext<T>(context: DockerContext, fn: () => T): T {
+  busy.set(context.serverId, (busy.get(context.serverId) || 0) + 1);
+  const release = () => {
+    const count = (busy.get(context.serverId) || 1) - 1;
+    if (count) busy.set(context.serverId, count);
+    else busy.delete(context.serverId);
+  };
+  try {
+    const result = contexts.run(context, fn);
+    if (result && typeof (result as any).then === "function")
+      return Promise.resolve(result).finally(release) as T;
+    release();
+    return result;
+  } catch (error) {
+    release();
+    throw error;
+  }
+}
 let client: Docker | null = null;
 
 export function docker(): Docker {
+  if (dockerContext()) return dockerContext()!.client;
   if (client === null) client = new Docker();
   return client;
 }

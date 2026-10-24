@@ -13,6 +13,7 @@ import * as audit from "./audit";
 import * as auth from "./auth";
 import * as shares from "./shares";
 import * as keys from "./mcp/keys";
+import { initServers } from "./servers";
 import { initAgents } from "./agents/store";
 
 function columns(table: string): Set<string> {
@@ -93,6 +94,7 @@ export function initDb(): void {
   shares.init();
   keys.init();
   initAgents();
+  initServers();
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",

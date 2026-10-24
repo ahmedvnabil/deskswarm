@@ -143,6 +143,20 @@ shares.get("/s/:token", async (c) => {
   const comp = getComputer(row.computer_id);
   if (!comp) return c.html(render("share_gone.html"), 404);
   const view = await computerView(comp, { host: browserHost(c) });
+  if (row.mode === "control" && comp.provider?.startsWith("server:")) {
+    const secure = (
+      c.req.header("x-forwarded-proto") || new URL(c.req.url).protocol
+    ).startsWith("https");
+    const seconds = Math.max(
+      0,
+      Math.floor((Date.parse(row.expires_at) - Date.now()) / 1000),
+    );
+    c.header(
+      "set-cookie",
+      `deskswarm_screen_${comp.id}=${encodeURIComponent(c.req.param("token"))}; Path=/remote-screen/${comp.id}/; HttpOnly; SameSite=Lax; Max-Age=${seconds}${secure ? "; Secure" : ""}`,
+    );
+  }
+
   audit.record(`GET /s/<token> (${row.mode})`, {
     actor: `share:${row.label}`,
     source_ip: sourceIp(c),

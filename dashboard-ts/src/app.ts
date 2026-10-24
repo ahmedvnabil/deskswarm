@@ -20,6 +20,8 @@ import { shares } from "./routes/shares";
 import { keyRoutes } from "./routes/keys";
 import { mcpRoutes } from "./routes/mcp";
 import { auditRoutes } from "./routes/audit";
+import { serverRoutes } from "./routes/servers";
+import { remoteScreens } from "./routes/remote-screen";
 import { agentRoutes } from "./routes/agents";
 import { owner, beginExternalAction } from "./agents/store";
 
@@ -73,6 +75,8 @@ export function createApp() {
     mcpRoutes,
     auditRoutes,
     agentRoutes,
+    serverRoutes,
+    remoteScreens,
   ]) {
     app.route("/", router);
   }

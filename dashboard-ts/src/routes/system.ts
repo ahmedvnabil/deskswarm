@@ -1,5 +1,6 @@
 /** Health, the page itself, the guards panel and space reclaim. */
 
+import { serveStatic } from "hono/bun";
 import { Hono } from "hono";
 import * as guards from "./../guards";
 import { docker } from "./../providers/docker-engine";
@@ -9,6 +10,29 @@ import { requireToken } from "./../security";
 import { fail, ok, type Env } from "./../http";
 
 export const system = new Hono<Env>();
+
+system.get(
+  "/static/*",
+  async (c, next) => {
+    const path = decodeURIComponent(c.req.path);
+    if (
+      !/^\/static\/(?:dashboard\.(?:css|js)|icons\/(?:[a-z0-9-]+\.svg|LICENSE)|fonts\/(?:NotoSansArabic\.ttf|OFL\.txt))$/.test(
+        path,
+      )
+    )
+      return fail(c, "not found", 404);
+    return next();
+  },
+  serveStatic({ root: "./" }),
+);
+system.get("/manage", (c) =>
+  c.html(
+    render("manage.html", {
+      computers: listComputers(),
+      actor: c.get("actor"),
+    }),
+  ),
+);
 
 system.get("/health", (c) => c.json({ status: "ok" }));
 
@@ -23,11 +47,15 @@ system.get("/", (c) =>
 );
 
 system.get("/api/v1/guards", async (c) =>
-  ok(c, guards.status(await budgetedMachineCount())),
+  ok(c, guards.status(await budgetedMachineCount("docker"))),
 );
 
 system.get("/partials/guards", async (c) =>
-  c.html(render("_guards.html", { g: guards.status(await budgetedMachineCount()) })),
+  c.html(
+    render("_guards.html", {
+      g: guards.status(await budgetedMachineCount("docker")),
+    }),
+  ),
 );
 
 /**

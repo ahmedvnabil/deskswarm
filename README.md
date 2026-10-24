@@ -53,6 +53,14 @@ host budget in `.env.example` for that case. Size capacity for the applications
 actually running, especially browsers. Cached tiles avoid a live video stream
 for every machine on the wall.
 
+## Connect Linux servers
+
+The Arabic dashboard groups desktops by server, with a large screen preview
+and Agent controls. Choose **ربط سيرفر** to test and save a Linux Docker host
+over SSH. Private keys are encrypted and host key fingerprints are required.
+Remote screens use an authenticated SSH tunnel; no public Docker API or VNC
+port is needed. See [server setup and validation](docs/SERVERS.md).
+
 ## Run a managed agent
 
 Open **Agents** from the dashboard. Under **Model connections**, add your

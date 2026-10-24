@@ -6,6 +6,7 @@
  * they are never replayed automatically.
  */
 
+import { websocket } from "hono/bun";
 import { recoverInterrupted } from "./agents/store";
 import { app } from "./app";
 import { ensureAdmin } from "./auth";
@@ -23,6 +24,7 @@ const server = Bun.serve({
   // Backups and home downloads are large and slow; the default 10s would cut
   // them off mid-stream.
   idleTimeout: 255,
+  websocket,
   fetch: (req, srv) => app.fetch(req, { server: srv }),
 });
 

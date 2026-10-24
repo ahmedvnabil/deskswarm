@@ -12,6 +12,8 @@
  * database.
  */
 
+import { serverById, serverRows, configFor, remoteDocker } from "../servers";
+import { withDockerContext, type DockerContext } from "./docker-engine";
 import { one } from "../db";
 import { env } from "../settings";
 import { dockerProvider } from "./docker";
@@ -28,7 +30,14 @@ const REGISTRY: Record<string, MachineProvider> = {
   [dockerProvider.name]: dockerProvider,
 };
 
-export const providerNames = (): string[] => Object.keys(REGISTRY);
+export const providerNames = (): string[] => [
+  ...Object.keys(REGISTRY),
+  ...serverRows().map((s) => `server:${s.id}`),
+];
+const remoteCache = new Map<
+  string,
+  { signature: string; provider: MachineProvider }
+>();
 
 /** The backend new machines are created on. */
 export const defaultProviderName = (): string =>
@@ -36,6 +45,40 @@ export const defaultProviderName = (): string =>
 
 export function providerByName(name?: string | null): MachineProvider {
   const wanted = name || defaultProviderName();
+  if (/^server:[1-9]\d*$/.test(wanted)) {
+    const row = serverById(Number(wanted.split(":")[1]));
+    if (!row) throw Error("Server connection no longer exists");
+    const signature = JSON.stringify(row),
+      cached = remoteCache.get(wanted);
+    if (cached?.signature === signature) return cached.provider;
+    const context: DockerContext = {
+      client: remoteDocker(configFor(row)),
+      serverId: row.id,
+      limitsSupported: null,
+    };
+    const provider = new Proxy(dockerProvider, {
+      get(target, key) {
+        if (key === "name") return wanted;
+        if (key === "novncUrl")
+          return (port: number, password?: string | null) => {
+            const comp = one<{ id: number }>(
+              "SELECT id FROM computers WHERE provider=? AND novnc_port=?",
+              wanted,
+              port,
+            );
+            if (!comp) return "#";
+            return `/remote-screen/${comp.id}/vnc.html?autoconnect=true&resize=scale&path=/remote-screen/${comp.id}/websockify${password ? `&password=${encodeURIComponent(password)}` : ""}`;
+          };
+        const value = Reflect.get(target, key);
+        return typeof value === "function"
+          ? (...args: unknown[]) =>
+              withDockerContext(context, () => value(...args))
+          : value;
+      },
+    });
+    remoteCache.set(wanted, { signature, provider });
+    return provider;
+  }
   const found = REGISTRY[wanted];
   if (found) return found;
   // A row naming a backend this build does not have is a real problem — it
@@ -47,8 +90,9 @@ export function providerByName(name?: string | null): MachineProvider {
 }
 
 /** The backend for a machine you already have the row of. */
-export const providerFor = (comp: { provider?: string | null }): MachineProvider =>
-  providerByName(comp.provider);
+export const providerFor = (comp: {
+  provider?: string | null;
+}): MachineProvider => providerByName(comp.provider);
 
 /**
  * The backend for a machine you only have the slug of.

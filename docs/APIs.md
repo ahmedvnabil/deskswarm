@@ -559,3 +559,8 @@ restart recovery and draining. A 202 cancellation response is acknowledgement,
 not evidence that every in-flight action has finished. Release manual takeover
 with the existing machine PATCH `{ "reserved": false }`.
 See [Agents operation and limits](AGENTS.md).
+
+## SSH servers
+
+See [Servers over SSH](SERVERS.md#json-api) for tested connection setup,
+server selection on desktop creation and authenticated remote viewer behavior.

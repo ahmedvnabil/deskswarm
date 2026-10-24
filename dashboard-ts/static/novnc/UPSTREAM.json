@@ -1,0 +1,18 @@
+{
+  "project": "https://github.com/novnc/noVNC",
+  "version": "1.7.0",
+  "commit": "63107bd06d9e1f6136ff21aeda8cd62cbf0d433e",
+  "source": "https://codeload.github.com/novnc/noVNC/tar.gz/63107bd06d9e1f6136ff21aeda8cd62cbf0d433e",
+  "archive_sha256": "06dac239be3973ed79a00e357a68aab996e6ed2fd496ee2cc6e6a34020344ac9",
+  "modified": false,
+  "included": [
+    "vnc.html",
+    "package.json",
+    "AUTHORS",
+    "LICENSE.txt",
+    "app/",
+    "core/",
+    "vendor/",
+    "docs/LICENSE*"
+  ]
+}

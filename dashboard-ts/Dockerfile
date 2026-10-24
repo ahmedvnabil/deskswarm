@@ -16,9 +16,9 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 # The cache is 60 MB and is only useful to a later install; dropping it in the
 # same layer is the only way it does not ship.
-# Docker uses the local Unix socket. Skip optional ssh2 native-addon builds
+# Docker uses local sockets or SSH. Skip optional ssh2 native-addon builds
 # (its JavaScript fallback remains available) in this toolchain-free image.
-RUN bun install --frozen-lockfile --production --ignore-scripts \
+RUN bun install --frozen-lockfile --production --ignore-scripts --network-concurrency=8 \
     && rm -rf /root/.bun/install/cache ~/.bun/install/cache
 
 

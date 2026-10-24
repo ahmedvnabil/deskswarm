@@ -8,6 +8,7 @@ import * as tar from "tar-stream";
 
 import {
   collect,
+  dockerContext,
   docker,
   execInContainer,
   isNotFound,
@@ -38,7 +39,7 @@ const NOVNC_PORT_BASE = envInt("DESKSWARM_NOVNC_PORT_BASE", 6901);
 // of ufw's, so a published port is reachable from the internet even when the
 // firewall says only 22, 80 and 443 are open. Binding is the control that
 // actually works.
-const screenBind = () => env("DESKSWARM_SCREEN_BIND");
+const screenBind = () => dockerContext() ? "127.0.0.1" : env("DESKSWARM_SCREEN_BIND");
 // When set, screens are reached through the dashboard's own origin at
 // /screen/<port>/ instead of at host:port. That is what makes them work on an
 // HTTPS site — a browser refuses an http:// frame inside an https:// page —
@@ -95,6 +96,7 @@ export function memBytes(value: string): number | undefined {
 
 /** Find the Docker network the dashboard itself is attached to. */
 export async function detectNetwork(): Promise<string> {
+  if (dockerContext()) return "bridge";
   if (NETWORK_NAME) return NETWORK_NAME;
   const hostname = env("HOSTNAME");
   try {
@@ -201,7 +203,7 @@ export function novncUrl(
         ? `?${extra.slice(1)}`
         : "";
 
-  if (screenProxy()) {
+  if (screenProxy() && !dockerContext()) {
     // Relative on purpose: it inherits the page's scheme and host, so the
     // same build works on http://192.168.1.50:7861 and on https://a.example
     // without being told which it is. `path` moves noVNC's websocket through
@@ -254,16 +256,18 @@ export async function runContainer(spec: any, limits: Limits = {}): Promise<void
   };
   const hasLimits = Object.keys(limits).length > 0;
 
-  if (hasLimits && limitsSupported !== false) {
+  const context=dockerContext();
+  const supported=context ? context.limitsSupported : limitsSupported;
+  if (hasLimits && supported !== false) {
     try {
       const c = await docker().createContainer(withLimits);
       await c.start();
-      limitsSupported = true;
+      if(context)context.limitsSupported=true;else limitsSupported = true;
       return;
     } catch (err: any) {
       const msg = String(err?.message ?? err).toLowerCase();
       if (!UNSUPPORTED_HINTS.some((h) => msg.includes(h))) throw err;
-      limitsSupported = false;
+      if(context)context.limitsSupported=false;else limitsSupported = false;
       // A container can be created and then fail to start; clear the husk so
       // the retry below doesn't collide with its own name.
       await docker()

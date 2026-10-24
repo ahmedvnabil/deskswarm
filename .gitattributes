@@ -1,0 +1,5 @@
+
+# Preserve and collapse unmodified third-party UI sources.
+dashboard-ts/static/novnc/** linguist-vendored -whitespace
+dashboard-ts/static/icons/** linguist-vendored
+dashboard-ts/static/fonts/OFL.txt -whitespace

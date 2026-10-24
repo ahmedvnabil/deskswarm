@@ -8,6 +8,7 @@
 
 import type { MiddlewareHandler } from "hono";
 import * as audit from "./audit";
+import * as shares from "./shares";
 import * as auth from "./auth";
 import { DASHBOARD_TOKEN } from "./settings";
 import { fail, sourceIp, type Env } from "./http";
@@ -67,6 +68,20 @@ export const requireSession: MiddlewareHandler<Env> = async (c, next) => {
     c.set("actor", session.username ?? "user");
     c.set("userId", session.user_id);
     return next();
+  }
+
+  // A guest control share grants only this desktop's screen transport.
+  const remote = path.match(/^\/remote-screen\/(\d+)(?:\/|$)/);
+  if (remote && ["GET", "HEAD"].includes(c.req.method)) {
+    const token = readCookie(
+      c.req.header("cookie"),
+      `deskswarm_screen_${remote[1]}`,
+    );
+    const grant = token ? shares.resolve(token) : null;
+    if (grant?.mode === "control" && grant.computer_id === Number(remote[1])) {
+      c.set("actor", `share:${grant.label}`);
+      return next();
+    }
   }
 
   const wantsHtml = (c.req.header("accept") || "").includes("text/html");
