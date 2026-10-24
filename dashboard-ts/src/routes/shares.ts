@@ -11,7 +11,7 @@ import {
   listComputers,
   type Computer,
 } from "./../machines";
-import { bridgeScreenshot } from "./../screens";
+import { desktopScreenshot } from "./../screens";
 import { render } from "./../templates";
 import { requireToken } from "./../security";
 import { SHOT_TTL } from "./../settings";
@@ -163,7 +163,7 @@ shares.get("/s/:token/screen.png", async (c) => {
   const comp = getComputer(row.computer_id);
   if (!comp) return c.text("not found", 404);
   if (!(await providerFor(comp).isRunning(comp.slug))) return c.text("unavailable", 503);
-  const png = await bridgeScreenshot(await computerView(comp, { withState: false }));
+  const png = await desktopScreenshot(await computerView(comp, { withState: false }));
   if (png === null) return c.text("unavailable", 503);
   return c.body(png as any, 200, {
     "content-type": "image/png",

@@ -307,7 +307,7 @@
       document.getElementById('modal-body').innerHTML =
         '<div class="text-sm text-neutral-300">starting the desktop…</div>' +
         '<div class="text-xs text-neutral-500 mt-1">A cold desktop takes a few ' +
-        'seconds to bring up X and attach its bridge.</div>';
+        'seconds to bring up X and start its Driver.</div>';
       const j = await (await fetch('/api/v1/computers/' + id + '/wake',
                                    {method:'POST'})).json();
       htmx.trigger('#fleet-status','refresh');
@@ -841,7 +841,7 @@
   }
 
   async function removeComputer(id, name){
-    if(!confirm(`Remove "${name}"?\n\nIts desktop and bridge containers are destroyed. Task history is kept.`)) return;
+    if(!confirm(`Remove "${name}"?\n\nIts desktop container is removed.`)) return;
     const r = await fetch('/api/v1/computers/' + id, { method: 'DELETE' });
     const j = await r.json();
     if(!j.ok) alert(j.error || 'failed to remove');

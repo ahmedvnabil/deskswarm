@@ -63,7 +63,7 @@ export async function collect(stream: NodeJS.ReadableStream): Promise<Buffer> {
 export async function execInContainer(
   containerName: string,
   cmd: string[],
-  opts: { workdir?: string; env?: Record<string, string> } = {},
+  opts: { workdir?: string; env?: Record<string, string>; user?: string } = {},
 ): Promise<ExecResult> {
   const container = docker().getContainer(containerName);
   const exec = await container.exec({
@@ -72,6 +72,7 @@ export async function execInContainer(
     AttachStderr: true,
     Tty: false,
     WorkingDir: opts.workdir,
+    User: opts.user,
     Env: opts.env
       ? Object.entries(opts.env).map(([k, v]) => `${k}=${v}`)
       : undefined,

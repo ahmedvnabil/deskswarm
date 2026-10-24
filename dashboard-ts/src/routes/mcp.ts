@@ -25,7 +25,7 @@ import { Hono, type Context } from "hono";
 import * as audit from "./../audit";
 import * as keys from "./../mcp/keys";
 import { note } from "./../mcp/activity";
-import { BridgeError, BridgeUnreachable } from "./../bridge";
+import { ControlError } from "./../control";
 import {
   ClipboardUnavailable,
   HomePathMissing,
@@ -33,7 +33,7 @@ import {
   providerFor,
 } from "./../providers";
 import {
-  checkBridge,
+  checkControl,
   getComputer,
   touchActive,
   wakeAndWait,
@@ -137,10 +137,7 @@ function authorize(c: Context<Env>): Authorized | Response {
  */
 function explain(err: any, comp: Computer): string {
   if (err instanceof ToolError) return String(err.message);
-  if (err instanceof BridgeUnreachable) {
-    return `${comp.name} is not answering — it may still be waking up. ${err.message}`;
-  }
-  if (err instanceof BridgeError) return `${comp.name} refused: ${err.message}`;
+  if (err instanceof ControlError) return `${comp.name} refused: ${err.message}`;
   if (err instanceof PathOutsideHome) {
     return `${err.message}. Paths are relative to the machine's home directory.`;
   }
@@ -164,12 +161,11 @@ function explain(err: any, comp: Computer): string {
  */
 async function ensureAwake(comp: Computer): Promise<string | null> {
   const backend = providerFor(comp);
-  // Ask Docker before the bridge. Probing a stopped machine's bridge burns the
-  // full HTTP timeout to learn what the container state already says — the
+  // Ask Docker before the Driver. Probing a stopped machine's Driver burns the
+  // full control timeout to learn what the container state already says — the
   // same trap the wall hit once per tile per refresh.
   if (await backend.isRunning(comp.slug)) {
-    const bridge = backend.bridgeEndpoint(comp.slug);
-    if (await checkBridge({ bridge_host: bridge.host, bridge_port: bridge.port })) {
+    if (await checkControl(comp)) {
       return null;
     }
   }
@@ -208,7 +204,6 @@ async function callTool(
     const asleep = await ensureAwake(comp);
     if (asleep) throw new ToolError(asleep);
 
-    const bridge = providerFor(comp).bridgeEndpoint(comp.slug);
     out = {
       content: await runTool(
         tool,
@@ -216,8 +211,7 @@ async function callTool(
           comp,
           target: {
             slug: comp.slug,
-            bridge_host: bridge.host,
-            bridge_port: bridge.port,
+            provider: comp.provider,
           },
           timeoutMs: MCP_CALL_TIMEOUT_SECONDS * 1000,
         },

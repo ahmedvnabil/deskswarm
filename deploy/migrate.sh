@@ -12,7 +12,7 @@
 # containers, which are recreated around the restored home volumes.
 #
 # A machine is its home directory plus a row. Everything else about it —
-# container, ports, bridge — is rebuilt from that row on arrival, which is why
+# container, ports, native Driver — is rebuilt from that row on arrival, which is why
 # this is a few gigabytes rather than a disk image.
 
 set -euo pipefail

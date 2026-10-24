@@ -22,16 +22,13 @@ const machine = {
   novnc_port: 6901,
   novnc_url: "http://localhost:6901/vnc.html",
   vnc_password: "secret",
-  bridge_host: "b",
-  bridge_port: 8000,
   created_at: nowIso(),
   reserved: false,
   no_suspend: false,
   last_active_at: nowIso(),
-  bridge_ok: true,
+  control_ok: true,
   sleeping: false,
   desktop_state: "running",
-  bridge_state: "running",
   activity: { tool: "click", label: "claude code", ok: true, seconds_ago: 4 },
   keys_live: 2,
 };
@@ -181,7 +178,7 @@ test("every partial route answers", async () => {
 /**
  * A machine nothing can reach looks identical to a working one.
  *
- * It is running, its bridge answers, its screen is fine — and no client on
+ * It is running, its Driver answers, its screen is fine — and no client on
  * earth can talk to it, because no key was ever issued. That is the one state
  * the wall has to volunteer, since nothing about the machine itself is wrong.
  */
@@ -206,8 +203,8 @@ test("the tile states are named, not only coloured", () => {
   // same word the filter chips and the summary line use.
   for (const [state, word] of [
     [{ activity: { tool: "click", label: "c", ok: true, seconds_ago: 1 } }, "in use"],
-    [{ sleeping: true, bridge_ok: false }, "asleep"],
-    [{ bridge_ok: false }, "down"],
+    [{ sleeping: true, control_ok: false }, "asleep"],
+    [{ control_ok: false }, "down"],
     [{}, "idle"],
   ] as [object, string][]) {
     const html = render("_fleet.html", {

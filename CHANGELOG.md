@@ -1,3 +1,13 @@
+# Native Driver migration
+
+- Desktop control now runs through Cua Driver 0.38.0 inside each desktop.
+- Removed the previous control sidecar, SSE command transport, sidecar image,
+  environment settings and readiness probes. Machines now use one container.
+- Added pinned ARM64/AMD64 desktop builds, provider-owned native control,
+  Unicode clipboard paste through Driver and supervised session startup.
+- Added independent GTK acceptance readback for text selection and scrolling.
+- See docs/CUA_DRIVER_MIGRATION.md before upgrading an existing fleet.
+
 # Changelog
 
 ## Unreleased
@@ -43,7 +53,7 @@ it. The client brings the model; deskswarm brings the computer.
   `DESKSWARM_BREAKER_COOLDOWN_MIN`. deskswarm makes no outbound model calls,
   so there is no key to give it.
 - The cua agent SDK venv from the dashboard image — about 300 MB, and Python
-  with it. The bridge still uses `cua-computer-server`, unchanged.
+  with it. This historical entry predates the native Driver migration above.
 - The legacy Flask dashboard (`dashboard/`) and its pytest suite: it shared one
   database with this one and expects tables that no longer exist. CI now builds
   and tests `dashboard-ts`.

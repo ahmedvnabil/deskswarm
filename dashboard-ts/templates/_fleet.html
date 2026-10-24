@@ -5,7 +5,7 @@
   <div class="max-w-2xl">
     <div class="text-neutral-300 text-sm font-semibold mb-1">No machines yet</div>
     <div class="text-neutral-500 text-xs mb-5">
-      A machine is a full XFCE Linux desktop in a container, plus a bridge that
+      A machine is a full XFCE Linux desktop in a container, with Cua Driver that
       turns calls into keyboard, mouse and screen. It takes about a second.
     </div>
     <ol class="text-xs text-neutral-400 space-y-2">
@@ -50,7 +50,7 @@
   {% for c in computers %}
   {# One state per tile, decided once here so the chip, the dot, the border and
      the filter can never disagree about what a machine is doing. #}
-  {% set state = 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.bridge_ok else 'down')) %}
+  {% set state = 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.control_ok else 'down')) %}
   {% set label = {'busy':'in use','asleep':'asleep','idle':'idle','down':'down'}[state] %}
   {% set tone  = {'busy':'amber','asleep':'neutral','idle':'emerald','down':'red'}[state] %}
 
@@ -103,7 +103,7 @@
           <div class="text-neutral-600 text-lg leading-none">☾</div>
           <div class="text-[9px] text-neutral-600">no memory used</div>
         </div>
-        {% elif c.bridge_ok %}
+        {% elif c.control_ok %}
         {# src is rendered server-side with a token that only ticks every few
            seconds: the picture loads on first paint, the 5s partial swap reuses
            the cached URL (so no flicker), and the token change pulls a fresh
@@ -138,8 +138,8 @@
         {% elif state == 'down' %}
         <div>
           <div class="text-neutral-600 uppercase tracking-wide text-[9px]">problem</div>
-          <div class="text-red-400">{{ 'containers missing' if c.desktop_state == 'missing' else 'bridge not answering' }}</div>
-          <div class="text-neutral-600 mono">{{ c.desktop_state }}/{{ c.bridge_state }}</div>
+          <div class="text-red-400">{{ 'containers missing' if c.desktop_state == 'missing' else 'Driver not answering' }}</div>
+          <div class="text-neutral-600 mono">{{ c.desktop_state }}</div>
         </div>
         {% endif %}
 

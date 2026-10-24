@@ -10,6 +10,8 @@ services:
     build: ./dashboard-ts
     environment:
       PORT: 7000
+      DESKSWARM_DESKTOP_IMAGE: ${DESKSWARM_DESKTOP_IMAGE:-deskswarm-desktop:0.38.0}
+      DESKSWARM_DESKTOP_CONTEXT: /desktop-src
       DASHBOARD_TOKEN: ${DASHBOARD_TOKEN:-}
       # Leave empty: screen links follow whatever hostname you opened the
       # dashboard with. Only set it if that differs (a reverse proxy).
@@ -63,7 +65,6 @@ services:
       DESKSWARM_MACHINE_MEM_LIMIT: ${DESKSWARM_MACHINE_MEM_LIMIT:-2g}
       DESKSWARM_MACHINE_CPUS: ${DESKSWARM_MACHINE_CPUS:-2}
       DESKSWARM_MACHINE_PIDS: ${DESKSWARM_MACHINE_PIDS:-512}
-      DESKSWARM_BRIDGE_MEM_LIMIT: ${DESKSWARM_BRIDGE_MEM_LIMIT:-512m}
       # Sleep machines nobody is using. 0 = never (see .env.example).
       DESKSWARM_IDLE_SUSPEND_MINUTES: ${DESKSWARM_IDLE_SUSPEND_MINUTES:-0}
       DESKSWARM_WAKE_TIMEOUT: ${DESKSWARM_WAKE_TIMEOUT:-45}
@@ -82,8 +83,8 @@ services:
       - deskswarm_data:/app/data
       # The dashboard creates and destroys desktop containers on demand.
       - /var/run/docker.sock:/var/run/docker.sock
-      # Build context for the bridge image, built on first use.
-      - ./bridge:/bridge-src:ro
+      # Build context for native Driver desktops, built on first use.
+      - ./desktop:/desktop-src:ro
     restart: unless-stopped
 
 volumes:

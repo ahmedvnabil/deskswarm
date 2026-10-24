@@ -20,7 +20,7 @@ up:  ## build and start the dashboard (no configuration needed)
 	$(COMPOSE) up -d --build
 	@echo
 	@echo "  deskswarm is starting on http://$(HOST):$(PORT)"
-	@echo "  the first machine you add also builds the agent bridge — give it a minute"
+	@echo "  the first machine you add also builds the native desktop image — give it a minute"
 
 down:  ## stop the dashboard (machines and their files are untouched)
 	$(COMPOSE) down

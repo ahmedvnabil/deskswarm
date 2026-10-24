@@ -55,7 +55,7 @@ test("sleep then wake round-trips", async () => {
 });
 
 test("a sleeping machine reports no screen", async () => {
-  // The wall must not spend a bridge timeout per tile on stopped machines.
+  // The wall must not spend a Driver timeout per tile on stopped machines.
   const id = await add();
   await post(`/api/v1/computers/${id}/sleep`);
   const r = await get(`/api/v1/computers/${id}/screenshot`);
@@ -155,13 +155,13 @@ test("sleeping machines do not spend the memory budget", async () => {
   expect(await budgetedMachineCount()).toBe(3);
 });
 
-test("wake recreates a bridge that will not come back", async () => {
+test("wake recreates a Driver that will not come back", async () => {
   // A started container keeps its old filesystem, and things that refuse to
   // start twice live there — stale X locks, sockets, pid files.
   const id = await add();
   await post(`/api/v1/computers/${id}/sleep`);
 
-  world.bridgeUp = false;
+  world.driverUp = false;
   process.env.DESKSWARM_WAKE_TIMEOUT = "0.01";
   created.clear();
 

@@ -9,7 +9,7 @@
 # Two stages so the runtime carries no toolchain: bun's download cache alone
 # was 60 MB of an image that never installs anything again.
 
-ARG BUN=oven/bun:1.3-slim
+ARG BUN=oven/bun:1.4.4-slim
 
 
 # ----------------------------------------------------------------- deps ----
@@ -19,7 +19,9 @@ WORKDIR /app
 COPY package.json bun.lock* ./
 # The cache is 60 MB and is only useful to a later install; dropping it in the
 # same layer is the only way it does not ship.
-RUN bun install --frozen-lockfile --production \
+# Docker uses the local Unix socket. Skip optional ssh2 native-addon builds
+# (its JavaScript fallback remains available) in this toolchain-free image.
+RUN bun install --frozen-lockfile --production --ignore-scripts \
     && rm -rf /root/.bun/install/cache ~/.bun/install/cache
 
 
@@ -28,15 +30,10 @@ FROM ${BUN}
 
 WORKDIR /app
 
-# curl for the healthcheck. Nothing else.
-RUN apt-get update && apt-get install -y --no-install-recommends \
-      curl \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY --from=deps /app/node_modules /app/node_modules
 COPY . .
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
-    CMD curl -fsS "http://127.0.0.1:${PORT:-7000}/health" || exit 1
+    CMD bun -e 'fetch(`http://127.0.0.1:${process.env.PORT || 7000}/health`).then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
 
 CMD ["bun", "run", "src/server.ts"]

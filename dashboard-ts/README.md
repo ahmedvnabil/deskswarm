@@ -24,9 +24,8 @@ this one no longer has the tables that one expects.
   backend owns a machine is a column on its row, not a global — a fleet is
   meant to be able to mix them. `DESKSWARM_PROVIDER` names the backend new
   machines go to.
-* `src/bridge.ts` — one command to a machine's cua bridge, and its
-  `data:`-prefixed reply parsed. Shared by the wall and by the MCP tools,
-  which want different things from a failure.
+* `src/control.ts` and `src/driver.ts` — provider-owned native desktop control,
+  shared by the wall and MCP tools. Driver runs inside the desktop container.
 * `templates/` — nunjucks, carried over from the Flask original's Jinja2.
 * Docker goes through `dockerode`, SQLite through `bun:sqlite`.
 

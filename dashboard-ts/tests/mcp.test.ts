@@ -8,7 +8,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import {
   addMachine,
-  bridgeLog,
+  driverLog,
   callTool,
   clipboards,
   execLog,
@@ -188,21 +188,20 @@ describe("driving the machine", () => {
 
   test("click becomes a left_click at the point given", async () => {
     await callTool("m1", token, "click", { x: 100, y: 250 });
-    expect(bridgeLog.at(-1)).toEqual(["left_click", { x: 100, y: 250 }]);
+    expect(driverLog.at(-1)?.[0]).toBe("click");
+    expect(driverLog.at(-1)?.[1]).toMatchObject({ x: 100, y: 250, button: "left" });
   });
 
   test("the button chooses the command", async () => {
     await callTool("m1", token, "click", { x: 1, y: 2, button: "right" });
-    expect(bridgeLog.at(-1)![0]).toBe("right_click");
+    expect(driverLog.at(-1)?.[1].button).toBe("right");
   });
 
-  test("a drag sets its start point before dragging", async () => {
-    // drag_to starts wherever the pointer happens to be, so without this the
-    // drag begins from whatever the previous call left behind.
+  test("a drag is one complete gesture with its own starting coordinates", async () => {
     await callTool("m1", token, "drag", { from_x: 5, from_y: 6, to_x: 50, to_y: 60 });
-    expect(bridgeLog.map((b) => b[0])).toEqual(["move_cursor", "drag_to"]);
-    expect(bridgeLog[0][1]).toEqual({ x: 5, y: 6 });
-    expect(bridgeLog[1][1].x).toBe(50);
+    expect(driverLog).toHaveLength(1);
+    expect(driverLog[0][0]).toBe("drag");
+    expect(driverLog[0][1]).toMatchObject({ from_x: 5, from_y: 6, to_x: 50, to_y: 60, button: "left" });
   });
 
   test("shell runs the command and reports the exit code", async () => {
@@ -213,7 +212,8 @@ describe("driving the machine", () => {
 
   test("latin text is typed", async () => {
     await callTool("m1", token, "type_text", { text: "hello" });
-    expect(bridgeLog.at(-1)).toEqual(["type_text", { text: "hello" }]);
+    expect(driverLog.at(-1)?.[0]).toBe("type_text");
+    expect(driverLog.at(-1)?.[1].text).toBe("hello");
     expect(pasted.length).toBe(0);
   });
 
@@ -225,7 +225,7 @@ describe("driving the machine", () => {
   test("arabic text goes through the clipboard instead", async () => {
     await callTool("m1", token, "type_text", { text: "مرحبا" });
     expect(pasted.at(-1)).toEqual(["m1", "مرحبا"]);
-    expect(bridgeLog.some((b) => b[0] === "type_text")).toBe(false);
+    expect(driverLog.some((b) => b[0] === "type_text")).toBe(false);
   });
 
   test("files round-trip through the home directory", async () => {
@@ -271,14 +271,14 @@ describe("when things go wrong", () => {
   });
 
   test("a machine that refuses says why", async () => {
-    world.bridgeRefuses = "no such window";
+    world.driverRefuses = "no such window";
     const { result } = await callTool("m1", token, "click", { x: 1, y: 1 });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain("no such window");
   });
 
   test("a machine that will not wake is reported, not hung", async () => {
-    world.bridgeUp = false;
+    world.driverUp = false;
     process.env.DESKSWARM_WAKE_TIMEOUT = "0.01";
     await post(`/api/v1/computers/${id}/sleep`);
     const { result } = await callTool("m1", token, "screenshot");
@@ -313,7 +313,7 @@ describe("what it leaves behind", () => {
   });
 
   test("a failed call is audited as failed", async () => {
-    world.bridgeRefuses = "nope";
+    world.driverRefuses = "nope";
     await callTool("m1", token, "click", { x: 1, y: 1 });
     const row = (await get("/api/v1/audit")).json.data.find(
       (r: any) => r.action === "MCP click",
@@ -389,7 +389,7 @@ describe("keys and machines", () => {
 /**
  * Launching something that isn't there.
  *
- * The bridge spawns and returns without waiting to see whether the spawn took,
+ * The Driver spawns and returns without waiting to see whether the spawn took,
  * so it reports success for a program that does not exist. An agent then
  * screenshots an unchanged desktop with no idea why — found doing exactly that
  * against a real machine.
@@ -406,16 +406,16 @@ test("launching a program that isn't installed says so", async () => {
 });
 
 /**
- * Launching goes to the desktop, never to the bridge.
+ * Launching goes to the desktop, never to the Driver.
  *
- * cua's VNC handler implements input and screen commands only, so the bridge's
- * own `launch` falls through to a handler that runs inside the *bridge*
+ * cua's VNC handler implements input and screen commands only, so the Driver's
+ * own `launch` falls through to a handler that runs inside the *Driver*
  * container, against the throwaway Xvfb it keeps for pynput's sake. The
- * program starts on a display nobody can see and the bridge reports success.
+ * program starts on a display nobody can see and the Driver reports success.
  * Found by launching xterm on a real machine and watching the screenshot not
  * change, three times.
  */
-test("launching starts the program on the desktop, not the bridge", async () => {
+test("launching starts the program on the desktop, not the Driver", async () => {
   const { launched } = await import("./harness");
   const { result } = await callTool("m1", token, "launch_app", {
     app: "xterm",
@@ -423,5 +423,5 @@ test("launching starts the program on the desktop, not the bridge", async () => 
   });
   expect(result.isError).toBeUndefined();
   expect(launched.at(-1)).toEqual(["m1", "xterm", ["-e", "top"]]);
-  expect(bridgeLog.some((b) => b[0] === "launch")).toBe(false);
+  expect(driverLog.some((b) => b[0] === "launch")).toBe(false);
 });

@@ -43,22 +43,20 @@ export const getComputerByName = (name: string): Computer | null =>
   one<Computer>("SELECT * FROM computers WHERE name = ?", name);
 
 export interface ComputerView {
+  provider: string;
   id: number;
   name: string;
   slug: string;
   novnc_port: number;
   novnc_url: string;
   vnc_password: string;
-  bridge_host: string;
-  bridge_port: number;
   created_at: string;
   reserved: boolean;
   no_suspend: boolean;
   last_active_at: string | null;
-  bridge_ok: boolean;
+  control_ok: boolean;
   sleeping: boolean;
   desktop_state?: string;
-  bridge_state?: string;
   error?: string;
   activity?: unknown;
   /** Keys that can reach this machine right now. Zero means no client can. */
@@ -71,21 +69,19 @@ export async function computerView(
 ): Promise<ComputerView> {
   const withState = opts.withState !== false;
   const backend = providerFor(comp);
-  const bridge = backend.bridgeEndpoint(comp.slug);
   const view: ComputerView = {
+    provider: backend.name,
     id: comp.id,
     name: comp.name,
     slug: comp.slug,
     novnc_port: comp.novnc_port,
     novnc_url: backend.novncUrl(comp.novnc_port, comp.vnc_password, opts.host),
     vnc_password: comp.vnc_password,
-    bridge_host: bridge.host,
-    bridge_port: bridge.port,
     created_at: comp.created_at,
     reserved: !!comp.reserved,
     no_suspend: !!comp.no_suspend,
     last_active_at: comp.last_active_at,
-    bridge_ok: false,
+    control_ok: false,
     sleeping: false,
   };
   if (withState) {
@@ -95,35 +91,25 @@ export async function computerView(
       view.error = String(err?.message ?? err);
     }
     view.sleeping = view.desktop_state === "exited";
-    // Probing a stopped bridge just burns the full HTTP timeout, once per
+    // Probing a stopped Driver just burns the full control timeout, once per
     // machine per refresh — on a wall of sleeping machines that alone made the
     // page slower than its own poll interval.
-    if (view.bridge_state === "running") {
-      view.bridge_ok = await checkBridge(view);
+    if (view.desktop_state === "running") {
+      view.control_ok = await checkControl(view);
     }
   }
   return view;
 }
 
-export async function checkBridge(view: {
-  bridge_host: string;
-  bridge_port: number;
-}): Promise<boolean> {
-  try {
-    const res = await fetch(`http://${view.bridge_host}:${view.bridge_port}/status`, {
-      signal: AbortSignal.timeout(3000),
-    });
-    if (res.status !== 200) return false;
-    return (await res.json())?.status === "ok";
-  } catch {
-    return false;
-  }
+export async function checkControl(view: { slug: string; provider?: string | null }): Promise<boolean> {
+  const { controlReady } = await import("./control");
+  return controlReady(view);
 }
 
 /**
  * Build the view for every machine at once.
  *
- * Each machine costs two Docker inspects plus a bridge probe. Done serially
+ * Each machine costs a Docker inspect plus a native Driver probe. Done serially
  * that is a few hundred milliseconds per machine, so a wall of 24 would take
  * longer to render than its own 5s refresh interval. Order is preserved.
  */
@@ -243,30 +229,29 @@ export function touchActive(compId: number): void {
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function waitForBridge(
+async function waitForControl(
   comp: Computer,
   timeout: number,
 ): Promise<boolean> {
-  const bridge = providerFor(comp).bridgeEndpoint(comp.slug);
-  const target = { bridge_host: bridge.host, bridge_port: bridge.port };
+  const target = { slug: comp.slug, provider: comp.provider };
   const deadline = Date.now() + timeout * 1000;
   while (Date.now() < deadline) {
-    if (await checkBridge(target)) return true;
+    if (await checkControl(target)) return true;
     await sleep(1500);
   }
   return false;
 }
 
 /**
- * Start a sleeping machine and block until its bridge answers.
+ * Start a sleeping machine and block until its Driver answers.
  *
  * Callers need the machine actually usable, not merely started: a desktop
- * takes a few seconds to bring up X and the bridge a few more to attach.
+ * takes a few seconds to bring up X and the Driver a few more to attach.
  *
  * A container that is started rather than created keeps the filesystem of its
  * previous life, and that is a reliable source of processes which refuse to
- * start twice — stale lock files, sockets, pid files. When the bridge doesn't
- * come back, recreating the pair clears all of it. The home volume survives
+ * start twice — stale lock files, sockets, pid files. When the Driver doesn't
+ * come back, recreating the container clears all of it. The home volume survives
  * either way, so the cost is the container's own scratch state.
  */
 export async function wakeAndWait(
@@ -279,7 +264,7 @@ export async function wakeAndWait(
   const backend = providerFor(comp);
   await backend.resumeComputer(comp.slug);
   touchActive(comp.id);
-  if (await waitForBridge(comp, limit)) {
+  if (await waitForControl(comp, limit)) {
     return { ready: true, recreated: false };
   }
   try {
@@ -288,5 +273,5 @@ export async function wakeAndWait(
   } catch {
     return { ready: false, recreated: false };
   }
-  return { ready: await waitForBridge(comp, limit), recreated: true };
+  return { ready: await waitForControl(comp, limit), recreated: true };
 }

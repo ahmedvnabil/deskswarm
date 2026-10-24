@@ -9,7 +9,7 @@ cd dashboard-ts && bun test
 ```
 
 The fleet starts empty. Add a machine from the UI — the first one builds the
-bridge image (about a minute), later ones take about a second.
+native desktop image (first build can take several minutes), later ones take about a second.
 
 ## Layout
 
@@ -19,7 +19,7 @@ bridge image (about a minute), later ones take about a second.
 | `dashboard-ts/src/providers/` | The only modules that talk to Docker |
 | `dashboard-ts/src/mcp/` | Keys, the tool table, and who is doing what |
 | `dashboard-ts/src/routes/mcp.ts` | The MCP endpoint itself |
-| `bridge/` | cua-computer-server in VNC-backend mode |
+| `desktop/` | Pinned native Cua Driver desktop image and service |
 
 ## Things worth knowing before you change something
 

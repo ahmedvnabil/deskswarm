@@ -7,23 +7,23 @@
  * find from the far side of someone else's client.
  *
  * The split underneath is not arbitrary. Screen and keyboard go through the
- * machine's bridge, which is the only thing that can reach the X session.
+ * machine's Driver, which is the only thing that can reach the X session.
  * Shell, files, clipboard and inventory go through the provider, because it
  * already does them safely — paths confined to the home directory, ownership
  * set to the desktop user, clipboard tooling installed on demand — and
- * reimplementing any of that against the bridge would be a second, worse copy.
+ * reimplementing any of that against the Driver would be a second, worse copy.
  */
 
-import { bridgeCommand } from "./../bridge";
+import { controlCommand } from "./../control";
 import { providerFor } from "./../providers";
 import { invalidateScreen } from "./../screens";
 import { MAX_CLIPBOARD_KB } from "./../settings";
-import type { BridgeTarget } from "./../bridge";
+import type { ControlTarget } from "./../control";
 import type { Computer } from "./../machines";
 
 export interface ToolContext {
   comp: Computer;
-  target: BridgeTarget;
+  target: ControlTarget;
   timeoutMs: number;
 }
 
@@ -83,17 +83,6 @@ const BUTTON = {
   default: "left",
 };
 
-/**
- * Text the keyboard path cannot carry.
- *
- * Typing goes through keysym lookup, which silently drops most non-Latin-1
- * characters — Arabic types as nothing at all. The clipboard carries bytes, so
- * for that text the paste path is not a fallback, it is the only thing that
- * works. Detecting it here rather than documenting it means a client that
- * types Arabic gets Arabic instead of an empty window and no error.
- */
-const needsClipboard = (s: string): boolean => /[^\t\n\r\x20-\xFF]/.test(s);
-
 export const TOOLS: Tool[] = [
   // ----------------------------------------------------------------- screen
   {
@@ -104,7 +93,7 @@ export const TOOLS: Tool[] = [
       "coordinate the click and drag tools take is read off this image.",
     inputSchema: schema({}),
     async handler(ctx) {
-      const payload = await bridgeCommand(ctx.target, "screenshot", {}, ctx.timeoutMs);
+      const payload = await controlCommand(ctx.target, "screenshot", {}, ctx.timeoutMs);
       if (!payload?.image_data) throw new ToolError("the machine returned no image");
       return [{ type: "image", data: String(payload.image_data), mimeType: "image/png" }];
     },
@@ -115,7 +104,7 @@ export const TOOLS: Tool[] = [
     description: "The machine's screen resolution, in pixels.",
     inputSchema: schema({}),
     async handler(ctx) {
-      const p = await bridgeCommand(ctx.target, "get_screen_size", {}, ctx.timeoutMs);
+      const p = await controlCommand(ctx.target, "get_screen_size", {}, ctx.timeoutMs);
       const size = p?.size ?? p;
       return text(`${size?.width ?? "?"}x${size?.height ?? "?"}`);
     },
@@ -130,9 +119,7 @@ export const TOOLS: Tool[] = [
       const x = num(args, "x");
       const y = num(args, "y");
       const button = str(args, "button", "left");
-      const command =
-        button === "right" ? "right_click" : button === "middle" ? "middle_click" : "left_click";
-      await bridgeCommand(ctx.target, command, { x, y }, ctx.timeoutMs);
+      await controlCommand(ctx.target, "click", { x, y, button, count: 1 }, ctx.timeoutMs);
       return text(`${button}-clicked at ${x},${y}`);
     },
   },
@@ -145,7 +132,7 @@ export const TOOLS: Tool[] = [
     async handler(ctx, args) {
       const x = num(args, "x");
       const y = num(args, "y");
-      await bridgeCommand(ctx.target, "double_click", { x, y }, ctx.timeoutMs);
+      await controlCommand(ctx.target, "click", { x, y, button: "left", count: 2 }, ctx.timeoutMs);
       return text(`double-clicked at ${x},${y}`);
     },
   },
@@ -159,7 +146,7 @@ export const TOOLS: Tool[] = [
     async handler(ctx, args) {
       const x = num(args, "x");
       const y = num(args, "y");
-      await bridgeCommand(ctx.target, "move_cursor", { x, y }, ctx.timeoutMs);
+      await controlCommand(ctx.target, "move_cursor", { x, y }, ctx.timeoutMs);
       return text(`moved to ${x},${y}`);
     },
   },
@@ -186,16 +173,7 @@ export const TOOLS: Tool[] = [
       const tx = num(args, "to_x");
       const ty = num(args, "to_y");
       const button = str(args, "button", "left");
-      // drag_to starts wherever the pointer is, so the start point has to be
-      // set first — otherwise the drag begins from whatever the last call left
-      // behind, which is a bug that only shows up in a sequence of calls.
-      await bridgeCommand(ctx.target, "move_cursor", { x: fx, y: fy }, ctx.timeoutMs);
-      await bridgeCommand(
-        ctx.target,
-        "drag_to",
-        { x: tx, y: ty, button, duration: 0.5 },
-        ctx.timeoutMs,
-      );
+      await controlCommand(ctx.target, "drag", { from_x: fx, from_y: fy, to_x: tx, to_y: ty, button }, ctx.timeoutMs);
       return text(`dragged ${fx},${fy} -> ${tx},${ty}`);
     },
   },
@@ -214,9 +192,9 @@ export const TOOLS: Tool[] = [
     async handler(ctx, args) {
       const direction = str(args, "direction");
       const clicks = args?.clicks === undefined ? 3 : num(args, "clicks");
-      await bridgeCommand(
+      await controlCommand(
         ctx.target,
-        "scroll_direction",
+        "scroll",
         { direction, clicks },
         ctx.timeoutMs,
       );
@@ -236,11 +214,7 @@ export const TOOLS: Tool[] = [
     mutates: true,
     async handler(ctx, args) {
       const value = str(args, "text");
-      if (needsClipboard(value)) {
-        await providerFor(ctx.comp).pasteText(ctx.comp.slug, value);
-        return text(`pasted ${value.length} characters (non-Latin text)`);
-      }
-      await bridgeCommand(ctx.target, "type_text", { text: value }, ctx.timeoutMs);
+      await controlCommand(ctx.target, "type_text", { text: value }, ctx.timeoutMs);
       return text(`typed ${value.length} characters`);
     },
   },
@@ -253,7 +227,7 @@ export const TOOLS: Tool[] = [
     mutates: true,
     async handler(ctx, args) {
       const key = str(args, "key");
-      await bridgeCommand(ctx.target, "press_key", { key }, ctx.timeoutMs);
+      await controlCommand(ctx.target, "press_key", { key }, ctx.timeoutMs);
       return text(`pressed ${key}`);
     },
   },
@@ -272,7 +246,7 @@ export const TOOLS: Tool[] = [
       if (!Array.isArray(keys) || !keys.length) {
         throw new ToolError("keys must be a non-empty array");
       }
-      await bridgeCommand(
+      await controlCommand(
         ctx.target,
         "hotkey",
         { keys: keys.map(String) },

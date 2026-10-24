@@ -32,21 +32,22 @@ export const launched: [string, string, string[]][] = [];
 /** What the next exec should report. Tests that care about a command failing
  *  set exit_code here; reset() puts it back to success. */
 export const execResult = { ok: true, exit_code: 0, output: "" };
-/** Every command the bridge stub was asked to run, as [command, params]. The
+/** Every command the Driver stub was asked to run, as [command, params]. The
  *  MCP tools are mostly thin translations onto these, so this is where a test
  *  checks that `click` really became a `left_click` at the right point. */
-export const bridgeLog: [string, any][] = [];
+export const driverLog: [string, any][] = [];
 
 export const realFleet = await import("../src/providers/docker");
+export const createNativeComputer = realFleet.createComputer;
 
 /** Knobs the stubs read on every call, so a test can change the world
  *  mid-flight the way monkeypatching did. */
 export const world = {
-  bridgeUp: true,
+  driverUp: true,
   watchers: 0,
-  /** Set to a message to make every bridge command answer success:false —
+  /** Set to a message to make every Driver command answer success:false —
    *  the "the machine said no" path, as opposed to "the machine is gone". */
-  bridgeRefuses: "" as string,
+  driverRefuses: "" as string,
 };
 
 function collect(stream: NodeJS.ReadableStream): Promise<Buffer> {
@@ -101,8 +102,21 @@ async function restoreHome(slug: string, tarPath: string, wipe = true) {
   await done;
 }
 
+const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const stubs = {
-  ensureBridgeImage: async () => {},
+  driverCall: async (_slug: string, tool: string, args: Record<string, unknown>) => {
+    if (!world.driverUp) throw new Error("driver is down");
+    if (world.driverRefuses && tool !== "get_screen_size") throw new Error(world.driverRefuses);
+    if (tool === "get_screen_size") return { width: 1024, height: 768 };
+    if (tool === "start_session") return { active: true };
+    if (tool === "get_desktop_state") return { screenshot_png_b64: png };
+    if (tool === "get_cursor_position") return { x: 10, y: 20 };
+    driverLog.push([tool, args]);
+    if (tool === "hotkey" && JSON.stringify(args.keys) === '["ctrl","v"]')
+      pasted.push([_slug, clipboards.get(_slug) ?? ""]);
+    return { effect: "unverifiable" };
+  },
+  ensureDesktopImage: async () => {},
   detectNetwork: async () => "test-net",
   usedNovncPorts: async () => new Set<number>(),
   createComputer: async (
@@ -120,7 +134,6 @@ const stubs = {
   // so tests drive it through this map rather than Docker.
   containerState: async (slug: string) => ({
     desktop_state: states.get(slug) ?? "running",
-    bridge_state: states.get(slug) ?? "running",
   }),
   suspendComputer: async (slug: string) => {
     states.set(slug, "exited");
@@ -191,52 +204,6 @@ mock.module("../src/providers/docker", () => ({
   dockerProvider: { ...realFleet.dockerProvider, ...stubs },
 }));
 
-// --------------------------------------------------------------- network
-
-const realFetch = globalThis.fetch;
-
-/**
- * The bridge, stubbed at the network edge rather than by patching the module
- * that calls it — which keeps `computerView` and `screens` running their real
- * code paths.
- */
-globalThis.fetch = (async (input: any, init?: any) => {
-  const url = String(typeof input === "string" ? input : input?.url ?? "");
-  if (url.endsWith("/status")) {
-    if (!world.bridgeUp) return new Response("down", { status: 503 });
-    return new Response(JSON.stringify({ status: "ok" }), {
-      headers: { "content-type": "application/json" },
-    });
-  }
-  if (url.endsWith("/cmd")) {
-    if (!world.bridgeUp) return new Response("down", { status: 503 });
-    let body: any = {};
-    try {
-      body = JSON.parse(String(init?.body ?? "{}"));
-    } catch {
-      /* a malformed body is the caller's problem, not the stub's */
-    }
-    bridgeLog.push([body.command, body.params ?? {}]);
-    if (world.bridgeRefuses) {
-      return new Response(
-        `data: ${JSON.stringify({ success: false, error: world.bridgeRefuses })}\n`,
-      );
-    }
-    const png = Buffer.from(
-      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
-      "base64",
-    );
-    const extra: Record<string, unknown> =
-      body.command === "screenshot"
-        ? { image_data: png.toString("base64") }
-        : body.command === "get_screen_size"
-          ? { size: { width: 1024, height: 768 } }
-          : {};
-    return new Response(`data: ${JSON.stringify({ success: true, ...extra })}\n`);
-  }
-  return realFetch(input, init);
-}) as typeof fetch;
-
 // ------------------------------------------------------------------ app
 
 const auth = await import("../src/auth");
@@ -274,15 +241,15 @@ export function reset(): void {
   snapshots.clear();
   pasted.length = 0;
   execLog.length = 0;
-  bridgeLog.length = 0;
+  driverLog.length = 0;
   launched.length = 0;
   Object.assign(execResult, { ok: true, exit_code: 0, output: "" });
   // In-memory and process-wide, so a machine left "in use" by one test would
   // otherwise still be in use in the next one.
   activity.reset();
-  world.bridgeUp = true;
+  world.driverUp = true;
   world.watchers = 0;
-  world.bridgeRefuses = "";
+  world.driverRefuses = "";
   delete process.env.DESKSWARM_IDLE_SUSPEND_MINUTES;
   delete process.env.DESKSWARM_WAKE_TIMEOUT;
   initDb();

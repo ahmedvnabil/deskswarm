@@ -1,33 +1,7 @@
-/**
- * What a machine backend has to be able to do.
- *
- * Until now "a machine" meant "a pair of Docker containers", and fleet.ts was
- * both the definition and the only implementation. That is fine while there is
- * one backend and impossible the moment there are two — and the reason to want
- * a second one is concrete: Docker on a Mac runs Linux desktops inside a VM,
- * while Apple's own Virtualization.framework can run *macOS* desktops
- * natively. A fleet that mixes them is the thing this interface exists for.
- *
- * The split is deliberate: everything here is what a backend genuinely does
- * differently. Slugs, passwords and path confinement are the same whoever runs
- * the machine, so they live below as plain functions rather than as methods
- * every implementation would have to copy.
- */
-
-/** Where a machine's agent bridge is listening.
- *
- * Docker answers with a container name resolved on its own network; a VM would
- * answer with an address on the host. Nothing above this line should assume
- * either, which is why it is a method and not a `${prefix}-bridge-${slug}`
- * template applied by the caller. */
-export interface BridgeEndpoint {
-  host: string;
-  port: number;
-}
+/** Machine lifecycle, native control, storage and files owned by a provider. */
 
 export interface MachineState {
   desktop_state: string;
-  bridge_state: string;
 }
 
 export interface HomeEntry {
@@ -72,7 +46,7 @@ export interface MachineProvider {
   isRunning(slug: string): Promise<boolean>;
 
   // ------------------------------------------------------------ addressing
-  bridgeEndpoint(slug: string): BridgeEndpoint;
+  driverCall(slug: string, tool: string, args: Record<string, unknown>, timeoutMs: number): Promise<any>;
   novncUrl(port: number, password?: string | null, host?: string | null): string;
   nextNovncPort(reserved: Iterable<number>): Promise<number>;
 

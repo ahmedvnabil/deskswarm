@@ -43,7 +43,7 @@ Liveness check.
 
 ## Computers
 
-A *computer* is one machine: a desktop container plus its bridge container. They are created and destroyed at runtime — the fleet is
+A *computer* is one machine: one desktop container with a supervised native Cua Driver. It is created and destroyed at runtime — the fleet is
 stored in the database, not in `docker-compose.yml`.
 
 ### `GET /api/v1/computers`
@@ -58,11 +58,8 @@ stored in the database, not in `docker-compose.yml`.
       "slug": "research-01",
       "novnc_port": 6901,
       "novnc_url": "http://localhost:6901/vnc.html",
-      "bridge_host": "deskswarm-dyn-bridge-research-01",
-      "bridge_port": 8000,
-      "bridge_ok": true,
+      "control_ok": true,
       "desktop_state": "running",
-      "bridge_state": "running",
       "sleeping": false,
       "reserved": false,
       "no_suspend": false,
@@ -82,7 +79,7 @@ free port at or above `DESKSWARM_NOVNC_PORT_BASE`.
 **Body**: `{ "name": "research-01", "snapshot": "<optional snapshot name>" }`
 — `201 Created`.
 
-The very first call also builds the bridge image, which takes a minute;
+The very first call also builds the native desktop image, which takes a minute;
 subsequent calls return in about a second.
 
 `name` may contain one `{N..M}` range to create a batch:
@@ -135,7 +132,7 @@ way to stop the machine.
 
 ### `POST /api/v1/computers/<id>/wake`
 
-Starts a sleeping machine and waits for its bridge to answer, up to
+Starts a sleeping machine and waits for its Driver to answer, up to
 `DESKSWARM_WAKE_TIMEOUT` seconds.
 
 ```json
@@ -241,7 +238,7 @@ What's installed on the machine.
 
 ### `GET /api/v1/computers/<id>/screenshot`
 
-A PNG of the machine's current screen, pulled through its bridge. This is what
+A PNG of the machine's current screen, pulled through its Driver. This is what
 the wall's tiles use.
 
 Results are cached server-side for `DESKSWARM_SHOT_TTL` seconds (default 6) and
@@ -249,7 +246,7 @@ sent with a matching `max-age`, so a wall of N machines costs one capture per
 machine per window no matter how often the page re-renders.
 
 **Errors**: `404` unknown machine, `503` the screen could not be captured
-(bridge down or mid-restart).
+(Driver down or mid-restart).
 
 ## Backups
 
@@ -458,7 +455,7 @@ lookup, which silently drops those characters. Terminal emulators do not bind
 Ctrl+V, so for non-Latin text in one, write a file and run it instead.
 
 `launch_app` starts the program in the machine's own desktop session, not in
-the bridge container — and refuses with a clear message if the program is not
+a separate service — and refuses with a clear message if the program is not
 installed, rather than reporting a launch nothing can see.
 
 A sleeping machine is woken by the first call that needs it, unless

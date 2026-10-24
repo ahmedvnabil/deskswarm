@@ -67,7 +67,7 @@ export const DISABLE_HOUSEKEEPING = !!(
 
 /**
  * How long one MCP tool call may take before the dashboard gives up on the
- * bridge.
+ * Driver.
  *
  * Generous, because the calls behind it are not uniform: a screenshot is
  * milliseconds and `shell` may be an `apt-get install`. The client is waiting

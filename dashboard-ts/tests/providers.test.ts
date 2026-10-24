@@ -26,7 +26,7 @@ beforeEach(() => {
  *  that adding one to the interface fails here until a backend grows it. */
 const REQUIRED = [
   "createComputer", "destroyComputer", "containerState", "suspendComputer",
-  "resumeComputer", "isRunning", "bridgeEndpoint", "novncUrl", "nextNovncPort",
+  "resumeComputer", "isRunning", "driverCall", "novncUrl", "nextNovncPort",
   "awakeMachineCount", "vncWatchers", "homeSizeMb", "snapshotComputer",
   "removeImage", "execInDesktopResult", "getInventory", "getClipboard",
   "setClipboard", "pasteText", "listHome", "uploadToHome", "downloadFromHome",
@@ -94,13 +94,11 @@ test("a slug nobody knows falls back to the default rather than throwing", () =>
   expect(providerForSlug("deleted-machine").name).toBe("docker");
 });
 
-test("the bridge address comes from the backend, not from a name template", async () => {
+test("the control endpoint is provider-owned, with no legacy address", async () => {
   await addMachine("alpha");
   const view = (await get("/api/v1/computers")).json.data[0];
-  const endpoint = realFleet.dockerProvider.bridgeEndpoint("alpha");
-  expect(view.bridge_host).toBe(endpoint.host);
-  expect(view.bridge_port).toBe(endpoint.port);
-  expect(endpoint.port).toBe(8000);
+  expect(view.control_ok).toBe(true);
+  expect(typeof realFleet.dockerProvider.driverCall).toBe("function");
 });
 
 test("a snapshot records the backend whose store holds the image", async () => {

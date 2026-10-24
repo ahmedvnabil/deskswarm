@@ -7,7 +7,7 @@
  * half of this.
  */
 import { beforeEach, expect, mock, test } from "bun:test";
-import { realFleet as fleet } from "./harness";
+import { realFleet as fleet, createNativeComputer } from "./harness";
 
 interface Call {
   HostConfig?: Record<string, unknown>;
@@ -111,11 +111,11 @@ test("unrelated docker errors still raise", async () => {
   ).rejects.toThrow("already in use");
 });
 
-test("the watchers script ignores the bridge's own connection", () => {
-  // 5901 is held open by the bridge forever; counting it would make every
+test("the watchers script counts viewer connections only", () => {
+  // Raw VNC connections are not browser viewers; counting them would make
   // machine look permanently in use and defeat the idle sweep.
   expect(fleet.VNC_WATCHERS_SCRIPT).toContain("1AF5");     // 6901, the browser
-  expect(fleet.VNC_WATCHERS_SCRIPT).not.toContain("170D"); // 5901, the bridge
+  expect(fleet.VNC_WATCHERS_SCRIPT).not.toContain("170D"); // 5901, raw VNC
 });
 
 test("a missing image is pulled instead of 404ing", async () => {
@@ -156,4 +156,13 @@ test("the frame headers are stripped from exec output", () => {
   const raw = Buffer.concat([frame(1, "hello "), frame(2, "world")]);
   const { demultiplex } = require("../src/providers/docker-engine");
   expect(demultiplex(raw)).toBe("hello world");
+});
+
+test("a native machine creates one desktop container with its home volume", async () => {
+  present.add(fleet.DESKTOP_IMAGE);
+  await createNativeComputer("native", 6901, "test-password");
+  expect(calls).toHaveLength(1);
+  expect(calls[0].Image).toBe(fleet.DESKTOP_IMAGE);
+  expect(calls[0].Labels).toEqual({ "deskswarm.role": "desktop", "deskswarm.slug": "native" });
+  expect(calls[0].HostConfig?.Binds).toEqual([`${fleet.homeVolumeName("native")}:/home/cua:rw`]);
 });

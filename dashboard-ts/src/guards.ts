@@ -24,10 +24,8 @@ export type Check = [ok: boolean, message: string];
  * process per configuration.
  */
 export const limits = {
-  // A machine is two containers and both cost real memory. Measured on an idle
-  // fleet: the desktop runs 200-235 MB and the bridge another 145-190 MB. A
-  // machine an MCP client is actually working in costs considerably more, so
-  // this is a floor, not a forecast — see DESKSWARM_MEMORY_BUDGET_MB.
+  // Conservative per-machine reserve including the native Driver. Actual use
+  // depends on applications; size DESKSWARM_MEMORY_BUDGET_MB for the host.
   machineMb: () => envInt("DESKSWARM_MACHINE_MB", 400),
   minFreeMb: () => envInt("DESKSWARM_MIN_FREE_MB", 512),
   minFreeDiskGb: () => envFloat("DESKSWARM_MIN_FREE_DISK_GB", 5),

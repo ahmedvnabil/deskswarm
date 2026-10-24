@@ -69,9 +69,9 @@ machines.get("/partials/fleet", async (c) => {
   const summary = {
     total: computers.length,
     in_use: computers.filter((v) => v.activity).length,
-    idle: computers.filter((v) => !v.activity && !v.sleeping && v.bridge_ok).length,
+    idle: computers.filter((v) => !v.activity && !v.sleeping && v.control_ok).length,
     asleep: computers.filter((v) => v.sleeping).length,
-    down: computers.filter((v) => !v.sleeping && !v.bridge_ok).length,
+    down: computers.filter((v) => !v.sleeping && !v.control_ok).length,
     keys: Object.values(keyCounts).reduce((a, b) => a + b, 0),
     unreachable: computers.filter((v) => !v.keys_live && !v.reserved).length,
   };
@@ -195,7 +195,7 @@ machines.patch("/api/v1/computers/:id", requireToken, async (c) => {
  * Recreate a machine's containers in place.
  *
  * A machine can end up with its containers gone or wedged — the host rebooted,
- * someone ran `docker rm`, the bridge died. Before this the only cure was
+ * someone ran `docker rm`, the Driver died. Before this the only cure was
  * delete-and-recreate, which lost the machine's name and port.
  */
 machines.post("/api/v1/computers/:id/restart", requireToken, async (c) => {

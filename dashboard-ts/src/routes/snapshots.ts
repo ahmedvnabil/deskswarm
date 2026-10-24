@@ -5,7 +5,7 @@ import { providerFor, providerByName, slugify } from "./../providers";
 import * as guards from "./../guards";
 import { all, one, run } from "./../db";
 import { computerView, getComputer, type Computer } from "./../machines";
-import { bridgeScreenshot } from "./../screens";
+import { desktopScreenshot } from "./../screens";
 import { requireToken } from "./../security";
 import { SHOT_TTL, nowIso } from "./../settings";
 import { fail, intParam, notFound, ok, type Env } from "./../http";
@@ -84,14 +84,14 @@ snapshots.get("/api/v1/computers/:id/screenshot", async (c) => {
   const comp = loadComputer(c);
   if (!comp) return notFound(c);
   // A sleeping machine has no screen to capture. Saying so immediately beats
-  // spending the bridge's full 12s timeout on every tile, every refresh.
+  // spending the Driver's full 12s timeout on every tile, every refresh.
   try {
     const state = await providerFor(comp).containerState(comp.slug);
     if (state.desktop_state === "exited") return fail(c, "sleeping", 503);
   } catch {
-    /* if Docker can't say, try the bridge anyway */
+    /* if Docker can't say, try the Driver anyway */
   }
-  const png = await bridgeScreenshot(await computerView(comp, { withState: false }));
+  const png = await desktopScreenshot(await computerView(comp, { withState: false }));
   if (png === null) return fail(c, "screen unavailable", 503);
   return c.body(png as any, 200, {
     "content-type": "image/png",

@@ -1,18 +1,4 @@
-/**
- * The Docker machine provider: a desktop is a pair of containers.
- *
- * This was fleet.ts, the only thing that knew what a machine was. It is now
- * one implementation of MachineProvider — the behaviour is unchanged, and the
- * interface it satisfies is what lets a second backend exist beside it.
- *
- * A "computer" is a pair of containers on the same Docker network:
- *   <prefix>-desktop-<slug>  — trycua/xfce-cua, a real XFCE session over VNC
- *   <prefix>-bridge-<slug>   — cua-computer-server in VNC-backend mode
- *
- * Both are created at runtime through the Docker API (the dashboard mounts
- * /var/run/docker.sock), so the fleet is not fixed by docker-compose.yml —
- * users add and remove machines from the UI.
- */
+/** Docker provider: one native Cua Driver desktop container per machine. */
 
 import { randomBytes } from "node:crypto";
 import { existsSync, readdirSync } from "node:fs";
@@ -31,15 +17,13 @@ import {
   ClipboardUnavailable,
   HomePathMissing,
   PathOutsideHome,
-  type BridgeEndpoint,
   type MachineProvider,
 } from "./types";
 
 export { ClipboardUnavailable, HomePathMissing, PathOutsideHome };
 
-export const DESKTOP_IMAGE = env("DESKSWARM_DESKTOP_IMAGE", "trycua/xfce-cua:latest");
-export const BRIDGE_IMAGE = env("DESKSWARM_BRIDGE_IMAGE", "deskswarm-bridge:latest");
-export const BRIDGE_CONTEXT = env("DESKSWARM_BRIDGE_CONTEXT", "/bridge-src");
+export const DESKTOP_IMAGE = env("DESKSWARM_DESKTOP_IMAGE", "deskswarm-desktop:0.38.0");
+export const DESKTOP_CONTEXT = env("DESKSWARM_DESKTOP_CONTEXT", "/desktop-src");
 export const CONTAINER_PREFIX = env("DESKSWARM_CONTAINER_PREFIX", "deskswarm-dyn");
 const NETWORK_NAME = env("DESKSWARM_NETWORK");
 // Empty means "whatever hostname the browser used to reach the dashboard",
@@ -74,7 +58,6 @@ export const HOME_PATH = "/home/cua";
 const MACHINE_MEM_LIMIT = env("DESKSWARM_MACHINE_MEM_LIMIT", "2g");
 const MACHINE_CPUS = envFloat("DESKSWARM_MACHINE_CPUS", 2);
 const MACHINE_PIDS = envInt("DESKSWARM_MACHINE_PIDS", 512);
-const BRIDGE_MEM_LIMIT = env("DESKSWARM_BRIDGE_MEM_LIMIT", "512m");
 
 // null = not yet known. Some kernels and nested-container hosts refuse cgroup
 // limits outright; we find out from Docker rather than guessing.
@@ -96,8 +79,6 @@ export function slugify(name: string): string {
 
 export const desktopContainerName = (slug: string) =>
   `${CONTAINER_PREFIX}-desktop-${slug}`;
-export const bridgeContainerName = (slug: string) =>
-  `${CONTAINER_PREFIX}-bridge-${slug}`;
 export const homeVolumeName = (slug: string) =>
   `${CONTAINER_PREFIX}-home-${slug}`;
 
@@ -126,23 +107,23 @@ export async function detectNetwork(): Promise<string> {
   return "bridge";
 }
 
-/** Build the bridge image on first use if it isn't present. */
-export async function ensureBridgeImage(): Promise<void> {
+/** Build the Driver image on first use if it isn't present. */
+export async function ensureDesktopImage(): Promise<void> {
   try {
-    await docker().getImage(BRIDGE_IMAGE).inspect();
+    await docker().getImage(DESKTOP_IMAGE).inspect();
     return;
   } catch (err) {
     if (!isNotFound(err)) throw err;
   }
-  if (!existsSync(join(BRIDGE_CONTEXT, "Dockerfile"))) {
+  if (!existsSync(join(DESKTOP_CONTEXT, "Dockerfile"))) {
     throw new Error(
-      `bridge image '${BRIDGE_IMAGE}' is missing and no build context at ` +
-        `${BRIDGE_CONTEXT} — mount ./bridge into the dashboard container`,
+      `Driver image '${DESKTOP_IMAGE}' is missing and no build context at ` +
+        `${DESKTOP_CONTEXT} — mount ./desktop into the dashboard container`,
     );
   }
   const stream = await docker().buildImage(
-    { context: BRIDGE_CONTEXT, src: readdirSync(BRIDGE_CONTEXT) },
-    { t: BRIDGE_IMAGE, rm: true },
+    { context: DESKTOP_CONTEXT, src: readdirSync(DESKTOP_CONTEXT) },
+    { t: DESKTOP_IMAGE, rm: true },
   );
   // followProgress resolves only once the build has actually finished; without
   // it the first machine would start against an image that isn't there yet.
@@ -296,7 +277,7 @@ export async function runContainer(spec: any, limits: Limits = {}): Promise<void
 }
 
 /**
- * Start the desktop + bridge container pair for one computer.
+ * Start one desktop container with its supervised Cua Driver.
  *
  * `image` overrides the stock desktop image, which is how a machine gets
  * created from a snapshot of an already-provisioned one.
@@ -307,12 +288,11 @@ export async function createComputer(
   vncPassword: string,
   image?: string | null,
 ): Promise<void> {
-  await ensureBridgeImage();
+  if (!image) await ensureDesktopImage();
   const network = await detectNetwork();
   const securityOpt = DISABLE_APPARMOR ? ["apparmor:unconfined"] : undefined;
 
-  // Only the desktop gets the home volume; the bridge has no business holding
-  // a reference to the user's files. Docker seeds a fresh named volume from
+  // Docker seeds a fresh named volume from
   // the image's own /home/cua, so a new machine still gets its skeleton.
   const binds = PERSIST_HOME
     ? [`${homeVolumeName(slug)}:${HOME_PATH}:rw`]
@@ -342,25 +322,7 @@ export async function createComputer(
     resourceLimits(MACHINE_MEM_LIMIT),
   );
 
-  await runContainer(
-    {
-      name: bridgeContainerName(slug),
-      Image: BRIDGE_IMAGE,
-      Env: [
-        `VNC_HOST=${desktopContainerName(slug)}`,
-        "VNC_PORT=5901",
-        `VNC_PASSWORD=${vncPassword}`,
-        "BRIDGE_PORT=8000",
-      ],
-      Labels: { "deskswarm.role": "bridge", "deskswarm.slug": slug },
-      HostConfig: {
-        NetworkMode: network,
-        RestartPolicy: { Name: "unless-stopped" },
-        SecurityOpt: securityOpt,
-      },
-    },
-    resourceLimits(BRIDGE_MEM_LIMIT),
-  );
+
 }
 
 /** Commit a running desktop container to an image so new machines can be
@@ -382,7 +344,7 @@ export async function removeImage(image: string): Promise<void> {
 /** Remove a machine. `keepHome` spares the home volume, which is what a
  *  restart needs — the containers go, the work stays. */
 export async function destroyComputer(slug: string, keepHome = false): Promise<void> {
-  for (const name of [bridgeContainerName(slug), desktopContainerName(slug)]) {
+  for (const name of [desktopContainerName(slug)]) {
     try {
       await docker().getContainer(name).remove({ force: true });
     } catch (err) {
@@ -418,42 +380,30 @@ export async function homeSizeMb(slug: string): Promise<number | null> {
 
 export interface ContainerState {
   desktop_state: string;
-  bridge_state: string;
 }
 
 export async function containerState(slug: string): Promise<ContainerState> {
-  const out: ContainerState = { desktop_state: "missing", bridge_state: "missing" };
-  const pairs: [keyof ContainerState, string][] = [
-    ["desktop_state", desktopContainerName(slug)],
-    ["bridge_state", bridgeContainerName(slug)],
-  ];
-  await Promise.all(
-    pairs.map(async ([key, name]) => {
-      try {
-        const info = await docker().getContainer(name).inspect();
-        out[key] = info.State?.Status ?? "missing";
-      } catch (err) {
-        if (!isNotFound(err)) throw err;
-      }
-    }),
-  );
-  return out;
+  try {
+    const info = await docker().getContainer(desktopContainerName(slug)).inspect();
+    return { desktop_state: info.State?.Status ?? "missing" };
+  } catch (err) {
+    if (!isNotFound(err)) throw err;
+    return { desktop_state: "missing" };
+  }
 }
 
 // ------------------------------------------------------------ sleep / wake
 
 /**
- * Stop both containers, freeing their memory and CPU entirely.
+ * Stop the desktop, freeing its memory and CPU.
  *
  * This is `docker stop`, not `docker pause`: pausing keeps every page of RAM
  * resident, and RAM is the thing that runs out first. The X session ends, so
  * open windows are lost; the home volume is untouched.
  *
- * The bridge goes first so it isn't left retrying a VNC socket that just
- * disappeared.
  */
 export async function suspendComputer(slug: string): Promise<void> {
-  for (const name of [bridgeContainerName(slug), desktopContainerName(slug)]) {
+  for (const name of [desktopContainerName(slug)]) {
     try {
       await docker().getContainer(name).stop({ t: 10 });
     } catch (err: any) {
@@ -463,10 +413,9 @@ export async function suspendComputer(slug: string): Promise<void> {
   }
 }
 
-/** Start the pair back up — desktop first, so the bridge finds a VNC server
- *  waiting rather than backing off. */
+/** Start the desktop and its supervised Driver. */
 export async function resumeComputer(slug: string): Promise<void> {
-  for (const name of [desktopContainerName(slug), bridgeContainerName(slug)]) {
+  for (const name of [desktopContainerName(slug)]) {
     try {
       await docker().getContainer(name).start();
     } catch (err: any) {
@@ -480,7 +429,7 @@ export async function resumeComputer(slug: string): Promise<void> {
 
 // websockify listens on 6901 inside the desktop; a browser watching the screen
 // shows up here as an established connection. Port 5901 is deliberately not
-// counted — the bridge holds that one open permanently, so it would make every
+// counted — the Driver holds that one open permanently, so it would make every
 // machine look busy forever.
 export const VNC_WATCHERS_SCRIPT =
   `awk 'NR>1 && $4=="01" {split($2,a,":"); if (a[2]=="1AF5") n++} END{print n+0}' ` +
@@ -518,11 +467,11 @@ export async function homeArchiveStream(slug: string): Promise<NodeJS.ReadableSt
  * anything, and the helper can mount the volume at the same path without a
  * live session reading it underneath us.
  *
- * The helper runs the bridge image — already built and local, so this pulls
+ * The helper uses the desktop image — already built and local, so this pulls
  * nothing and works on a host with no internet.
  */
 export async function restoreHome(slug: string, tarPath: string, wipe = true): Promise<void> {
-  await ensureBridgeImage();
+  await ensureDesktopImage();
   const name = `${CONTAINER_PREFIX}-restore-${slug}`;
   // A previous restore that died mid-flight leaves the helper behind, and the
   // name would then collide for ever.
@@ -530,7 +479,7 @@ export async function restoreHome(slug: string, tarPath: string, wipe = true): P
 
   const helper = await docker().createContainer({
     name,
-    Image: BRIDGE_IMAGE,
+    Image: DESKTOP_IMAGE,
     Entrypoint: ["sleep", "600"],
     Labels: { "deskswarm.role": "restore", "deskswarm.slug": slug },
     HostConfig: { Binds: [`${homeVolumeName(slug)}:${HOME_PATH}:rw`] },
@@ -703,7 +652,7 @@ const asDesktopUser = (inner: string) =>
   `su cua -c ${shellQuote(CLIP_ENV + " " + inner)} </dev/null`;
 
 /**
- * Make sure xclip and xdotool exist, installing them if they don't.
+ * Make sure xclip exist, installing them if they don't.
  *
  * The stock desktop image ships neither, and a container rebuild throws away
  * anything apt installed — so this is checked per call rather than once. The
@@ -712,17 +661,17 @@ const asDesktopUser = (inner: string) =>
 export async function ensureClipboardTools(slug: string): Promise<void> {
   const probe = await execInDesktop(
     slug,
-    "command -v xclip >/dev/null && command -v xdotool >/dev/null",
+    "command -v xclip >/dev/null",
   );
   if (probe.exit_code === 0) return;
   const res = await execInDesktop(
     slug,
     "export DEBIAN_FRONTEND=noninteractive; " +
-      "apt-get update -qq && apt-get install -y -qq xclip xdotool",
+      "apt-get update -qq && apt-get install -y -qq xclip",
   );
   if (res.exit_code !== 0) {
     throw new ClipboardUnavailable(
-      "this machine has no xclip/xdotool and installing them failed " +
+      "this machine has no xclip and installing them failed " +
         `(is it offline?): ${res.output.slice(-300).trim()}`,
     );
   }
@@ -765,30 +714,13 @@ export async function setClipboard(slug: string, text: string): Promise<void> {
  */
 export async function pasteText(slug: string, text: string): Promise<void> {
   await setClipboard(slug, text);
-  const res = await execInDesktop(
-    slug,
-    asDesktopUser("xdotool key --clearmodifiers ctrl+v"),
-  );
-  if (res.exit_code !== 0) {
-    throw new ClipboardUnavailable(res.output.trim() || "could not send Ctrl+V");
+  const result = await driverCall(slug, "hotkey", { scope: "desktop", session: "deskswarm-desktop", keys: ["ctrl", "v"] }, 30_000);
+  if (result?.code || result?.error || result?.isError) {
+    throw new ClipboardUnavailable(JSON.stringify(result));
   }
 }
 
-/**
- * Start a program on the machine's desktop.
- *
- * Deliberately not the bridge's own `launch` command, which is the obvious
- * thing to reach for and is wrong: cua's VNC handler implements the input and
- * screen commands only, so `launch` falls through to a handler that runs
- * *inside the bridge container* against the throwaway Xvfb it keeps for
- * pynput's sake. The program starts, on a display nobody can see, and the
- * bridge reports success — the desktop is untouched and the agent that asked
- * has no way to tell.
- *
- * Same shape as the clipboard path for the same reasons: as `cua`, with the
- * desktop's DISPLAY, and detached with setsid so it outlives the exec that
- * started it rather than dying with it.
- */
+/** Launch in the graphical user's existing desktop session. */
 export async function launchApp(
   slug: string,
   app: string,
@@ -943,17 +875,6 @@ export async function downloadFromHome(
 // --------------------------------------------------------------- provider
 
 /**
- * Where this machine's agent bridge is listening.
- *
- * A container name, resolved by Docker's own DNS on the network the pair
- * shares. Nothing above this line assumes that — a backend running real VMs
- * would answer with an address instead.
- */
-export function bridgeEndpoint(slug: string): BridgeEndpoint {
-  return { host: bridgeContainerName(slug), port: 8000 };
-}
-
-/**
  * The interface, satisfied by the functions above.
  *
  * Written out rather than assembled from the module namespace so that adding a
@@ -971,7 +892,7 @@ export const dockerProvider: MachineProvider = {
   resumeComputer,
   isRunning,
 
-  bridgeEndpoint,
+  driverCall,
   novncUrl,
   nextNovncPort,
 
@@ -995,3 +916,13 @@ export const dockerProvider: MachineProvider = {
   homeArchiveStream,
   restoreHome,
 };
+
+/** Native Driver call, confined to the desktop user. */
+export async function driverCall(slug: string, tool: string, args: Record<string, unknown>, timeoutMs: number): Promise<any> {
+  const result = await execInContainer(desktopContainerName(slug), [
+    "timeout", "--kill-after=2s", `${Math.max(1, Math.ceil(timeoutMs / 1000))}s`,
+    "/usr/local/bin/cua-driver", "call", tool, JSON.stringify(args),
+  ], { user: "cua", env: { DISPLAY: ":1", XDG_SESSION_TYPE: "x11" } });
+  if (result.exit_code !== 0) throw new Error(`Cua Driver failed (${result.exit_code}): ${result.output.slice(0, 1000)}`);
+  return JSON.parse(result.output);
+}
