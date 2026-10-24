@@ -568,3 +568,7 @@ server selection on desktop creation and authenticated remote viewer behavior.
 ## Cloudflare deployment control
 
 Authenticated connection testing, encrypted token storage, background deployment tracking, version listing and rollback are documented with request bodies in [Cloudflare setup and API](CLOUDFLARE.md#api). The Linux backend remains the authority for desktop ownership and Agent execution.
+
+## Connections and NetBird
+
+The authenticated inventory, token test/save/sync, and shared SSH default endpoints are documented in [Connections](CONNECTIONS.md#api). Automatic Tunnel discovery/provision/check/stop endpoints are documented in [Cloudflare](CLOUDFLARE.md#discovery-and-tunnel-api).

@@ -8,6 +8,8 @@ services:
   dashboard:
     # The Bun/Hono dashboard.
     build: ./dashboard-ts
+    labels:
+      com.deskswarm.component: dashboard
     environment:
       PORT: 7000
       DESKSWARM_DESKTOP_IMAGE: ${DESKSWARM_DESKTOP_IMAGE:-deskswarm-desktop:0.38.0}

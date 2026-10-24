@@ -109,10 +109,13 @@
         }
       }
     </style>
-  </head>
+  <link rel="stylesheet" href="/static/panels.css">
+<script src="/static/panels.js"></script>
+</head>
   <body>
     <main>
-      <a href="/">← لوحة التحكم</a>
+      <a href="/">← لوحة التحكم</a> ·
+      <a href="/settings/connections">مركز الاتصالات وNetBird</a>
       <h1>Cloudflare والنشر</h1>
       <p>
         Worker يستقبل الطلبات وDurable Objects تنسّق مسارات الأجهزة. خدمة
@@ -121,15 +124,19 @@
       <section>
         <h2>ربط الحساب</h2>
         <p>
-          أدخل API Token محدود الصلاحيات وAccount ID. تحتاج صلاحية نشر Workers
-          وإنشاء Durable Objects. عنوان Linux يجب أن يكون HTTPS عامًا، مثل عنوان
-          Cloudflare Tunnel. فعّل workers.dev للحساب. المفتاح يُحفظ مشفّرًا ولا
-          يظهر بعد الحفظ.
+          أدخل API Token محدود الصلاحيات وAccount ID واسم Worker. يمكنك إنشاء عنوان الخدمة تلقائيًا من قسم Tunnel أدناه، أو اختبار عنوان HTTPS موجود. فعّل workers.dev للحساب. المفتاح يُحفظ مشفّرًا ولا يظهر بعد الحفظ.
         </p>
+        <div class="actions" style="margin-bottom: 16px">
+          <button id="discover-accounts" type="button">
+            اكتشاف الحسابات من المفتاح
+          </button>
+        </div>
+        <datalist id="account-options"></datalist>
         <form id="connection">
           <label
             >Account ID<input
               name="account"
+              list="account-options"
               dir="ltr"
               required
               autocomplete="off"
@@ -165,6 +172,74 @@
         </form>
         <p id="connection-message" role="status" aria-live="polite"></p>
         <p id="saved"></p>
+      </section>
+      <section>
+        <h2>إعداد Cloudflare Tunnel تلقائيًا</h2>
+        <p>
+          اختر السيرفر وخدمة DeskSwarm المكتشفة، والدومين واسم النطاق الفرعي.
+          سننشئ Tunnel وDNS ونشغّل cloudflared على Docker دون أوامر يدوية.
+          استخدم نفس بيانات الحساب أعلاه؛ لا تحتاج عنوان HTTPS مسبقًا. لا نستبدل
+          سجلات DNS الموجودة.
+        </p>
+        <form id="tunnel-form">
+          <label
+            >سيرفر Linux<select name="server_id" id="tunnel-server" required>
+              <option value="0">Local — سيرفر Docker الحالي</option>
+            </select></label
+          >
+          <label
+            >خدمة DeskSwarm<select name="backend" id="tunnel-backend" required>
+              <option value="">اكتشف الخدمات أولًا</option>
+            </select></label
+          >
+          <div class="actions wide">
+            <button type="button" id="discover-services">اكتشاف الخدمة</button
+            ><a href="/settings/connections"
+              >ربط سيرفر أو اختيار جهاز NetBird</a
+            >
+          </div>
+          <label
+            >الدومين<select name="zone" id="tunnel-zone" required>
+              <option value="">حمّل الدومينات أولًا</option>
+            </select></label
+          >
+          <label
+            >النطاق الفرعي<input
+              name="hostname"
+              id="tunnel-hostname"
+              dir="ltr"
+              required
+              placeholder="deskswarm-origin.example.com"
+          /></label>
+          <div class="actions wide">
+            <button type="button" id="discover-zones">تحميل الدومينات</button>
+          </div>
+          <label
+            class="wide"
+            style="display: flex; align-items: center; gap: 12px"
+            ><input
+              name="deploy"
+              id="tunnel-deploy"
+              type="checkbox"
+              checked
+              style="width: 20px"
+            />نشر Worker وDurable Objects بعد نجاح Tunnel</label
+          >
+          <div class="actions wide">
+            <button type="submit" id="test-tunnel">فحص الإعدادات</button
+            ><button type="button" id="start-tunnel" disabled>
+              إنشاء النفق وربط التطبيق
+            </button>
+          </div>
+        </form>
+        <p id="tunnel-message" role="status" aria-live="polite"></p>
+        <p>
+          يحتاج المفتاح صلاحيات Cloudflare Tunnel Edit وZone Read وDNS Edit
+          بجانب Workers. السيرفر الذي لا تظهر عليه خدمة DeskSwarm شغّالة يُعد
+          غير مجهّز للنشر. إنشاء النفق يُظهر تسجيل دخول التطبيق على الإنترنت مع
+          الاحتفاظ بكلمة المرور الحالية.
+        </p>
+        <div id="tunnels"></div>
       </section>
       <section>
         <h2>النشر والإصدارات</h2>
@@ -214,7 +289,9 @@
         ticket = "";
         save.disabled = true;
       });
-      function connectionNote(text) { el("connection-message").textContent = text; }
+      function connectionNote(text) {
+        el("connection-message").textContent = text;
+      }
       form.onsubmit = async (e) => {
         e.preventDefault();
         el("test").disabled = true;
@@ -247,6 +324,13 @@
       };
       async function status() {
         const data = await api("status");
+        if (data.connection) {
+          form.elements.token.required = false;
+          form.elements.token.placeholder =
+            "محفوظ مشفّرًا — اتركه فارغًا لإعادة الاستخدام";
+          if (!form.elements.origin.value)
+            form.elements.origin.value = data.connection.origin;
+        }
         busy = data.jobs.some((j) => j.status === "running");
         el("deploy").disabled = !data.connection || busy;
         el("rollback").disabled = !select.value || busy;
@@ -269,9 +353,20 @@
             "#" +
             job.id +
             " · " +
-            (job.kind === "deploy" ? "نشر" : "رجوع") +
+            ({
+              deploy: "نشر",
+              rollback: "رجوع",
+              tunnel: "إعداد Tunnel",
+              "tunnel-stop": "إيقاف Tunnel",
+              "tunnel-check": "فحص Tunnel",
+            }[job.kind] || job.kind) +
             " · " +
-            ({running:"جارٍ التنفيذ",succeeded:"نجح",failed:"فشل",interrupted:"انقطع التشغيل"}[job.status] || job.status) +
+            ({
+              running: "جارٍ التنفيذ",
+              succeeded: "نجح",
+              failed: "فشل",
+              interrupted: "انقطع التشغيل",
+            }[job.status] || job.status) +
             " · " +
             job.stage +
             (job.error ? " — " + job.error : "");
@@ -317,8 +412,252 @@
         };
       status().catch((e) => note(e.message));
       setInterval(() => {
-        if (!document.hidden) status().catch(() => {});
+        if (!document.hidden && document.documentElement.dataset.panelActive !== "false") status().catch(() => {});
       }, 2500);
+    </script>
+    <script>
+      const tf = document.getElementById("tunnel-form");
+      let tunnelTicket = "",
+        tunnelSnapshot = "";
+      const tunnelNote = (text) => (el("tunnel-message").textContent = text);
+      const accountValues = () => ({
+        account: form.elements.account.value,
+        token: form.elements.token.value,
+        worker: form.elements.worker.value,
+      });
+      const tunnelValues = () => ({
+        ...accountValues(),
+        ...Object.fromEntries(new FormData(tf)),
+        server_id: Number(tf.elements.server_id.value),
+        deploy: el("tunnel-deploy").checked,
+      });
+      function invalidateTunnel() {
+        tunnelTicket = "";
+        el("start-tunnel").disabled = true;
+      }
+      form.addEventListener("input", invalidateTunnel);
+      tf.addEventListener("input", invalidateTunnel);
+      tf.addEventListener("change", invalidateTunnel);
+      el("discover-accounts").onclick = async () => {
+        try {
+          const found = await api("accounts", {
+            token: form.elements.token.value,
+          });
+          el("account-options").replaceChildren();
+          for (const a of found)
+            el("account-options").append(new Option(a.name, a.id));
+          if (found.length === 1) form.elements.account.value = found[0].id;
+          invalidateTunnel();
+          connectionNote(
+            found.length
+              ? "اختر Account ID من الاقتراحات أو اكتبه يدويًا"
+              : "لا توجد حسابات متاحة للمفتاح",
+          );
+        } catch (e) {
+          connectionNote(e.message);
+        }
+      };
+      el("discover-zones").onclick = async () => {
+        try {
+          const found = await api("zones", accountValues());
+          el("tunnel-zone").replaceChildren(new Option("اختر الدومين", ""));
+          for (const z of found)
+            el("tunnel-zone").add(new Option(z.name, z.id));
+          if (found.length === 1) {
+            el("tunnel-zone").value = found[0].id;
+            if (!el("tunnel-hostname").value)
+              el("tunnel-hostname").value = "deskswarm-origin." + found[0].name;
+          }
+          invalidateTunnel();
+          tunnelNote(
+            found.length
+              ? "تم تحميل الدومينات"
+              : "لا توجد دومينات نشطة في الحساب",
+          );
+        } catch (e) {
+          tunnelNote(e.message);
+        }
+      };
+      async function services() {
+        el("tunnel-backend").replaceChildren(new Option("جارٍ الاكتشاف…", ""));
+        try {
+          const found = await api("targets", {
+            server_id: Number(el("tunnel-server").value),
+          });
+          el("tunnel-backend").replaceChildren(
+            new Option(
+              found.length
+                ? "اختر الخدمة"
+                : "غير مجهّز: لم نكتشف خدمة DeskSwarm",
+              "",
+            ),
+          );
+          for (const target of found)
+            el("tunnel-backend").add(
+              new Option(target.name + " · " + target.port, target.id),
+            );
+          if (found.length === 1) el("tunnel-backend").value = found[0].id;
+          invalidateTunnel();
+          tunnelNote(
+            found.length
+              ? "تم اكتشاف خدمة التطبيق على السيرفر"
+              : "السيرفر يحتاج خدمة DeskSwarm شغّالة على شبكة Docker خاصة. ربط Docker وحده لا يثبّت الخدمة.",
+          );
+        } catch (e) {
+          el("tunnel-backend").replaceChildren(new Option("غير متاح", ""));
+          tunnelNote(e.message);
+        }
+      }
+      el("discover-services").onclick = services;
+      el("tunnel-server").onchange = services;
+      tf.onsubmit = async (e) => {
+        e.preventDefault();
+        el("test-tunnel").disabled = true;
+        invalidateTunnel();
+        const body = tunnelValues(),
+          snapshot = JSON.stringify(body);
+        tunnelNote("فحص الحساب وDNS والوصول لخدمة Linux…");
+        try {
+          const result = await api("tunnel/test", body);
+          if (snapshot !== JSON.stringify(tunnelValues())) return;
+          tunnelTicket = result.test_token;
+          tunnelSnapshot = snapshot;
+          el("start-tunnel").disabled = false;
+          tunnelNote(result.message);
+        } catch (e) {
+          tunnelNote(e.message);
+        } finally {
+          el("test-tunnel").disabled = false;
+        }
+      };
+      el("start-tunnel").onclick = async () => {
+        el("start-tunnel").disabled = true;
+        try {
+          if (
+            !tunnelTicket ||
+            tunnelSnapshot !== JSON.stringify(tunnelValues())
+          )
+            throw Error("اختبر نفس الإعدادات أولًا");
+          await api("tunnel", { ...tunnelValues(), test_token: tunnelTicket });
+          tunnelTicket = "";
+          form.elements.token.value = "";
+          ticket = "";
+          save.disabled = true;
+          tunnelNote("بدأ تجهيز Tunnel؛ تابع مراحل العملية في سجل النشر أدناه");
+          await status();
+          await tunnelStatus();
+        } catch (e) {
+          tunnelNote(e.message);
+        }
+      };
+      async function tunnelStatus() {
+        const data = await api("status");
+        el("tunnels").replaceChildren();
+        for (const tunnel of data.tunnels || []) {
+          const box = document.createElement("div");
+          box.style.cssText = "padding:14px 0;border-top:1px solid #294355";
+          const p = document.createElement("p");
+          p.textContent =
+            tunnel.hostname +
+            " · " +
+            ({
+              ready: "جاهز",
+              failed: "تعذّر التجهيز",
+              stopped: "متوقف",
+              unreachable: "غير متاح",
+              provisioning: "جارٍ التجهيز",
+              interrupted: "انقطع التشغيل",
+              pending: "بانتظار التجهيز",
+            }[tunnel.status] || tunnel.status) +
+            (tunnel.error ? " — " + tunnel.error : "");
+          box.append(p);
+          const retry = document.createElement("button");
+          retry.textContent =
+            tunnel.status === "stopped"
+              ? "تجهيز إعادة التشغيل"
+              : "ملء الإعدادات / إعادة المحاولة";
+          retry.onclick = async () => {
+            if (form.elements.account.value !== tunnel.account)
+              form.elements.token.value = "";
+            form.elements.account.value = tunnel.account;
+            form.elements.worker.value = tunnel.worker;
+            el("tunnel-server").value = tunnel.server_id;
+            await services();
+            el("tunnel-backend").value = tunnel.backend;
+            if (
+              !Array.from(el("tunnel-zone").options).some(
+                (o) => o.value === tunnel.zone,
+              )
+            )
+              el("tunnel-zone").add(
+                new Option("دومين النفق المحفوظ", tunnel.zone),
+              );
+            el("tunnel-zone").value = tunnel.zone;
+            el("tunnel-hostname").value = tunnel.hostname;
+            invalidateTunnel();
+            tf.scrollIntoView({ behavior: "smooth" });
+            tunnelNote(
+              "تم ملء الإعدادات المحفوظة. افحصها ثم شغّل الربط لاستكمال الموارد الموجودة.",
+            );
+          };
+          box.append(retry);
+          if (tunnel.tunnel_id && tunnel.status !== "provisioning") {
+            const check = document.createElement("button");
+            check.style.marginInlineStart = "12px";
+            check.textContent = "فحص الوصول";
+            check.onclick = async () => {
+              check.disabled = true;
+              try {
+                const result = await api("tunnels/" + tunnel.id + "/check", {});
+                await tunnelStatus();
+                tunnelNote(
+                  result.healthy
+                    ? "النفق متاح عبر HTTPS"
+                    : "تعذّر الوصول؛ اختبر الإعدادات ثم أعد المحاولة",
+                );
+              } catch (e) {
+                tunnelNote(e.message);
+                check.disabled = false;
+              }
+            };
+            box.append(check);
+          }
+          if (!["stopped", "provisioning"].includes(tunnel.status)) {
+            const stop = document.createElement("button");
+            stop.style.marginInlineStart = "12px";
+            stop.textContent = "إيقاف النفق";
+            stop.onclick = async () => {
+              stop.disabled = true;
+              try {
+                await api("tunnels/" + tunnel.id + "/stop", {});
+                await tunnelStatus();
+                tunnelNote(
+                  "تم إيقاف connector. DNS والنفق محفوظان لإعادة التشغيل؛ رابط التطبيق العام سيتوقف.",
+                );
+              } catch (e) {
+                tunnelNote(e.message);
+                stop.disabled = false;
+              }
+            };
+            box.append(stop);
+          }
+          el("tunnels").append(box);
+        }
+      }
+      (async () => {
+        try {
+          const servers = await fetch("/api/v1/servers").then((r) => r.json());
+          for (const server of servers.data || [])
+            if (server.id)
+              el("tunnel-server").add(new Option(server.name, server.id));
+          await tunnelStatus();
+        } catch (e) {
+          tunnelNote(e.message);
+        }
+      })();
+      setInterval(() => {
+        if (!document.hidden && document.documentElement.dataset.panelActive !== "false") tunnelStatus().catch(() => {});
+      }, 4000);
     </script>
   </body>
 </html>

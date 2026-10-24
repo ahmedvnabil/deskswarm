@@ -9,6 +9,7 @@ import { render } from "./../templates";
 import { requireToken } from "./../security";
 import { fail, ok, type Env } from "./../http";
 
+import { pageView } from "../page-view";
 export const system = new Hono<Env>();
 
 system.get(
@@ -16,7 +17,7 @@ system.get(
   async (c, next) => {
     const path = decodeURIComponent(c.req.path);
     if (
-      !/^\/static\/(?:dashboard\.(?:css|js)|icons\/(?:[a-z0-9-]+\.svg|LICENSE)|fonts\/(?:NotoSansArabic\.ttf|OFL\.txt))$/.test(
+      !/^\/static\/(?:(?:dashboard|panels)\.(?:css|js)|manage\.css|vendor\/htmx\.min\.js|icons\/(?:[a-z0-9-]+\.svg|LICENSE)|fonts\/(?:NotoSansArabic\.ttf|OFL\.txt))$/.test(
         path,
       )
     )
@@ -25,14 +26,7 @@ system.get(
   },
   serveStatic({ root: "./" }),
 );
-system.get("/manage", (c) =>
-  c.html(
-    render("manage.html", {
-      computers: listComputers(),
-      actor: c.get("actor"),
-    }),
-  ),
-);
+system.get("/manage", c=>pageView(c,"manage.html","/manage"));
 
 system.get("/health", (c) => c.json({ status: "ok" }));
 

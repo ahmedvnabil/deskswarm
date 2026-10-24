@@ -13,6 +13,8 @@ import * as audit from "./audit";
 import * as auth from "./auth";
 import * as shares from "./shares";
 import * as keys from "./mcp/keys";
+import { initConnections } from "./connections/netbird";
+import { initTunnels } from "./cloudflare/tunnels";
 import { initCloudflare } from "./cloudflare/control";
 import { initServers } from "./servers";
 import { initAgents } from "./agents/store";
@@ -97,6 +99,8 @@ export function initDb(): void {
   initAgents();
   initServers();
   initCloudflare();
+  initTunnels();
+  initConnections();
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",

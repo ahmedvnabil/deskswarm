@@ -7,7 +7,7 @@
     <link rel="stylesheet" href="/static/dashboard.css" />
     <script src="/static/dashboard.js" defer></script>
   </head>
-  <body>
+  <body data-initial-panel="{{ initial_panel|e }}">
     <header class="topbar">
       <a class="brand" href="/">Desk<span>Swarm</span></a>
       <div class="account">
@@ -34,7 +34,7 @@
           <img src="/static/icons/device-desktop.svg" alt="" /><span
             >أجهزة<br />سطح المكتب</span
           ></button
-        ><a class="rail-link" href="/agents"
+        ><a class="rail-link" id="nav-agents" href="/agents"
           ><img src="/static/icons/user.svg" alt="" /><span>Agents</span></a
         ><button class="rail-link active" id="nav-servers">
           <img src="/static/icons/server.svg" alt="" /><span
@@ -64,6 +64,7 @@
         <button id="connect-server" class="outline wide">
           <img class="icon" src="/static/icons/plus.svg" alt="" />ربط سيرفر
         </button>
+        <a class="small-link" href="/settings/connections" style="margin-top:14px;display:block">NetBird والأجهزة الشبكية ←</a>
         <div class="sidebar-note">
           Agent واحد لكل جهاز.<br />الملفات تبقى محفوظة على سيرفر الجهاز.
         </div>
@@ -135,6 +136,17 @@
               />فحص السيرفر
             </button>
           </div>
+          <section id="workbench" class="workbench" aria-label="الإعدادات والمهام تحت معاينة الجهاز">
+            <div class="workbench-heading"><h3>مساحة العمل</h3><button id="panel-collapse" class="quiet" aria-label="طي مساحة العمل">طي</button></div>
+            <nav class="workbench-tabs" role="tablist" aria-label="أقسام مساحة العمل">
+              <button id="tab-agents" role="tab" aria-selected="false" data-panel="/agents">Agents</button>
+              <button id="tab-connections" role="tab" aria-selected="false" data-panel="/settings/connections">الاتصالات وNetBird</button>
+              <button id="tab-cloudflare" role="tab" aria-selected="false" data-panel="/settings/cloudflare">Cloudflare</button>
+              <button id="tab-settings" role="tab" aria-selected="false" data-panel="/manage">الإعدادات والإدارة</button>
+            </nav>
+            <p id="panel-hint" class="muted">اختر قسمًا؛ سيظهر هنا تحت المعاينة بدون مغادرة جهازك.</p>
+            <div id="panel-frames"></div>
+          </section>
         </section>
         <aside class="agent-panel">
           <div class="agent-summary">

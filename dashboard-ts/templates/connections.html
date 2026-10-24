@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>الاتصالات — DeskSwarm</title>
+    <link rel="stylesheet" href="/static/dashboard.css" />
+    <style>
+      body {
+        display: block;
+        overflow: auto;
+        padding: 24px;
+        min-height: 100vh;
+      }
+      main {
+        max-width: 1100px;
+        margin: auto;
+      }
+      section {
+        padding: 24px;
+        background: #102030;
+        border: 1px solid #294355;
+        border-radius: 14px;
+        margin: 20px 0;
+      }
+      h1 {
+        font-size: 26px;
+      }
+      p {
+        line-height: 1.9;
+        color: #afc3d3;
+      }
+      a {
+        color: #55dfdf;
+      }
+      form {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 16px;
+      }
+      form label {
+        display: grid;
+        gap: 8px;
+        margin: 0;
+      }
+      input,
+      select {
+        box-sizing: border-box;
+        width: 100%;
+        background: #0b1927;
+        color: #e4f2fa;
+        border: 1px solid #365164;
+        border-radius: 6px;
+        padding: 12px;
+        font: inherit;
+      }
+      button {
+        font: inherit;
+        padding: 12px 18px;
+        background: #43d7d5;
+        color: #07232a;
+        border: 0;
+        border-radius: 6px;
+        cursor: pointer;
+      }
+      button:disabled {
+        opacity: 0.45;
+      }
+      .actions {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+      .wide {
+        grid-column: 1/-1;
+      }
+      .peer {
+        padding: 18px 0;
+        border-top: 1px solid #294355;
+        display: flex;
+        gap: 16px;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+      .peer strong {
+        display: block;
+      }
+      .peer p {
+        margin: 6px 0;
+      }
+      .muted {
+        color: #afc3d3;
+      }
+      #message {
+        white-space: pre-wrap;
+      }
+      .cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+      .card {
+        padding: 18px;
+        border: 1px solid #294355;
+        border-radius: 10px;
+        overflow-wrap: anywhere;
+      }
+      @media (max-width: 650px) {
+        body {
+          padding: 12px;
+        }
+        section {
+          padding: 16px;
+        }
+        form,
+        .cards {
+          grid-template-columns: 1fr;
+        }
+        .wide {
+          grid-column: auto;
+        }
+      }
+    </style>
+  <link rel="stylesheet" href="/static/panels.css">
+<script src="/static/panels.js"></script>
+</head>
+  <body>
+    <main>
+      <a href="/">← لوحة التحكم</a>
+      <h1>مركز الاتصالات</h1>
+      <p>حسابات محفوظة، أجهزة مكتشفة، وخطوة واضحة لتجهيز كل اتصال.</p>
+      <section>
+        <h2>الخدمات والسيرفرات</h2>
+        <div id="overview" class="cards"></div>
+        <p>
+          <a href="/settings/cloudflare">Cloudflare Tunnel والنشر التلقائي ←</a>
+        </p>
+        <p><a href="/?connect_server=1">ربط سيرفر Linux عبر SSH من لوحة التحكم ←</a></p>
+      </section>
+      <section>
+        <h2>NetBird</h2>
+        <p>
+          اربط Personal Access Token لقراءة الأجهزة من NetBird Cloud أو خادمك
+          الخاص. الربط هنا يقرأ القائمة؛ الوصول إلى الأجهزة يحتاج NetBird
+          شغّالًا على سيرفر DeskSwarm وسياسة شبكة تسمح بـSSH. «غير مجهّز» يعني
+          أنه لم يُربط ويُختبر مع Docker بعد، حتى لو كان Online.
+        </p>
+        <form id="netbird-form">
+          <label
+            >عنوان إدارة NetBird<input
+              name="base_url"
+              type="url"
+              dir="ltr"
+              required
+              value="https://api.netbird.io" /></label
+          ><label
+            >Personal Access Token<input
+              name="token"
+              type="password"
+              autocomplete="new-password"
+              dir="ltr"
+          /></label>
+          <div class="actions wide">
+            <button id="test" type="submit">اختبار الاتصال</button
+            ><button id="save" type="button" disabled>حفظ الاتصال</button
+            ><button id="sync" type="button" disabled>مزامنة الأجهزة</button>
+          </div>
+        </form>
+        <p id="message" role="status" aria-live="polite"></p>
+        <p id="sync-state"></p>
+        <div class="actions">
+          <label
+            >بحث في الأجهزة<input
+              id="search"
+              type="search"
+              placeholder="الاسم أو عنوان الشبكة" /></label
+          ><label
+            >عرض<select id="filter">
+              <option value="all">كل الأجهزة</option>
+              <option value="unconfigured">غير مجهّز</option>
+              <option value="offline">غير متصل</option>
+              <option value="configured">مربوط بـSSH</option>
+            </select></label
+          >
+        </div>
+        <div id="peers"></div>
+      </section>
+      <section>
+        <h2>الإعدادات الافتراضية للربط</h2>
+        <p>
+          تُملأ عند اختيار جهاز من NetBird؛ يمكنك تعديلها لكل سيرفر. مفتاح SSH
+          وبصمة المضيف يظلان مطلوبين للتحقق من هوية الجهاز.
+        </p>
+        <form id="preferences">
+          <label
+            >مستخدم SSH<input
+              name="ssh_user"
+              value="ubuntu"
+              dir="ltr"
+              required /></label
+          ><label
+            >المنفذ<input
+              name="ssh_port"
+              type="number"
+              min="1"
+              max="65535"
+              value="22"
+              dir="ltr"
+              required /></label
+          ><button type="submit">حفظ الافتراضيات</button>
+        </form>
+        <p id="preference-message" role="status"></p>
+      </section>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id),
+        form = $("netbird-form");
+      let ticket = "",
+        inventory = [],
+        config = null;
+      async function api(path, body, method = body ? "POST" : "GET") {
+        const response = await fetch("/api/v1/" + path, {
+          method,
+          headers: body ? { "Content-Type": "application/json" } : {},
+          body: body ? JSON.stringify(body) : undefined,
+        });
+        const result = await response.json();
+        if (!response.ok || !result.ok)
+          throw Error(result.error || "تعذّر الطلب");
+        return result.data;
+      }
+      function note(text) {
+        $("message").textContent = text;
+      }
+      function node(tag, text) {
+        const n = document.createElement(tag);
+        if (text !== undefined) n.textContent = text;
+        return n;
+      }
+      function values() {
+        return Object.fromEntries(new FormData(form));
+      }
+      function render() {
+        const q = $("search").value.toLowerCase(),
+          f = $("filter").value;
+        const shown = inventory.filter(
+          (p) =>
+            (p.name + " " + p.ip).toLowerCase().includes(q) &&
+            (f === "all" ||
+              (f === "offline" && !p.connected) ||
+              f === p.readiness),
+        );
+        $("peers").replaceChildren();
+        for (const p of shown) {
+          const row = node("div");
+          row.className = "peer";
+          const info = node("div");
+          info.append(
+            node("strong", p.name),
+            node(
+              "p",
+              `${p.ip || "لا يوجد عنوان"} · ${p.os || "نظام غير معروف"}`,
+            ),
+            node(
+              "p",
+              `${p.connected ? "متصل حسب آخر مزامنة" : "غير متصل"} · ${p.readiness === "configured" ? "مربوط بـSSH" : "غير مجهّز لـDeskSwarm"}`,
+            ),
+          );
+          if (p.server_checked_at)
+            info.append(
+              node(
+                "p",
+                `آخر فحص SSH/Docker: ${p.server_checked_at} · ${p.server_status}`,
+              ),
+            );
+          if (p.last_seen) info.append(node("p", "آخر ظهور: " + p.last_seen));
+          row.append(info);
+          if (p.server_id) {
+            const check = node("button", "اختبار SSH وDocker");
+            check.onclick = async () => {
+              check.disabled = true;
+              try {
+                await api("servers/" + p.server_id + "/test", {});
+                await load();
+                note("نجح اتصال SSH وDocker للجهاز");
+              } catch (e) {
+                note(e.message);
+                check.disabled = false;
+              }
+            };
+            row.append(check);
+          } else if (p.connectable) {
+            const a = node("a", "تجهيز ربط SSH");
+            a.href = "/?connect_peer=" + encodeURIComponent(p.id);
+            row.append(a);
+          } else row.append(node("span", "يتطلب Linux وعنوان شبكة صالحًا"));
+          $("peers").append(row);
+        }
+        if (!shown.length)
+          $("peers").append(
+            node(
+              "p",
+              config
+                ? "لا توجد أجهزة مطابقة؛ جرّب المزامنة أو غيّر الفلتر. الأجهزة التي لم تثبّت NetBird عليها لن تظهر في حسابه."
+                : "اربط NetBird لعرض الأجهزة وحالة تجهيزها.",
+            ),
+          );
+      }
+      async function load() {
+        const data = await api("connections/status");
+        $("overview").replaceChildren();
+        for (const title of [
+          data.cloudflare
+            ? `Cloudflare: ${data.cloudflare.worker}`
+            : "Cloudflare: غير مربوط",
+          data.netbird
+            ? `NetBird: ${data.netbird.peer_count} جهاز`
+            : "NetBird: غير مربوط",
+        ]) {
+          const card = node("div", title);
+          card.className = "card";
+          $("overview").append(card);
+        }
+        for (const server of data.servers) {
+          const card=node("div");card.className="card";card.append(node("strong",server.name),node("p",server.status));
+          const remove=node("button","إزالة ربط SSH");remove.onclick=async()=>{remove.disabled=true;try{await api("servers/"+server.id,undefined,"DELETE");await load();note("تمت إزالة الربط")}catch(e){note(e.message);remove.disabled=false}};
+          card.append(remove);$("overview").append(card);
+        }
+        for (const key of ["ssh_user", "ssh_port"])
+          $("preferences").elements[key].value = data.preferences[key];
+        const list = await api("netbird/peers");
+        config = list.connection;
+        inventory = list.peers;
+        $("sync").disabled = !config;
+        if (config) {
+          form.elements.base_url.value = config.base_url;
+          $("sync-state").textContent =
+            (config.error ? config.error + " · " : "") +
+            "آخر مزامنة: " +
+            config.checked_at;
+        } else $("sync-state").textContent = "لا يوجد حساب NetBird محفوظ";
+        render();
+      }
+      form.oninput = () => {
+        ticket = "";
+        $("save").disabled = true;
+      };
+      form.onsubmit = async (e) => {
+        e.preventDefault();
+        $("test").disabled = true;
+        const submitted = JSON.stringify(values());
+        try {
+          const result = await api("netbird/test", values());
+          if (submitted !== JSON.stringify(values())) return;
+          ticket = result.test_token;
+          $("save").disabled = false;
+          note(
+            "الاتصال ناجح: " + result.peer_count + " جهاز. يمكنك حفظ الربط.",
+          );
+        } catch (e) {
+          note(e.message);
+        } finally {
+          $("test").disabled = false;
+        }
+      };
+      $("save").onclick = async () => {
+        $("save").disabled = true;
+        try {
+          await api("netbird/connection", { ...values(), test_token: ticket });
+          form.elements.token.value = "";
+          ticket = "";
+          await load();
+          note("تم حفظ NetBird مشفّرًا");
+        } catch (e) {
+          note(e.message);
+        }
+      };
+      $("sync").onclick = async () => {
+        $("sync").disabled = true;
+        try {
+          await api("netbird/sync", {});
+          note("تم تحديث القائمة");
+        } catch (e) {
+          note(e.message);
+        } finally {
+          await load().catch((e) => note(e.message));
+        }
+      };
+      $("search").oninput = render;
+      $("filter").onchange = render;
+      $("preferences").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await api(
+            "connections/preferences",
+            Object.fromEntries(new FormData($("preferences"))),
+          );
+          $("preference-message").textContent = "تم حفظ الافتراضيات";
+        } catch (e) {
+          $("preference-message").textContent = e.message;
+        }
+      };
+      load().catch((e) => note(e.message));
+    </script>
+  </body>
+</html>

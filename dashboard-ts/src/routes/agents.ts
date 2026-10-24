@@ -31,10 +31,9 @@ import {
 } from "../agents/store";
 import { resultDir, scheduleRun, stopRun } from "../agents/runner";
 
+import { pageView } from "../page-view";
 export const agentRoutes = new Hono<Env>();
-agentRoutes.get("/agents", (c) =>
-  c.html(render("agents.html", { actor: c.get("actor") })),
-);
+agentRoutes.get("/agents", (c) => pageView(c,"agents.html","/agents"));
 agentRoutes.get("/api/v1/agents/models", (c) =>
   ok(c, models().map(publicModel)),
 );

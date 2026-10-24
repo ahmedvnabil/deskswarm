@@ -998,3 +998,10 @@ dialog::backdrop {
 .connection-dialog #key-hint + label {
   margin-top: 21px;
 }
+
+/* The device remains in place while first-party work opens below its preview. */
+.topbar{position:sticky;top:0;z-index:40}.rail{position:sticky;top:57px;align-self:start;height:calc(100dvh - 57px)}
+.workbench{margin-top:22px;border:1px solid var(--edge);border-radius:10px;background:var(--surface);min-width:0}.workbench-heading{display:flex;align-items:center;justify-content:space-between;padding:12px 14px;background:var(--surface);border-radius:10px 10px 0 0}.workbench-tabs{display:flex;gap:7px;flex-wrap:wrap;padding:10px 12px;border-top:1px solid var(--edge);border-bottom:1px solid var(--edge);background:var(--surface)}.workbench-tabs button{font-size:12px;min-height:37px}.workbench-tabs [aria-selected=true]{background:#183c4b;border-color:var(--cyan);color:var(--cyan)}#panel-hint{padding:20px;line-height:1.9}.workbench iframe{display:block;width:100%;border:0;min-height:320px;background:var(--bg);border-radius:0 0 10px 10px}.workbench iframe[hidden]{display:none!important}
+body.panel-open{--preview-height:clamp(180px,30vh,280px)}body.panel-open .screen-stage{height:var(--preview-height);min-height:0;aspect-ratio:auto;position:sticky;top:57px;z-index:20;background:#07111c}body.panel-open .workbench-tabs{position:sticky;top:calc(57px + var(--preview-height));z-index:21}.workbench{scroll-margin-top:calc(57px + 30vh)}
+@media(min-width:721px){.server-panel{position:sticky;top:57px;align-self:start;max-height:calc(100dvh - 57px);overflow:auto}}
+@media(max-width:720px){.workbench-tabs{gap:5px;padding:8px}.workbench-tabs button{padding:7px;font-size:11px}.workbench-heading{padding:10px}body.panel-open{--preview-height:190px}}

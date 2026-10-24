@@ -26,6 +26,7 @@ RUN bun install --frozen-lockfile --production --ignore-scripts --network-concur
 FROM ${BUN}
 
 WORKDIR /app
+LABEL com.deskswarm.component="dashboard"
 
 COPY --from=deps /app/node_modules /app/node_modules
 COPY . .

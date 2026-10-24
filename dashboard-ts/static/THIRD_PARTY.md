@@ -11,3 +11,10 @@
 - **Noto Sans Arabic**, original variable font from
   https://github.com/google/fonts/tree/main/ofl/notosansarabic.
   SIL Open Font License 1.1: `fonts/OFL.txt`. The font is served locally.
+
+- **htmx 1.9.12**, unmodified minified distribution from the official npm package,
+  now served locally instead of a third-party CDN. Zero-Clause BSD license:
+  `vendor/HTMX-LICENSE`. `vendor/UPSTREAM.json` records archive provenance/digest.
+- **Tailwind CSS 3.4.17**, locally generated utility CSS for the advanced management
+  view (`manage.css`), replacing the external runtime. MIT license: `vendor/TAILWIND-LICENSE`; regeneration
+  command recorded in `vendor/UPSTREAM.json`.

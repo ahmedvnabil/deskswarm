@@ -317,16 +317,20 @@ $("refresh-desktop").onclick = () => {
   detail();
 };
 $("nav-desktops").onclick = () => {
-  $("nav-servers").classList.remove("active");
-  $("nav-desktops").classList.add("active");
+  closePanel();
   $("desktop-title").scrollIntoView({ block: "nearest" });
 };
-$("nav-servers").onclick = () => {
-  $("nav-desktops").classList.remove("active");
-  $("nav-servers").classList.add("active");
-  $("server-search").focus();
+$("nav-servers").onclick = () => openPanel("/settings/connections", "nav-servers");
+$("nav-agents").onclick = e => { e.preventDefault(); openPanel("/agents", "nav-agents"); };
+$("connect-server").onclick = async () => {
+  try {
+    const settings = await api("/api/v1/connections/status");
+    const form = $("server-form");
+    form.elements.username.value = settings.preferences.ssh_user;
+    form.elements.port.value = settings.preferences.ssh_port;
+  } catch {}
+  show("server-dialog");
 };
-$("connect-server").onclick = () => show("server-dialog");
 $("server-dialog").addEventListener("close", () => {
   $("server-form").reset();
   connectionToken = "";
@@ -630,44 +634,7 @@ $("files-open").onclick = () => {
   utility(`الملفات — ${comp.name}`);
   showFiles(comp);
 };
-$("nav-settings").onclick = () => {
-  const body = utility("الإعدادات والإدارة"),
-    links = node("div", undefined, "settings-links");
-  for (const [text, url] of [
-    ["ربط Cloudflare والنشر", "/settings/cloudflare"],
-    ["الموديلات والمهام", "/agents"],
-    ["إدارة الأجهزة والنسخ الاحتياطي والمشاركة", "/manage"],
-  ]) {
-    const a = node("a", text);
-    a.href = url;
-    links.append(a);
-  }
-  body.append(
-    links,
-    node(
-      "p",
-      "لربط سيرفر: استخدم مستخدم SSH يملك صلاحية الوصول إلى Docker، وتحقق من بصمة المضيف من داخل السيرفر. لا تضع مفاتيحك في المحادثة.",
-      "utility-note",
-    ),
-  );
-  for (const server of servers.filter((s) => s.id)) {
-    const row = node("div", undefined, "file-row");
-    row.append(
-      node("span", server.name),
-      button("إزالة الربط", async () => {
-        try {
-          await api(`/api/v1/servers/${server.id}`, "DELETE");
-          await refresh();
-          close("utility-dialog");
-          notice("تمت إزالة الربط.");
-        } catch (e) {
-          notice(e.message);
-        }
-      }),
-    );
-    body.append(row);
-  }
-};
+$("nav-settings").onclick = () => openPanel("/manage", "nav-settings");
 function clock() {
   $("clock").textContent =
     new Intl.DateTimeFormat("ar", {
@@ -680,3 +647,86 @@ clock();
 setInterval(clock, 30000);
 refresh();
 setInterval(refresh, 5000);
+
+// Shared by bookmarked inventory links and the embedded panel bridge.
+async function preparePeer(peerId) {
+  if (!peerId || peerId.length > 200) return;
+  try {
+    const [inventory, settings] = await Promise.all([
+      api("/api/v1/netbird/peers"), api("/api/v1/connections/status"),
+    ]);
+    const peer = inventory.peers.find(p => p.id === peerId);
+    if (!peer?.connectable) throw Error("الجهاز غير متاح لربط Linux عبر SSH");
+    const form = $("server-form");
+    form.elements.name.value = peer.name;
+    form.elements.host.value = peer.ip;
+    form.elements.username.value = settings.preferences.ssh_user;
+    form.elements.port.value = settings.preferences.ssh_port;
+    changedConnection(); show("server-dialog");
+    $("connection-message").textContent = peer.connected
+      ? "تم ملء عنوان NetBird. اختر مفتاح SSH وبصمة المضيف واختبر Docker. يجب أن تتمكن خدمة DeskSwarm من الوصول إلى شبكة NetBird."
+      : "الجهاز غير متصل حسب آخر مزامنة NetBird. يمكنك تجهيز البيانات الآن ثم اختباره عندما يتصل.";
+  } catch (e) { console.warn("NetBird setup unavailable:", e.message); }
+}
+const initialPeer = new URL(location.href).searchParams.get("connect_peer");
+if (initialPeer) preparePeer(initialPeer);
+
+// Each trusted view retains its form draft and scripts; inactive polling pauses.
+const panelPaths = new Map([
+  ["/agents", {tab:"tab-agents", title:"Agents", nav:"nav-agents"}],
+  ["/settings/connections", {tab:"tab-connections",title:"الاتصالات وNetBird",nav:"nav-servers"}],
+  ["/settings/cloudflare", {tab:"tab-cloudflare",title:"Cloudflare",nav:"nav-settings"}],
+  ["/manage", {tab:"tab-settings",title:"الإعدادات والإدارة",nav:"nav-settings"}],
+]);
+const panelFrames = new Map();
+let activePanel = null;
+function fitPanel(frame,height){
+  const preview = document.querySelector(".screen-stage").getBoundingClientRect().height;
+  const available = Math.max(360,window.innerHeight-57-preview-110);
+  frame.style.height = Math.min(available,Math.max(320,height))+"px";
+}
+addEventListener("resize",()=>{for(const frame of panelFrames.values())fitPanel(frame,Number(frame.dataset.contentHeight)||620)});
+function closePanel(){
+  for(const frame of panelFrames.values()){frame.hidden=true;frame.contentWindow?.postMessage({type:"deskswarm:panel-active",active:false},location.origin)}
+  activePanel=null;document.body.classList.remove("panel-open");$("panel-hint").hidden=false;
+  for(const item of panelPaths.values()){$(item.tab).setAttribute("aria-selected","false");$(item.tab).tabIndex=0}
+  document.querySelectorAll(".rail-link").forEach(n=>n.classList.toggle("active",n.id==="nav-desktops"));
+}
+function openPanel(path,nav){
+  const info=panelPaths.get(path);if(!info)return;
+  activePanel=path;document.body.classList.add("panel-open");$("panel-hint").hidden=true;
+  let frame=panelFrames.get(path);
+  if(!frame){
+    frame=document.createElement("iframe");frame.title=info.title+" — تحت معاينة الجهاز";frame.id="frame-"+info.tab;frame.setAttribute("role","tabpanel");frame.setAttribute("aria-labelledby",info.tab);frame.referrerPolicy="same-origin";frame.style.height="620px";
+    const url=new URL(path,location.origin);url.searchParams.set("embedded","1");if(path==="/agents"&&current())url.searchParams.set("computer_id",current().id);
+    frame.src=url.pathname+url.search;
+    frame.onload=()=>frame.contentWindow?.postMessage({type:"deskswarm:panel-active",active:activePanel===path},location.origin);
+    panelFrames.set(path,frame);$("panel-frames").append(frame);
+  }
+  for(const [key,view]of panelFrames){view.hidden=key!==path;view.contentWindow?.postMessage({type:"deskswarm:panel-active",active:key===path},location.origin)}
+  for(const [key,item]of panelPaths){$(item.tab).setAttribute("aria-selected",String(key===path));$(item.tab).tabIndex=key===path?0:-1;$(item.tab).setAttribute("aria-controls","frame-"+item.tab)}
+  document.querySelectorAll(".rail-link").forEach(n=>n.classList.toggle("active",n.id===(nav||info.nav)));
+  $("workbench").scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+$("panel-collapse").onclick=closePanel;
+for(const [path,info]of panelPaths){$(info.tab).onclick=()=>openPanel(path);$(info.tab).onkeydown=e=>{const keys=Array.from(panelPaths.keys());let i=keys.indexOf(path);if(e.key==="ArrowLeft")i=(i+1)%keys.length;else if(e.key==="ArrowRight")i=(i+keys.length-1)%keys.length;else if(e.key==="Home")i=0;else if(e.key==="End")i=keys.length-1;else return;e.preventDefault();openPanel(keys[i]);$(panelPaths.get(keys[i]).tab).focus()}}
+document.addEventListener("click",e=>{
+  const link=e.target.closest?.("a[href]");if(!link||e.defaultPrevented||e.button!==0||e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)return;
+  const url=new URL(link.href,location.href);if(url.origin!==location.origin)return;
+  if(url.pathname==="/"&&!url.search){e.preventDefault();closePanel();$("desktop-title").scrollIntoView({block:"nearest"});return}
+  if(!panelPaths.has(url.pathname))return;
+  e.preventDefault();openPanel(url.pathname);
+});
+addEventListener("message",e=>{
+  if(e.origin!==location.origin)return;
+  const entry=Array.from(panelFrames.entries()).find(([,frame])=>frame.contentWindow===e.source);if(!entry)return;
+  if(e.data?.type==="deskswarm:panel-height"&&entry[0]===activePanel){const height=Number(e.data.height);if(Number.isFinite(height)&&height>0){entry[1].dataset.contentHeight=String(height);fitPanel(entry[1],height)}}
+  if(e.data?.type!=="deskswarm:navigate"||typeof e.data.path!=="string")return;
+  const url=new URL(e.data.path,location.origin);if(url.origin!==location.origin)return;
+  if(panelPaths.has(url.pathname))openPanel(url.pathname);
+  else if(url.pathname==="/"){const peer=url.searchParams.get("connect_peer");if(peer)preparePeer(peer);else if(url.searchParams.has("connect_server"))$("connect-server").click();else closePanel()}
+});
+const initialPanel=document.body.dataset.initialPanel;
+if(panelPaths.has(initialPanel))openPanel(initialPanel);
+
+if(new URL(location.href).searchParams.has("connect_server"))$("connect-server").click();

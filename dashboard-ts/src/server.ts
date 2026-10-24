@@ -13,9 +13,11 @@ import { ensureAdmin } from "./auth";
 import { startHousekeeping } from "./housekeeping";
 import { DISABLE_HOUSEKEEPING, PORT } from "./settings";
 
+import { run } from "./db";
 import { recoverCloudflare } from "./cloudflare/control";
 
 recoverCloudflare();
+run("UPDATE cloudflare_tunnels SET status='interrupted',error='انقطع التشغيل؛ اختبر ثم أعد المحاولة لاستكمال الموارد المحفوظة' WHERE status='provisioning'");
 recoverInterrupted();
 await ensureAdmin();
 

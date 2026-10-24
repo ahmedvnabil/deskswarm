@@ -164,3 +164,20 @@ Built on [Cua](https://github.com/trycua/cua). MIT; see [LICENSE](LICENSE).
 ### Cloudflare edge deployment
 
 Connect a scoped Cloudflare API Token from Settings, test the account and Linux HTTPS origin, deploy Worker + SQLite Durable Objects, follow deployment stages, and roll back to a previous Worker version. Docker, Agents and persistent application data stay on Linux. See [Cloudflare setup, validation and recovery](docs/CLOUDFLARE.md).
+
+### Connections and NetBird
+
+[The connections center](docs/CONNECTIONS.md) imports NetBird Cloud/self-hosted peers,
+keeps offline/unconfigured hosts visible, and starts pinned SSH/Docker setup with
+saved username/port defaults. Cloudflare settings can discover a dashboard service,
+create an origin Tunnel and DNS record, start its Linux connector, verify HTTPS,
+and deploy Worker + Durable Objects as one tracked operation. Partially created
+resources support retry; connectors can be stopped and restarted without deleting
+DNS or desktop data. Account tokens are entered locally and stored encrypted.
+
+### One workspace
+
+Agents, Settings, Connections/NetBird and Cloudflare open as tabs below the device
+preview, with one sidebar and shared navy/cyan identity. Tabs preserve form drafts
+while switching; bookmarked views use the same shell without redirects. See
+[connections and workspace behavior](docs/CONNECTIONS.md#unified-workspace-below-the-device-preview).

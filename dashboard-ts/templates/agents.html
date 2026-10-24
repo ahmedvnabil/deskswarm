@@ -182,7 +182,9 @@
         }
       }
     </style>
-  </head>
+  <link rel="stylesheet" href="/static/panels.css">
+<script src="/static/panels.js"></script>
+</head>
   <body>
     <header>
       <h1>DeskSwarm <span class="muted">/ Agents</span></h1>
@@ -379,7 +381,7 @@
         ]);
         computerRows = computers;
         modelRows = models;
-        const machine = $("machine").value,
+        const machine = $("machine").value || new URLSearchParams(location.search).get("computer_id") || "",
           model = $("model").value;
         $("machine").replaceChildren(
           ...computers.map((c) => {
@@ -504,6 +506,7 @@
         }
       };
       async function refresh() {
+        if(document.documentElement.dataset.panelActive === "false") return;
         if (polling) return;
         polling = true;
         try {

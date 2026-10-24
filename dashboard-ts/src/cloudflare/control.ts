@@ -53,18 +53,22 @@ export function validate(body: Record<string, any>) {
     throw new Error(
       "أدخل عنوان HTTPS عامًا لخدمة Linux بدون مسار أو بيانات دخول",
     );
-  if (!token || token.length > 4096 || /\s/.test(token))
+  const storedToken =
+    !token && config()?.account === account
+      ? decryptSecret(config()!.secret)
+      : token;
+  if (!storedToken || storedToken.length > 4096 || /\s/.test(storedToken))
     throw new Error("أدخل API Token صالحًا");
-  return { account, worker, origin: origin.origin, token };
+  return { account, worker, origin: origin.origin, token: storedToken };
 }
-async function api(
+export async function requestCF(
   c: any,
   path: string,
   init: RequestInit = {},
   allowMissing = false,
 ) {
   const response = await cfTransport.fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${c.account}/workers/${path}`,
+    `https://api.cloudflare.com/client/v4/${path}`,
     {
       ...init,
       headers: {
@@ -88,6 +92,35 @@ async function api(
       `Cloudflare رفض الطلب (${response.status}؛ code ${Number(data.errors?.[0]?.code) || 0})`,
     );
   return data.result;
+}
+function api(
+  c: any,
+  path: string,
+  init: RequestInit = {},
+  allowMissing = false,
+) {
+  return requestCF(
+    c,
+    `accounts/${c.account}/workers/${path}`,
+    init,
+    allowMissing,
+  );
+}
+export function accountInput(body: Record<string, any>) {
+  const account = String(body.account || config()?.account || "").trim();
+  const token =
+    String(body.token || "").trim() ||
+    (config()?.account === account ? decryptSecret(config()!.secret) : "");
+  if (
+    !/^[a-f0-9]{32}$/.test(account) ||
+    !token ||
+    token.length > 4096 ||
+    /\s/.test(token)
+  )
+    throw new Error(
+      "Account ID أو API Token غير صالح؛ أدخلهما أو استخدم الحساب المحفوظ",
+    );
+  return { account, token };
 }
 let tickets = new Map<string, { digest: string; expires: number }>();
 function digest(c: any) {

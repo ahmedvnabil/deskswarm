@@ -21,6 +21,7 @@ import { keyRoutes } from "./routes/keys";
 import { mcpRoutes } from "./routes/mcp";
 import { auditRoutes } from "./routes/audit";
 import { serverRoutes } from "./routes/servers";
+import { connectionRoutes } from "./routes/connections";
 import { cloudflareRoutes } from "./routes/cloudflare";
 import { remoteScreens } from "./routes/remote-screen";
 import { agentRoutes } from "./routes/agents";
@@ -78,6 +79,7 @@ export function createApp() {
     agentRoutes,
     serverRoutes,
     cloudflareRoutes,
+    connectionRoutes,
     remoteScreens,
   ]) {
     app.route("/", router);

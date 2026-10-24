@@ -1,0 +1,15 @@
+{
+  "htmx": {
+    "version": "1.9.12",
+    "source": "https://registry.npmjs.org/htmx.org/-/htmx.org-1.9.12.tgz",
+    "archive_sha256": "3f8db1903223c249c20e18b09d1bc268776e59c851424f525285d0b93d825cd0",
+    "modified": false
+  },
+  "tailwind": {
+    "version": "3.4.17",
+    "output": "../manage.css",
+    "generator": "bun x --bun tailwindcss@3.4.17 -i styles/manage.input.css -o static/manage.css --content \"templates/**/*.html,static/dashboard.js\" --minify",
+    "source": "https://registry.npmjs.org/tailwindcss/-/tailwindcss-3.4.17.tgz",
+    "archive_sha256": "c42aab85fa6442055980e2ce61b4328f64a25abef44907feb75bd90681331d2a"
+  }
+}

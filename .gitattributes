@@ -3,3 +3,6 @@
 dashboard-ts/static/novnc/** linguist-vendored -whitespace
 dashboard-ts/static/icons/** linguist-vendored
 dashboard-ts/static/fonts/OFL.txt -whitespace
+
+dashboard-ts/static/vendor/** linguist-vendored -whitespace
+dashboard-ts/static/manage.css linguist-generated -whitespace

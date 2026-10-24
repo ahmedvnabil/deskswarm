@@ -21,16 +21,16 @@ The existing Linux lease remains the authoritative one-Agent-per-device lock,
 including when users access Linux directly. DO request handlers are not presented
 as a replacement for that lock.
 
-No desktop is moved or recreated by Cloudflare deployment. No Containers, R2, D1,
-custom domain, Tunnel provisioning, or CLI credentials are provisioned in this
-release. Existing host-local Codex gateways must remain reachable by Linux.
+No desktop is moved or recreated by Cloudflare deployment. No Containers, R2, D1, Worker custom domains, or CLI credentials are provisioned
+in this release. The Tunnel wizard below provisions an origin Tunnel and its DNS
+record on an existing Cloudflare domain. Existing host-local Codex gateways must remain reachable by Linux.
 
 ## Prepare the Linux origin
 
 1. Run the current DeskSwarm dashboard on the Linux execution service with its
    existing persistent data volume and Docker/SSH configuration.
-2. Give that service a public **HTTPS** origin, for example a Cloudflare Tunnel
-   hostname. It must reach the dashboard, not Docker's API or a desktop port.
+2. Use the **automatic Tunnel wizard** below, or give that service a public
+   **HTTPS** origin yourself. It must reach the dashboard, not Docker's API or a desktop port.
    `/health` must return `{"status":"ok"}` without redirects. TLS must be valid.
 3. The origin must remain available while the Cloudflare app is used. A Tunnel
    protected by an interactive Cloudflare Access challenge requires additional
@@ -45,6 +45,76 @@ Once a Cloudflare connection is saved, host-local Docker desktop links also use
 WebSocket proxy. On Linux the dashboard must share the configured Docker network
 with local desktops, as in the normal Compose setup. No public desktop screen
 ports are needed by the edge. Direct Linux dashboard access continues to work.
+
+## Automatic Tunnel setup (no server commands)
+
+Use **إعداد Cloudflare Tunnel تلقائيًا** on the same Cloudflare settings screen.
+It can use the saved account token without entering it again. For a new account,
+enter the token, Account ID and Worker name above; the existing-origin HTTPS field
+can remain blank while you configure a Tunnel. Account discovery is optional:
+restricted tokens may not list accounts, in which case type the ID directly.
+
+1. Add account **Cloudflare Tunnel Edit**, **Zone Read** and zone **DNS Edit**
+   permissions alongside Worker deployment/DO permissions. The domain must already
+   be active in that Cloudflare account. Domain registration is not performed.
+2. Choose Local Docker or a previously connected Linux/SSH server. Discover the
+   running DeskSwarm dashboard service. Detection uses the application's Docker
+   label, Compose service identity or existing DeskSwarm dashboard name. It chooses
+   the service's existing private Docker network and validates `/health` from a
+   disposable, constrained curl container on that same network.
+3. Load domains, choose one and enter a new origin hostname such as
+   `deskswarm-origin.example.com`. The wizard refuses an existing unrelated DNS
+   record, including A/AAAA records. It never silently overwrites another service.
+4. **فحص الإعدادات** performs read-only Cloudflare checks and the Docker probe.
+   **إنشاء النفق وربط التطبيق** consumes the exact tested five-minute ticket and
+   starts a persistent background job. It creates a remotely managed Tunnel,
+   writes ingress for that dashboard plus a catch-all HTTP 404, adds a proxied
+   CNAME, retrieves the connector token, and starts cloudflared on the chosen
+   server over Docker's existing pinned SSH channel (or Local Docker).
+5. The connector uses the official `cloudflare/cloudflared:2026.10.3` image pinned
+   to manifest digest `sha256:faa8e0a1475f137c910be6025f43c8e4092fdd35461b31e19fd1390657a1ff39`.
+   It publishes no ports, drops capabilities, has a read-only filesystem, bounded
+   memory/process/log usage, and restarts unless stopped. Its token stays out of
+   the UI/API/audit; as with other container secrets, trusted Docker administrators
+   can inspect its runtime environment. No API token is passed to cloudflared.
+6. The wizard waits for HTTPS origin health before changing the saved Worker
+   origin. Leave **نشر Worker وDurable Objects بعد نجاح Tunnel** selected to finish
+   both in one job; otherwise deploy the gateway later with the existing button.
+
+A Linux host with only Docker and no running DeskSwarm dashboard is shown as
+**غير مجهّز**. The wizard does not install a second dashboard, migrate its data,
+replace its users, or install Docker/NetBird. Peers can remain in the network
+inventory while the operator prepares them. A valid SSH host fingerprint/private
+key and outbound Cloudflare connectivity (port 7844) are still prerequisites.
+
+### Recovery and stopping
+
+Resource intent is saved before external changes. A random stable Tunnel name,
+Tunnel UUID and DNS record ID allow re-testing and retrying to reuse partially
+created resources. On a timeout after a Tunnel/DNS creation, retry first checks
+for the resource it owns; it does not blindly create a duplicate. Failed setup
+keeps the previously configured origin intact. Running jobs block another
+provision/deploy/stop and prevent removal of their associated SSH connection.
+
+Use **ملء الإعدادات / إعادة المحاولة** to restore a saved Tunnel configuration,
+then test and start again. Use **فحص الوصول** for a fresh HTTPS health check;
+status records otherwise describe the last operation. A failed Worker deployment
+can coexist with a ready Tunnel, allowing a deployment retry after permissions
+are fixed.
+
+**إيقاف النفق** stops only the application-owned connector. It keeps DNS, the
+Tunnel and data for a reversible restart. A stopped or incomplete setup can be
+re-tested and started again; unrelated containers are refused by ownership labels.
+Stopping a Tunnel can make Worker versions that use its origin unavailable. The
+original Linux dashboard remains accessible by its previous network address.
+Cloudflare namespaces/DNS resources are not deleted automatically on errors.
+
+The automatic path needs a real API Token/account and active domain. No user
+Cloudflare credentials were supplied for development: management APIs were tested
+with fixtures, not by creating a public Tunnel in a real account. Separately, the
+real Linux Docker dashboard was discovered and probed; the pinned cloudflared
+image was created/stopped with a deliberately invalid fixture token to validate
+container lifecycle/security settings without establishing an Internet tunnel.
 
 ## Connect and deploy
 
@@ -104,7 +174,7 @@ older Linux image is a separate operation; keep a normal data backup.
 
 ## Validation (2026-10-24)
 
-- 270 application tests, TypeScript and the production Docker build.
+- 290 application tests, TypeScript and the production Docker build.
 - Provider contract tests exercise test/save tickets, encryption, redaction,
   authorization/CSRF, module/migration upload, 100% version verification, rollback,
   unrelated Worker protection, operation exclusivity and restart interruption.
@@ -128,7 +198,7 @@ older Linux image is a separate operation; keep a normal data backup.
 All routes require the normal dashboard session or dashboard bearer token, and
 mutations retain existing cross-site protections. Responses use the usual envelope.
 
-- `GET /api/v1/cloudflare/status`: public connection fields and recent jobs.
+- `GET /api/v1/cloudflare/status`: public connection fields, recent jobs and Tunnels.
 - `POST /api/v1/cloudflare/test`: `{account, worker, origin, token}` → test ticket.
 - `POST /api/v1/cloudflare/connection`: same fields plus `test_token` → save.
 - `POST /api/v1/cloudflare/deploy`: `{}` → HTTP 202 with job id.
@@ -139,3 +209,15 @@ References: [authorization](https://developers.cloudflare.com/workers/authorizat
 [module upload](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/methods/update/),
 [deployments](https://developers.cloudflare.com/api/resources/workers/subresources/scripts/subresources/deployments/methods/create/),
 [rollback limits](https://developers.cloudflare.com/workers/versions-and-deployments/rollbacks/).
+
+### Discovery and Tunnel API
+
+- `POST /api/v1/cloudflare/accounts`: `{token}` (or reuse the saved token).
+- `POST /api/v1/cloudflare/zones`: `{account,token}` (saved token may be omitted).
+- `POST /api/v1/cloudflare/targets`: `{server_id}` (`0` = Local Docker).
+- `POST /api/v1/cloudflare/tunnel/test`: `{account,token,worker,zone,hostname,server_id,backend,deploy}` → test ticket.
+- `POST /api/v1/cloudflare/tunnel`: same fields plus `test_token` → HTTP 202 job id.
+- `POST /api/v1/cloudflare/tunnels/:id/check`: `{}` → current HTTPS readiness.
+- `POST /api/v1/cloudflare/tunnels/:id/stop`: `{}` → stop owned connector, retain resources.
+
+Tunnel API reference: [Cloudflare's remotely managed Tunnel workflow](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/).

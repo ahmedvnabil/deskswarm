@@ -54,6 +54,7 @@ const share = {
 /** Both shapes every template has to survive: full, and completely empty. */
 const contexts: Record<string, [full: object, empty: object]> = {
   "manage.html": [{ computers: [machine], actor: "sara" }, {computers: []}],
+  "connections.html": [{}, {}],
   "cloudflare.html": [{}, {}],
   "agents.html": [{ actor: "sara" }, {}],
   "index.html": [{ computers: [machine], actor: "sara" }, { computers: [], actor: null }],
