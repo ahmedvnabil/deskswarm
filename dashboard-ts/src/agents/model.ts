@@ -1,5 +1,6 @@
 /** Provider-neutral function-calling exchange. Credentials never enter events. */
 import type { Model } from "./store";
+import { failureReason } from "../../scripts/provider-errors";
 export type Message = Record<string, any>;
 export async function requestModel(
   model: Model,
@@ -47,10 +48,21 @@ export async function requestModel(
     body: JSON.stringify(body),
     signal: AbortSignal.any([signal, AbortSignal.timeout(60_000)]),
   });
-  if (!res.ok)
+  if (!res.ok) {
+    if (model.managed_cli) {
+      const error: any = await res.json().catch(() => ({}));
+      if (res.status === 429 || res.status === 409)
+        throw new Error(
+          "المزوّد مشغول بمهمة أو تسجيل دخول. انتظر ثم أعد المحاولة من شاشة Agents.",
+        );
+      if (res.status === 401 || res.status === 403)
+        throw new Error("مفتاح بوابة الموديل مرفوض. حدّثه في إعدادات الاتصال.");
+      throw new Error(failureReason(String(error.error || res.status)));
+    }
     throw new Error(
       `Model provider returned HTTP ${res.status}; check the endpoint, model and credentials.`,
     );
+  }
   const data: any = await res.json();
   if (model.protocol === "responses") {
     if (data.status === "incomplete" || data.error)

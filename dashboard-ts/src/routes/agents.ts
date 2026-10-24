@@ -21,6 +21,7 @@ import {
 } from "../http";
 import {
   encryptSecret,
+  decryptSecret,
   hasExternalAction,
   event,
   models,
@@ -33,7 +34,7 @@ import { resultDir, scheduleRun, stopRun } from "../agents/runner";
 
 import { pageView } from "../page-view";
 export const agentRoutes = new Hono<Env>();
-agentRoutes.get("/agents", (c) => pageView(c,"agents.html","/agents"));
+agentRoutes.get("/agents", (c) => pageView(c, "agents.html", "/agents"));
 agentRoutes.get("/api/v1/agents/models", (c) =>
   ok(c, models().map(publicModel)),
 );
@@ -70,6 +71,11 @@ agentRoutes.post("/api/v1/agents/models", requireToken, async (c) => {
   const id = Number(body.id) || 0,
     existing = id ? modelById(id) : null;
   if (id && !existing) return notFound(c);
+  const managedCli = String(body.managed_cli ?? existing?.managed_cli ?? "");
+  if (!["", "claude", "codex"].includes(managedCli))
+    return fail(c, "Invalid managed provider");
+  if (managedCli && body.protocol !== "chat")
+    return fail(c, "Managed CLI providers use Chat Completions");
   const secret = key ? encryptSecret(key) : existing?.secret || "";
   const values = [
     name,
@@ -78,21 +84,104 @@ agentRoutes.post("/api/v1/agents/models", requireToken, async (c) => {
     body.protocol,
     body.vision === false ? 0 : 1,
     secret,
+    managedCli,
   ];
   if (id)
     run(
-      "UPDATE agent_models SET name=?,model=?,base_url=?,protocol=?,vision=?,secret=? WHERE id=?",
+      "UPDATE agent_models SET name=?,model=?,base_url=?,protocol=?,vision=?,secret=?,managed_cli=? WHERE id=?",
       ...values,
       id,
     );
   else
     run(
-      "INSERT INTO agent_models(name,model,base_url,protocol,vision,secret) VALUES(?,?,?,?,?,?)",
+      "INSERT INTO agent_models(name,model,base_url,protocol,vision,secret,managed_cli) VALUES(?,?,?,?,?,?,?)",
       ...values,
     );
   c.set("auditDetail", `model configuration ${name}; credentials not recorded`);
   return ok(c, models().map(publicModel), id ? 200 : 201);
 });
+// Management is explicitly enabled per model; credentials only travel server-to-gateway.
+for (const action of [
+  "status",
+  "test",
+  "login",
+  "login/complete",
+  "login/cancel",
+] as const) {
+  const handler = async (c: any) => {
+    const model = modelById(intParam(c, "id") || 0);
+    if (!model) return notFound(c);
+    c.header("Cache-Control", "no-store");
+    if (!["claude", "codex"].includes(model.managed_cli || ""))
+      return fail(
+        c,
+        "هذا الاتصال لا يدعم إدارة تسجيل الدخول. اختر خدمة Claude أو Codex المُدارة في إعدادات الاتصال.",
+        400,
+      );
+    if (
+      action.startsWith("login") &&
+      one("SELECT id FROM agent_runs WHERE model_id=? AND lease=1", model.id)
+    )
+      return fail(c, "أوقف مهمة هذا الموديل قبل إعادة تسجيل الدخول.", 409);
+    const base = new URL(model.base_url);
+    base.pathname =
+      base.pathname.replace(/\/v1\/?$/, "") + "/management/" + action;
+    let body: any = undefined;
+    if (action !== "status")
+      body = action === "test" ? { model: model.model } : await jsonBody(c);
+    try {
+      const response = await fetch(base, {
+        method: action === "status" ? "GET" : "POST",
+        redirect: "error",
+        headers: {
+          authorization: `Bearer ${decryptSecret(model.secret)}`,
+          "content-type": "application/json",
+        },
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (response.status === 401 || response.status === 403)
+        return fail(
+          c,
+          "مفتاح الاتصال بالخدمة مرفوض. حدّث مفتاح الخدمة في إعدادات الاتصال؛ إعادة دخول الحساب لن تصلح مفتاح البوابة.",
+          424,
+        );
+      if (response.status === 404)
+        return fail(
+          c,
+          "خدمة المزوّد قديمة ولا تدعم إدارة الاتصال. حدّث ملفات خدمة Claude أو Codex على السيرفر.",
+          424,
+        );
+      const data: any = await response.json();
+      if (!response.ok)
+        return fail(
+          c,
+          typeof data.error === "string"
+            ? data.error.slice(0, 500)
+            : "تعذر تنفيذ العملية. أعد المحاولة.",
+          response.status === 409 ? 409 : response.status === 400 ? 400 : 424,
+        );
+      // Do not accept a gateway that identifies as a different configured provider.
+      if (data.provider && data.provider !== model.managed_cli)
+        return fail(c, "نوع الخدمة لا يطابق إعداد الاتصال.", 424);
+      return ok(c, data, response.status as any);
+    } catch {
+      return fail(
+        c,
+        "تعذر الوصول لخدمة المزوّد على السيرفر أو انتهت المهلة. تحقق من تشغيل الخدمة والشبكة ثم أعد المحاولة.",
+        424,
+      );
+    }
+  };
+  if (action === "status")
+    agentRoutes.get(`/api/v1/agents/models/:id/${action}`, handler);
+  else
+    agentRoutes.post(
+      `/api/v1/agents/models/:id/${action}`,
+      requireToken,
+      handler,
+    );
+}
 agentRoutes.delete("/api/v1/agents/models/:id", requireToken, (c) => {
   const id = intParam(c, "id");
   if (!id || !modelById(id)) return notFound(c);

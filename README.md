@@ -103,7 +103,8 @@ MCP actions are refused until the current action drains.
 
 See [Agents setup, limits and live validation](docs/AGENTS.md), including the
 optional private gateways for signed-in Codex and Claude Code CLIs, including
-independent services on the permanent Linux host.
+independent services on the permanent Linux host. The Agents screen shows
+provider status, connection tests, retry and official server sign-in steps.
 
 ## Connect an external agent
 

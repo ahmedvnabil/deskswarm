@@ -34,6 +34,45 @@
         margin: 28px auto;
         padding: 0 24px;
       }
+      .provider-table [hidden] {
+        display: none !important;
+      }
+      .provider-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+      }
+      .provider-table th,
+      .provider-table td {
+        text-align: start;
+        padding: 9px;
+        border-bottom: 1px solid #dce5eb;
+        vertical-align: top;
+      }
+      .provider-table button {
+        padding: 6px 9px;
+        font-size: 13px;
+      }
+      .provider-table small {
+        display: block;
+        margin-top: 5px;
+      }
+      .provider-login {
+        margin-top: 8px;
+        max-width: 650px;
+      }
+      .provider-login input {
+        margin: 6px 0;
+      }
+      @media (max-width: 600px) {
+        .provider-table thead {
+          display: none;
+        }
+        .provider-table tr,
+        .provider-table td {
+          display: block;
+        }
+      }
       .columns {
         display: grid;
         grid-template-columns: 310px 1fr;
@@ -182,9 +221,9 @@
         }
       }
     </style>
-  <link rel="stylesheet" href="/static/panels.css">
-<script src="/static/panels.js"></script>
-</head>
+    <link rel="stylesheet" href="/static/panels.css" />
+    <script src="/static/panels.js"></script>
+  </head>
   <body>
     <header>
       <h1>DeskSwarm <span class="muted">/ Agents</span></h1>
@@ -196,6 +235,27 @@
         when needed, and keep the results.
       </p>
       <div id="notice" role="status" aria-live="polite"></div>
+      <section class="panel" dir="rtl" aria-labelledby="provider-heading">
+        <h2 id="provider-heading">اتصال Claude وCodex</h2>
+        <p class="muted">
+          الخدمات تعمل على السيرفر. اختبار الاتصال يرسل طلبًا صغيرًا للموديل وقد
+          يُحتسب من استخدام حسابك.
+        </p>
+        <table class="provider-table">
+          <thead>
+            <tr>
+              <th>المزوّد</th>
+              <th>حالة الاتصال وآخر اختبار</th>
+              <th>الإجراءات</th>
+            </tr>
+          </thead>
+          <tbody id="provider-status">
+            <tr>
+              <td>جارٍ تحميل الاتصالات…</td>
+            </tr>
+          </tbody>
+        </table>
+      </section>
       <div class="columns">
         <aside>
           <section class="panel">
@@ -300,6 +360,17 @@
                 encrypted on this server and are never returned to the browser.
               </p>
               <form id="model-form">
+                <label
+                  >إدارة تسجيل الدخول<select id="model-managed">
+                    <option value="">API عادي</option>
+                    <option value="claude">
+                      خدمة Claude Code المُدارة على السيرفر
+                    </option>
+                    <option value="codex">
+                      خدمة Codex المُدارة على السيرفر
+                    </option>
+                  </select></label
+                >
                 <input id="model-id" type="hidden" /><label
                   >Display name<input
                     id="model-name"
@@ -364,7 +435,10 @@
             method === "GET" ? {} : { "content-type": "application/json" },
           body: data === undefined ? undefined : JSON.stringify(data),
         });
-        const b = await res.json();
+        const b = await res.json().catch(() => ({
+          ok: false,
+          error: `تعذر الوصول لخدمة التطبيق (HTTP ${res.status}). أعد المحاولة بعد التحقق من الاتصال.`,
+        }));
         if (!res.ok || !b.ok) throw Error(b.error || "Request failed");
         return b.data;
       }
@@ -381,7 +455,10 @@
         ]);
         computerRows = computers;
         modelRows = models;
-        const machine = $("machine").value || new URLSearchParams(location.search).get("computer_id") || "",
+        const machine =
+            $("machine").value ||
+            new URLSearchParams(location.search).get("computer_id") ||
+            "",
           model = $("model").value;
         $("machine").replaceChildren(
           ...computers.map((c) => {
@@ -422,6 +499,215 @@
           return b;
         });
         $("model-list").replaceChildren(...buttons);
+        renderProviders();
+        await refreshProviders();
+      }
+      const providerViews = new Map();
+      let providersPolling = false;
+      const labels = {
+        untested: "لم يُختبر",
+        checking: "جارٍ الاختبار…",
+        connected: "متصل ومُختبر",
+        failed: "فشل الاتصال",
+      };
+      function renderProviders() {
+        providerViews.clear();
+        const rows = modelRows
+          .filter((m) => m.managed_cli)
+          .map((m) => {
+            const row = node("tr");
+            row.dataset.provider = m.managed_cli;
+            const title = node("td", m.name),
+              state = node("td"),
+              actions = node("td");
+            const summary = node("strong", "جارٍ فحص الخدمة…"),
+              reason = node("small"),
+              time = node("small");
+            const loginBox = node("div", null, "provider-login hidden"),
+              loginText = node("p"),
+              link = node("a", "فتح صفحة الدخول الرسمية"),
+              code = node("code"),
+              input = node("input"),
+              submit = node("button", "تأكيد كود Claude"),
+              cancel = node("button", "إلغاء طلب الدخول");
+            link.target = "_blank";
+            link.rel = "noopener noreferrer";
+            input.type = "password";
+            input.autocomplete = "off";
+            input.placeholder = "كود الربط أو رابط صفحة النتيجة الرسمي";
+            input.setAttribute("aria-label", "كود ربط Claude");
+            loginBox.append(loginText, link, code, input, submit, cancel);
+            state.append(summary, reason, time, loginBox);
+            const test = node("button", "اختبار الاتصال"),
+              retry = node("button", "إعادة المحاولة"),
+              login = node("button", "إعادة تسجيل الدخول");
+            actions.append(test, retry, login);
+            row.append(title, state, actions);
+            const view = {
+              m,
+              summary,
+              reason,
+              time,
+              loginBox,
+              loginText,
+              link,
+              code,
+              input,
+              submit,
+              cancel,
+              test,
+              retry,
+              login,
+              status: null,
+              acting: false,
+            };
+            providerViews.set(m.id, view);
+            test.onclick = retry.onclick = () => providerAction(view, "test");
+            login.onclick = () => providerAction(view, "login");
+            cancel.onclick = () => providerAction(view, "login/cancel");
+            submit.onclick = () => {
+              const value = input.value;
+              input.value = "";
+              return providerAction(view, "login/complete", {
+                id: view.status?.login?.id,
+                code: value,
+              });
+            };
+            return row;
+          });
+        $("provider-status").replaceChildren(...rows);
+        if (!rows.length)
+          $("provider-status").append(
+            node(
+              "tr",
+              "لا توجد خدمة مُدارة. اختر Claude أو Codex في إعدادات اتصال الموديل أدناه.",
+            ),
+          );
+      }
+      async function providerAction(v, action, body = {}) {
+        if (v.acting) return;
+        v.acting = true;
+        [v.test, v.retry, v.login, v.submit, v.cancel].forEach(
+          (b) => (b.disabled = true),
+        );
+        try {
+          await api(`/api/v1/agents/models/${v.m.id}/${action}`, "POST", body);
+          await updateProvider(v);
+        } catch (err) {
+          v.summary.textContent = "تعذر تنفيذ العملية";
+          v.reason.textContent = err.message;
+          v.retry.hidden = false;
+        } finally {
+          v.acting = false;
+          setProviderButtons(v);
+        }
+      }
+      function setProviderButtons(v) {
+        const busy = v.status?.busy || v.status?.login?.state === "pending";
+        v.test.disabled = v.acting || busy;
+        v.retry.disabled = v.acting || busy;
+        v.login.disabled = v.acting || v.status?.busy;
+        v.submit.disabled = v.acting;
+        v.cancel.disabled = v.acting;
+      }
+      async function updateProvider(v) {
+        try {
+          const s = await api(`/api/v1/agents/models/${v.m.id}/status`);
+          v.status = s;
+          const test =
+              s.test?.model && s.test.model !== v.m.model
+                ? {
+                    state: "untested",
+                    reason:
+                      "آخر اختبار كان لموديل آخر. اختبر هذا الموديل للتأكد من الاتصال.",
+                  }
+                : s.test || {},
+            auth = s.auth || {},
+            pending = s.login?.state === "pending";
+          v.summary.textContent = pending
+            ? "بانتظار تسجيل الدخول"
+            : test.state === "checking"
+              ? labels.checking
+              : auth.state !== "signed_in"
+                ? "يحتاج تسجيل دخول أو فحص الخدمة"
+                : labels[test.state] || "لم يُختبر";
+          v.reason.textContent =
+            auth.state !== "signed_in" ? auth.reason : test.reason;
+          v.time.textContent =
+            auth.state !== "signed_in"
+              ? `آخر فحص للدخول: ${new Date(auth.checked_at).toLocaleString()}`
+              : test.checked_at
+                ? `آخر اختبار: ${new Date(test.checked_at).toLocaleString()} · ${test.model || v.m.model}`
+                : "تسجيل الدخول موجود لا يعني أن الموديل ردّ؛ اضغط اختبار الاتصال.";
+          if (test.state === "failed" || auth.state !== "signed_in")
+            v.hadFailure = true;
+          if (test.state === "connected" && auth.state === "signed_in")
+            v.hadFailure = false;
+          v.retry.hidden = !v.hadFailure;
+          const l = s.login;
+          v.loginBox.classList.toggle("hidden", !l);
+          if (l) {
+            v.loginText.textContent =
+              l.reason +
+              (pending
+                ? ` · ينتهي ${new Date(l.expires_at).toLocaleTimeString()}`
+                : "");
+            let safe = null;
+            try {
+              const u = new URL(l.url);
+              if (
+                u.protocol === "https:" &&
+                !u.username &&
+                !u.password &&
+                (v.m.managed_cli === "codex"
+                  ? u.hostname === "auth.openai.com" &&
+                    u.pathname === "/codex/device"
+                  : ["claude.ai", "claude.com"].includes(u.hostname) &&
+                    ["/cai/oauth/authorize", "/oauth/authorize"].includes(
+                      u.pathname,
+                    ))
+              )
+                safe = u.href;
+            } catch {}
+            v.link.hidden = !pending || !safe;
+            if (safe) v.link.href = safe;
+            else v.link.removeAttribute("href");
+            v.code.textContent =
+              pending && l.code ? ` رمز الجهاز: ${l.code} ` : "";
+            v.input.hidden = v.submit.hidden = !(
+              pending &&
+              v.m.managed_cli === "claude" &&
+              safe
+            );
+            v.cancel.hidden = !pending;
+          }
+          setProviderButtons(v);
+        } catch (err) {
+          v.summary.textContent = "الخدمة غير متاحة";
+          v.reason.textContent = err.message;
+          v.retry.hidden = false;
+          v.hadFailure = true;
+          v.status = null;
+          v.time.textContent = "آخر فحص للخدمة: " + new Date().toLocaleString();
+          setProviderButtons(v);
+        }
+      }
+      async function refreshProviders() {
+        if (
+          providersPolling ||
+          document.documentElement.dataset.panelActive === "false"
+        )
+          return;
+        providersPolling = true;
+        try {
+          await Promise.all(
+            [...providerViews.values()]
+              .filter((v) => !v.acting)
+              .map(updateProvider),
+          );
+        } finally {
+          providersPolling = false;
+        }
       }
       function editModel(m) {
         $("model-id").value = m.id;
@@ -431,6 +717,7 @@
         $("model-protocol").value = m.protocol;
         $("model-vision").checked = !!m.vision;
         $("model-key").value = "";
+        $("model-managed").value = m.managed_cli || "";
       }
       $("new-model").onclick = () => {
         $("model-form").reset();
@@ -446,6 +733,7 @@
             base_url: $("model-url").value,
             protocol: $("model-protocol").value,
             api_key: $("model-key").value,
+            managed_cli: $("model-managed").value,
             vision: $("model-vision").checked,
           });
           $("model-key").value = "";
@@ -506,7 +794,7 @@
         }
       };
       async function refresh() {
-        if(document.documentElement.dataset.panelActive === "false") return;
+        if (document.documentElement.dataset.panelActive === "false") return;
         if (polling) return;
         polling = true;
         try {
@@ -586,6 +874,7 @@
         .then(refresh)
         .catch((err) => notice(err.message));
       setInterval(refresh, 2000);
+      setInterval(refreshProviders, 5000);
     </script>
   </body>
 </html>

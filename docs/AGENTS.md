@@ -265,3 +265,55 @@ completed. The downloaded archive was checked for the expected Arabic text.
 Both model choices were verified in the Agents screen. Initial provider failures
 remain visible in run history; no desktop actions were silently replayed.
 All 313 application tests and the TypeScript check passed.
+
+
+## Provider status and sign-in from Agents
+
+The Agents screen includes a compact table for explicitly managed Claude and
+Codex connections. Enable the appropriate managed service in Model connections;
+ordinary API connections never receive CLI login requests. On upgrade, deploy
+`scripts/cli-management.ts` and `scripts/provider-errors.ts` beside each private
+`provider.ts`, restart the private services, and set the connection's managed CLI
+type. Gateway tokens stay encrypted in the dashboard and are never returned.
+
+The status distinguishes service reachability, locally cached sign-in, and an
+actual inference check. Test connection sends a small text-only request, with no
+desktop screenshot or user files; normal provider usage limits/billing apply.
+The latest result, tested model, time and a credential-free repair explanation
+are shown. Retry runs the same explicit test. Restarting a gateway resets its
+in-memory test to untested, so a prior green status cannot outlive the service.
+
+Re-sign-in starts the official CLI browser/device flow on the server. Codex
+shows its official device URL and short code. Claude shows its official approval
+URL and accepts the one-time callback code or full official callback URL in a
+password field, bound to the pending request's state. Codes are sent only to the
+private service, never stored in the database or audit detail. The UI clears the
+code field after submission. Approval remains a human action on the official
+provider page. The pending flow expires after 15 minutes and can be cancelled.
+Stop active runs before re-signing in; the gateway blocks inference during login.
+
+Some Codex versions delete their existing auth cache when a new login starts.
+Both providers therefore authenticate into a private temporary HOME/config
+folder, then atomically promote only the newly authenticated credentials on
+success. Cancellation, failure and expiry leave the active cache untouched.
+Linux login processes run in their own group so cancelling also terminates CLI
+launcher children before the temporary cache is discarded. No logout is issued.
+
+For rollback, switch the managed CLI setting back to ordinary API and restore
+the previous private provider files; model inference and existing credentials
+remain usable. The added `managed_cli` database column is additive and older
+application versions ignore it. Keep both shared management files when deploying
+the current providers. The server retains its pre-update dashboard container and
+private provider file copies for rollback.
+
+
+Live management validation on CT 401 (2026-10-24): both private services passed
+real inference checks through the public Worker. The initial Codex re-login test
+revealed destructive cache clearing in the installed CLI; the final staging
+implementation was verified by completing a real device-code login, then starting
+and cancelling new flows for both providers. SHA-256 comparisons on the server
+confirmed each active credential file stayed unchanged on start/cancel. No
+credential content left the server. Service-unavailable responses use HTTP 424
+so the public proxy preserves the actionable JSON explanation instead of replacing
+it with its generic 502 HTML page. The UI also handles non-JSON proxy failures.
+All 320 tests and the TypeScript check passed.

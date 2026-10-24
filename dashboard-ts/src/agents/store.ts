@@ -13,6 +13,7 @@ export interface Model {
   protocol: "responses" | "chat";
   vision: number;
   secret: string;
+  managed_cli?: string;
 }
 export interface AgentRun {
   id: number;
@@ -40,6 +41,18 @@ export function initAgents() {
     CREATE TABLE IF NOT EXISTS agent_events(id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL, kind TEXT NOT NULL, message TEXT NOT NULL, created_at TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS agent_artifacts(id INTEGER PRIMARY KEY, run_id INTEGER NOT NULL, name TEXT NOT NULL, disk_name TEXT NOT NULL, bytes INTEGER NOT NULL);
   `);
+  getDb()
+    .transaction(() => {
+      if (
+        !all<{ name: string }>("PRAGMA table_info(agent_models)").some(
+          (c) => c.name === "managed_cli",
+        )
+      )
+        getDb().exec(
+          "ALTER TABLE agent_models ADD COLUMN managed_cli TEXT NOT NULL DEFAULT ''",
+        );
+    })
+    .immediate();
 }
 function masterKey() {
   const path = join(
