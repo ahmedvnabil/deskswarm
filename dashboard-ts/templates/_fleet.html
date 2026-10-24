@@ -3,20 +3,18 @@
    someone is guaranteed to be looking and has nothing else to read. #}
 <div class="border border-dashed border-neutral-800 rounded-lg p-8">
   <div class="max-w-2xl">
-    <div class="text-neutral-300 text-sm font-semibold mb-1">No machines yet</div>
+    <div class="text-neutral-300 text-sm font-semibold mb-1">لا توجد أجهزة بعد</div>
     <div class="text-neutral-500 text-xs mb-5">
-      A machine is a full XFCE Linux desktop in a container, with Cua Driver that
-      turns calls into keyboard, mouse and screen. It takes about a second.
+      جهاز Linux بسطح مكتب XFCE داخل حاوية، مع تحكم بالماوس والكيبورد عبر Cua Driver.
     </div>
     <ol class="text-xs text-neutral-400 space-y-2">
       <li><span class="text-amber-400 mono mr-2">1</span>
-        Type a name above and hit <span class="text-neutral-200">+ add</span>.
-        <span class="text-neutral-600">A range like <span class="mono">agent-{1..10}</span> makes ten.</span></li>
+        اكتب اسمًا ثم اضغط <span class="text-neutral-200">+ إضافة</span>.
+        <span class="text-neutral-600">النطاق مثل <span class="mono">agent-{1..10}</span> ينشئ عشرة أجهزة.</span></li>
       <li><span class="text-amber-400 mono mr-2">2</span>
-        Open its <span class="text-neutral-200">access</span> panel and issue a key.</li>
+        افتح <span class="text-neutral-200">الوصول</span> وأصدر مفتاحًا.</li>
       <li><span class="text-amber-400 mono mr-2">3</span>
-        Paste the <span class="mono text-neutral-300">claude mcp add</span> command it gives you
-        into your client. That client now has the machine.</li>
+        الصق <span class="mono text-neutral-300">claude mcp add</span> في عميلك لربطه بالجهاز.</li>
     </ol>
   </div>
 </div>
@@ -27,17 +25,17 @@
    are the same ones on the tiles and in the filter chips, on purpose — three
    different vocabularies for one thing is how a dashboard stops being read. #}
 <div class="flex flex-wrap items-center gap-x-5 gap-y-1 text-[11px] mono text-neutral-500 mb-2.5">
-  <span class="text-neutral-400">{{ summary.total }} machine{{ '' if summary.total == 1 else 's' }}</span>
-  {% if summary.in_use %}<span class="text-amber-400">{{ summary.in_use }} in use</span>{% endif %}
-  {% if summary.idle %}<span class="text-emerald-400">{{ summary.idle }} idle</span>{% endif %}
-  {% if summary.asleep %}<span class="text-neutral-500">{{ summary.asleep }} asleep</span>{% endif %}
-  {% if summary.down %}<span class="text-red-400">{{ summary.down }} down</span>{% endif %}
+  <span class="text-neutral-400">{{ summary.total }} جهاز</span>
+  {% if summary.in_use %}<span class="text-amber-400">{{ summary.in_use }} قيد الاستخدام</span>{% endif %}
+  {% if summary.idle %}<span class="text-emerald-400">{{ summary.idle }} متاح</span>{% endif %}
+  {% if summary.asleep %}<span class="text-neutral-500">{{ summary.asleep }} متوقف</span>{% endif %}
+  {% if summary.down %}<span class="text-red-400">{{ summary.down }} غير متاح</span>{% endif %}
   <span class="text-neutral-700">|</span>
-  <span>{{ summary.keys }} live key{{ '' if summary.keys == 1 else 's' }}</span>
+  <span>{{ summary.keys }} مفتاح MCP فعال</span>
   {% if summary.unreachable %}
   <span class="text-neutral-500"
         title="No client can reach these — issue a key from a machine's access panel">
-    {{ summary.unreachable }} with no key
+    {{ summary.unreachable }} بدون مفتاح
   </span>
   {% endif %}
 </div>
@@ -51,7 +49,7 @@
   {# One state per tile, decided once here so the chip, the dot, the border and
      the filter can never disagree about what a machine is doing. #}
   {% set state = 'busy' if c.activity else ('asleep' if c.sleeping else ('idle' if c.control_ok else 'down')) %}
-  {% set label = {'busy':'in use','asleep':'asleep','idle':'idle','down':'down'}[state] %}
+  {% set label = {'busy':'قيد الاستخدام','asleep':'متوقف','idle':'متاح','down':'غير متاح'}[state] %}
   {% set tone  = {'busy':'amber','asleep':'neutral','idle':'emerald','down':'red'}[state] %}
 
   <div class="wall-tile group relative rounded-lg overflow-hidden border bg-neutral-900 flex flex-col
@@ -59,7 +57,7 @@
        {%- elif state == 'down' %} border-red-500/50
        {%- elif c.reserved %} border-sky-500/40
        {%- else %} border-neutral-800{% endif %}"
-       data-name="{{ c.name|e }}" data-id="{{ c.id }}"
+       data-shot-url="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}" data-name="{{ c.name|e }}" data-id="{{ c.id }}"
        data-state="{{ state }}"
        data-reserved="{{ 1 if c.reserved else 0 }}"
        data-sleeping="{{ 1 if c.sleeping else 0 }}">
@@ -81,7 +79,7 @@
 
       {% if c.reserved %}
       <span title="reserved for you — no new key can be issued while it is"
-        class="text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded px-1 py-px shrink-0">yours</span>
+        class="text-[9px] bg-sky-500/20 text-sky-300 border border-sky-500/40 rounded px-1 py-px shrink-0">محجوز لك</span>
       {% endif %}
 
       <button class="ml-auto text-neutral-600 hover:text-red-400 text-xs leading-none shrink-0"
@@ -101,14 +99,14 @@
         {% if c.sleeping %}
         <div class="absolute inset-0 flex flex-col items-center justify-center bg-neutral-950 gap-1">
           <div class="text-neutral-600 text-lg leading-none">☾</div>
-          <div class="text-[9px] text-neutral-600">no memory used</div>
+          <div class="text-[9px] text-neutral-600">لا يستهلك رام</div>
         </div>
         {% elif c.control_ok %}
         {# src is rendered server-side with a token that only ticks every few
            seconds: the picture loads on first paint, the 5s partial swap reuses
            the cached URL (so no flicker), and the token change pulls a fresh
            frame. alt is empty so a failed frame never paints text over it. #}
-        <img class="wall-shot absolute inset-0 w-full h-full object-cover
+        <img id="wall-shot-{{ c.id }}" hx-preserve class="wall-shot absolute inset-0 w-full h-full object-cover
                     {{ '' if c.activity else 'opacity-70 group-hover:opacity-100' }}"
              src="/api/v1/computers/{{ c.id }}/screenshot?t={{ shot_token }}"
              {# Not lazy. The wall replaces its own DOM every five seconds, and a
@@ -118,7 +116,7 @@
              alt="">
         {% else %}
         <div class="absolute inset-0 flex items-center justify-center bg-neutral-950">
-          <div class="text-[9px] text-red-400/70 text-center px-1">no screen</div>
+          <div class="text-[9px] text-red-400/70 text-center px-1">المعاينة غير متاحة</div>
         </div>
         {% endif %}
       </div>
@@ -129,7 +127,7 @@
 
         {% if c.activity %}
         <div>
-          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">doing now</div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">النشاط الحالي</div>
           <div class="mono truncate {{ 'text-amber-300' if c.activity.ok else 'text-red-400' }}">
             {{ c.activity.tool }}{{ '' if c.activity.ok else ' — failed' }}
           </div>
@@ -137,23 +135,23 @@
         </div>
         {% elif state == 'down' %}
         <div>
-          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">problem</div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">المشكلة</div>
           <div class="text-red-400">{{ 'containers missing' if c.desktop_state == 'missing' else 'Driver not answering' }}</div>
           <div class="text-neutral-600 mono">{{ c.desktop_state }}</div>
         </div>
         {% endif %}
 
         <div>
-          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">access</div>
+          <div class="text-neutral-600 uppercase tracking-wide text-[9px]">الوصول</div>
           {% if c.keys_live %}
-          <div class="text-neutral-300">{{ c.keys_live }} live key{{ '' if c.keys_live == 1 else 's' }}</div>
+          <div class="text-neutral-300">{{ c.keys_live }} مفتاح MCP فعال</div>
           {% elif c.reserved %}
-          <div class="text-sky-300">reserved — no keys</div>
+          <div class="text-sky-300">محجوز — إصدار المفاتيح متوقف</div>
           {% else %}
           {# The one gap worth shouting about: this machine is fine and no
              client on earth can reach it. It looks identical to a working one
              otherwise, which is exactly why it needs saying. #}
-          <div class="text-amber-400/90">no key — unreachable</div>
+          <div class="text-amber-400/90">بدون مفتاح MCP</div>
           {% endif %}
         </div>
 
@@ -172,18 +170,18 @@
         title="its MCP endpoint, and the keys that reach it"
         class="text-[10px] font-semibold px-2 py-1 rounded shrink-0
           {{ 'bg-amber-500 hover:bg-amber-400 text-neutral-950' if not c.keys_live and not c.reserved
-             else 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200' }}">access</button>
+             else 'bg-neutral-800 hover:bg-neutral-700 text-neutral-200' }}">الوصول</button>
 
       <div class="tile-tools flex items-center gap-1 min-w-0 overflow-hidden">
         <button onclick="event.stopPropagation(); openTerminal({{ c.id }}, '{{ c.name|e }}')"
           title="a root shell on this machine"
-          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">shell</button>
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">الأوامر</button>
         <button onclick="event.stopPropagation(); openFiles({{ c.id }}, '{{ c.name|e }}')"
           title="put files on this machine, or take them off"
-          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">files</button>
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">الملفات</button>
         <button onclick="event.stopPropagation(); openInventory({{ c.id }}, '{{ c.name|e }}')"
           title="what is installed on it"
-          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">apps</button>
+          class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">التطبيقات</button>
         <button onclick="event.stopPropagation(); openMore({{ c.id }}, '{{ c.name|e }}', {{ 1 if c.sleeping else 0 }}, {{ 1 if c.reserved else 0 }})"
           title="clip, snapshot, rename, share, backup, reserve"
           class="bg-neutral-800/70 hover:bg-neutral-700 text-[10px] px-1.5 py-1 rounded">···</button>
@@ -195,7 +193,7 @@
         title="{% if state == 'down' %}recreate its containers, keeping its files{% elif c.sleeping %}start it back up{% else %}stop it and free its memory — files are kept, open windows are not{% endif %}"
         class="ml-auto text-[10px] px-2 py-1 rounded shrink-0
           {{ 'bg-red-600/80 hover:bg-red-600 text-white' if state == 'down' else 'bg-neutral-800/70 hover:bg-neutral-700' }}">
-        {% if state == 'down' %}restart{% elif c.sleeping %}wake{% else %}sleep{% endif %}</button>
+        {% if state == 'down' %}إعادة التشغيل{% elif c.sleeping %}إيقاظ{% else %}إيقاف{% endif %}</button>
     </div>
   </div>
   {% endfor %}

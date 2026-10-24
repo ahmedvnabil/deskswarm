@@ -148,7 +148,7 @@ test("a revoked key offers no revoke button", () => {
   const html = render("_access.html", contexts["_access.html"][0] as any);
   // One live key, one revoked: exactly one button, and the dead one's token
   // is not reprinted next to it.
-  expect(html.match(/>revoke</g)?.length).toBe(1);
+  expect(html.match(/>إلغاء المفتاح</g)?.length).toBe(1);
 });
 
 test("an empty fleet still shows its empty state", async () => {
@@ -156,7 +156,7 @@ test("an empty fleet still shows its empty state", async () => {
   // JavaScript — without the port's explicit length check this silently
   // rendered a wall with no tiles and no message.
   const r = await get("/partials/fleet");
-  expect(r.text).toContain("No machines yet");
+  expect(r.text).toContain("لا توجد أجهزة بعد");
 });
 
 test("a populated partial names the machine", async () => {
@@ -189,7 +189,7 @@ test("every partial route answers", async () => {
 test("a machine with no key says so, and points at the fix", () => {
   const ctx = contexts["_fleet.html"][0] as any;
   const withKey = render("_fleet.html", ctx);
-  expect(withKey).toContain("2 live keys");
+  expect(withKey).toContain("2 مفتاح MCP فعال");
   expect(withKey).not.toContain("unreachable");
 
   const without = render("_fleet.html", {
@@ -197,7 +197,7 @@ test("a machine with no key says so, and points at the fix", () => {
     computers: [{ ...machine, keys_live: 0 }],
     summary: { ...fleetSummary, keys: 0, unreachable: 1 },
   });
-  expect(without).toContain("no key — unreachable");
+  expect(without).toContain("بدون مفتاح MCP");
   // and the access button is the highlighted one, not just another grey pill
   expect(without).toContain("bg-amber-500 hover:bg-amber-400");
 });
@@ -206,10 +206,10 @@ test("the tile states are named, not only coloured", () => {
   // A border tint is not a status. Each tile carries the word as well, and the
   // same word the filter chips and the summary line use.
   for (const [state, word] of [
-    [{ activity: { tool: "click", label: "c", ok: true, seconds_ago: 1 } }, "in use"],
-    [{ sleeping: true, control_ok: false }, "asleep"],
-    [{ control_ok: false }, "down"],
-    [{}, "idle"],
+    [{ activity: { tool: "click", label: "c", ok: true, seconds_ago: 1 } }, "قيد الاستخدام"],
+    [{ sleeping: true, control_ok: false }, "متوقف"],
+    [{ control_ok: false }, "غير متاح"],
+    [{}, "متاح"],
   ] as [object, string][]) {
     const html = render("_fleet.html", {
       computers: [{ ...machine, activity: undefined, ...state }],
@@ -229,4 +229,13 @@ test("the wall's tiles are not lazy", () => {
   const html = render("_fleet.html", contexts["_fleet.html"][0] as any);
   expect(html).toContain("/screenshot?t=");
   expect(html).not.toContain('loading="lazy"');
+});
+
+test("fleet polling preserves each image node while offering a new frame URL",()=>{
+ const ctx=contexts["_fleet.html"][0] as any;
+ for(const token of [1,2]){
+  const html=render("_fleet.html",{...ctx,shot_token:token});
+  expect(html).toContain(`id="wall-shot-${machine.id}" hx-preserve`);
+  expect(html).toContain(`data-shot-url="/api/v1/computers/${machine.id}/screenshot?t=${token}"`);
+ }
 });

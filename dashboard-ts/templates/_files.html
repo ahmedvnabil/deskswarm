@@ -3,7 +3,7 @@
   <span class="mono text-neutral-300">{{ path or '' }}</span>
   {% if path %}
   <button onclick="browseFiles({{ comp.id }}, '{{ parent|e }}')"
-    class="ml-auto bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded">up</button>
+    class="ml-auto bg-neutral-800 hover:bg-neutral-700 px-2 py-1 rounded">المجلد الأب</button>
   {% endif %}
 </div>
 
@@ -28,15 +28,15 @@
     {% if e.type == 'dir' %}
     <button onclick="browseFiles({{ comp.id }}, '{{ (path + '/' + e.name) if path else e.name }}')"
       class="text-amber-400 hover:underline text-left flex-1 truncate">{{ e.name }}/</button>
-    <span class="text-neutral-700">folder</span>
+    <span class="text-neutral-700">مجلد</span>
     {% else %}
     <span class="flex-1 truncate">{{ e.name }}</span>
     <span class="mono text-neutral-600">{{ '%.1f'|format(e.size / 1024) }} KB</span>
     {% endif %}
     <a href="/api/v1/computers/{{ comp.id }}/files/download?path={{ ((path + '/' + e.name) if path else e.name)|urlencode }}"
-      class="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded shrink-0">get</a>
+      class="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded shrink-0">تنزيل</a>
   </div>
   {% endfor %}{% else %}
-  <div class="px-3 py-6 text-center text-neutral-600 text-xs">empty</div>
+  <div class="px-3 py-6 text-center text-neutral-600 text-xs">المجلد فارغ</div>
   {% endif %}
 </div>

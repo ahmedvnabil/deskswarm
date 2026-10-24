@@ -8,7 +8,7 @@
       hx-trigger="change" hx-swap="innerHTML"
       class="flex items-center gap-2 mb-3 text-xs flex-wrap">
   <select name="machine" class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1">
-    <option value="">every machine</option>
+    <option value="">كل الأجهزة</option>
     {% for c in computers %}
     <option value="{{ c.name }}" {{ 'selected' if c.name == machine else '' }}>{{ c.name }}</option>
     {% endfor %}
@@ -17,20 +17,20 @@
   <input type="hidden" name="page" id="activity-page" value="1">
   <span class="ml-auto text-neutral-600">page {{ page }} / {{ pages }}</span>
   <button type="button" onclick="gotoPage({{ page - 1 }})" {{ 'disabled' if page <= 1 else '' }}
-    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">prev</button>
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">السابق</button>
   <button type="button" onclick="gotoPage({{ page + 1 }})" {{ 'disabled' if page >= pages else '' }}
-    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">next</button>
+    class="bg-neutral-800 hover:bg-neutral-700 disabled:opacity-30 px-2 py-1 rounded">التالي</button>
 </form>
 
 <div class="overflow-x-auto">
 <table class="w-full text-xs">
   <thead class="text-neutral-500 border-b border-neutral-800">
     <tr class="text-left">
-      <th class="py-1.5 pr-3 font-medium">when</th>
-      <th class="py-1.5 pr-3 font-medium">client</th>
-      <th class="py-1.5 pr-3 font-medium">machine</th>
-      <th class="py-1.5 pr-3 font-medium">tool</th>
-      <th class="py-1.5 pr-3 font-medium">detail</th>
+      <th class="py-1.5 pr-3 font-medium">التوقيت</th>
+      <th class="py-1.5 pr-3 font-medium">العميل</th>
+      <th class="py-1.5 pr-3 font-medium">الجهاز</th>
+      <th class="py-1.5 pr-3 font-medium">الأداة</th>
+      <th class="py-1.5 pr-3 font-medium">التفاصيل</th>
       <th class="py-1.5 font-medium">•</th>
     </tr>
   </thead>
@@ -50,9 +50,8 @@
     </tr>
     {% endfor %}{% else %}
     <tr><td colspan="6" class="py-6 text-center text-neutral-600">
-      No client has called a machine yet. Issue a key from a machine's
-      <span class="text-neutral-400">access</span> panel, point your MCP client at it,
-      and every call it makes shows up here.
+      لا يوجد نشاط بعد. أصدر مفتاحًا من
+      <span class="text-neutral-400">الوصول</span> واربط عميل MCP لتظهر استدعاءاته هنا.
     </td></tr>
     {% endif %}
   </tbody>

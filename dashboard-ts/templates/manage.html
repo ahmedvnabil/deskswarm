@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -18,8 +18,8 @@
   .wall-sm .tile-tools { display: none; }
   .wall-sm .tile-shot  { width: 100%; }
 </style>
-<link rel="stylesheet" href="/static/panels.css?v=20261024-compact-final">
-<script src="/static/panels.js?v=20261024-compact-final"></script>
+<link rel="stylesheet" href="/static/panels.css?v=20261024-ar-mobile2">
+<script src="/static/panels.js?v=20261024-ar-mobile2"></script>
 </head>
 <body class="manage-view bg-neutral-950 text-neutral-200 min-h-screen">
   <header class="border-b border-neutral-800 bg-neutral-900/60 px-6 py-3 flex items-center justify-between sticky top-0 z-20 backdrop-blur">
@@ -28,7 +28,7 @@
 
     <div class="flex items-center gap-3">
       <span class="text-lg font-bold text-amber-400">deskswarm</span>
-      <span class="text-xs text-neutral-500 mono">self-hosted Linux desktops, one MCP endpoint each</span>
+      <span class="text-xs text-neutral-500 mono">أجهزة Linux على سيرفراتك، باتصال MCP مستقل</span>
     </div>
     <div class="flex items-center gap-4 text-xs text-neutral-500">
       <a href="https://github.com/zadstack/deskswarm" target="_blank" class="hover:text-amber-400">GitHub</a>
@@ -36,7 +36,7 @@
       {% if actor %}
       <form method="post" action="/logout" class="flex items-center gap-2">
         <span class="mono text-neutral-600">{{ actor|e }}</span>
-        <button type="submit" class="hover:text-amber-400">sign out</button>
+        <button type="submit" class="hover:text-amber-400">تسجيل الخروج</button>
       </form>
       {% endif %}
     </div>
@@ -56,11 +56,11 @@
           <h2 class="text-sm font-semibold text-neutral-400 tracking-wide uppercase mr-1">الأجهزة</h2>
           <input id="wall-filter" oninput="applyWallFilter()" placeholder="بحث في الأجهزة…" aria-label="بحث في الأجهزة"
             class="bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 w-40">
-          <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">all</button>
-          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1" title="an MCP client is working in it">in use</button>
-          <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">idle</button>
-          <button type="button" onclick="setWallState('asleep')" data-chip="asleep" class="wall-chip bg-neutral-800 rounded px-2 py-1">asleep</button>
-          <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">down</button>
+          <button type="button" onclick="setWallState('')"     data-chip=""     class="wall-chip bg-amber-500 text-neutral-950 rounded px-2 py-1">الكل</button>
+          <button type="button" onclick="setWallState('busy')" data-chip="busy" class="wall-chip bg-neutral-800 rounded px-2 py-1" title="an MCP client is working in it">قيد الاستخدام</button>
+          <button type="button" onclick="setWallState('idle')" data-chip="idle" class="wall-chip bg-neutral-800 rounded px-2 py-1">متاح</button>
+          <button type="button" onclick="setWallState('asleep')" data-chip="asleep" class="wall-chip bg-neutral-800 rounded px-2 py-1">متوقف</button>
+          <button type="button" onclick="setWallState('down')" data-chip="down" class="wall-chip bg-neutral-800 rounded px-2 py-1">غير متاح</button>
           <span class="text-neutral-700">|</span>
           <button type="button" onclick="setWallSize('sm')" data-size="sm" class="wall-size bg-neutral-800 rounded px-2 py-1">S</button>
           <button type="button" onclick="setWallSize('md')" data-size="md" class="wall-size bg-neutral-800 rounded px-2 py-1">M</button>
@@ -69,16 +69,14 @@
             class="hidden text-neutral-600 hover:text-neutral-300 px-1">دليل الحالات</button>
         </div>
         <form onsubmit="addComputer(event)" class="flex items-center gap-2">
-          <input id="new-computer-name" required placeholder="name, or agent-{1..10}"
+          <input id="new-computer-name" required placeholder="اسم الجهاز أو agent-{1..10}"
             class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm w-56">
           <select id="new-computer-snapshot"
             class="bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
-            <option value="">clean desktop</option>
+            <option value="">جهاز جديد</option>
           </select>
           <button type="submit" id="add-btn"
-            class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">
-            + add
-          </button>
+            class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">+ إضافة</button>
         </form>
       </div>
       {# What the wall is telling you. Shown until it is dismissed, then never
@@ -87,89 +85,85 @@
          guess. #}
       <div id="wall-legend" class="hidden mb-3 border border-neutral-800 rounded-lg bg-neutral-900/40 px-4 py-3">
         <div class="flex items-start justify-between gap-4 mb-2.5">
-          <div class="text-xs text-neutral-300">
-            Each tile is one Linux desktop. Click its picture for a real
-            keyboard-and-mouse session; <span class="text-neutral-200">access</span>
-            issues the key an MCP client needs to drive it.
-          </div>
+          <div class="text-xs text-neutral-300">كل بطاقة جهاز Linux. اضغط المعاينة للتحكم بالماوس والكيبورد؛<span class="text-neutral-200">الوصول</span>يصدر مفتاح تحكم لعميل MCP.</div>
           <button onclick="dismissLegend()" title="hide this"
-            class="text-neutral-600 hover:text-neutral-300 text-xs shrink-0">hide</button>
+            class="text-neutral-600 hover:text-neutral-300 text-xs shrink-0">إخفاء</button>
         </div>
         <div class="grid sm:grid-cols-2 xl:grid-cols-4 gap-x-6 gap-y-1.5 text-[11px]">
           <div class="flex items-baseline gap-2">
-            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-amber-500/15 text-amber-300 border border-amber-500/40 shrink-0">in use</span>
-            <span class="text-neutral-500">a client called it in the last 90s — the tile names the tool and who ran it</span>
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-amber-500/15 text-amber-300 border border-amber-500/40 shrink-0">قيد الاستخدام</span>
+            <span class="text-neutral-500">نشاط خلال آخر 90 ثانية، مع اسم الأداة والعميل</span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">idle</span>
-            <span class="text-neutral-500">running and reachable, nothing happening in it</span>
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 shrink-0">متاح</span>
+            <span class="text-neutral-500">الجهاز يعمل ومتاح</span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-neutral-800 text-neutral-400 border border-neutral-700 shrink-0">asleep</span>
-            <span class="text-neutral-500">stopped, costs no memory, files kept — the next MCP call wakes it</span>
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-neutral-800 text-neutral-400 border border-neutral-700 shrink-0">متوقف</span>
+            <span class="text-neutral-500">متوقف وملفاته محفوظة؛ الاستدعاء التالي يوقظه</span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-red-500/15 text-red-300 border border-red-500/40 shrink-0">down</span>
-            <span class="text-neutral-500">its containers are gone or not answering — <span class="text-neutral-400">restart</span> rebuilds them and keeps the files</span>
+            <span class="text-[9px] uppercase tracking-wide rounded px-1.5 py-px bg-red-500/15 text-red-300 border border-red-500/40 shrink-0">غير متاح</span>
+            <span class="text-neutral-500">الحاويات غير متاحة أو لا تستجيب —<span class="text-neutral-400">إعادة التشغيل</span>يعيد بناءها ويحفظ الملفات</span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-amber-400/90 shrink-0 w-[4.5rem]">no key</span>
-            <span class="text-neutral-500">nothing can reach it yet; issue one from <span class="text-neutral-400">access</span></span>
+            <span class="text-amber-400/90 shrink-0 w-[4.5rem]">بدون مفتاح</span>
+            <span class="text-neutral-500">أصدر مفتاحًا من<span class="text-neutral-400">الوصول</span></span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-[9px] rounded px-1 py-px bg-sky-500/20 text-sky-300 border border-sky-500/40 shrink-0">yours</span>
-            <span class="text-neutral-500">reserved — no new key can be issued while it is</span>
+            <span class="text-[9px] rounded px-1 py-px bg-sky-500/20 text-sky-300 border border-sky-500/40 shrink-0">محجوز لك</span>
+            <span class="text-neutral-500">محجوز؛ لا يمكن إصدار مفتاح جديد</span>
           </div>
           <div class="flex items-baseline gap-2">
-            <span class="text-neutral-400 shrink-0 w-[4.5rem]">the picture</span>
-            <span class="text-neutral-500">a still, refreshed every few seconds — not a live stream</span>
+            <span class="text-neutral-400 shrink-0 w-[4.5rem]">المعاينة</span>
+            <span class="text-neutral-500">صورة تتحدث كل بضع ثوانٍ</span>
           </div>
           <div class="flex items-baseline gap-2">
             <span class="text-neutral-400 shrink-0 w-[4.5rem]">S · M · L</span>
-            <span class="text-neutral-500">tile size; S drops to screens only, for a large fleet</span>
+            <span class="text-neutral-500">حجم البطاقات؛ الصغير يعرض المعاينات فقط</span>
           </div>
         </div>
       </div>
 
       <div id="fleet-status" hx-get="/partials/fleet" hx-trigger="load, every 5s, refresh" hx-swap="innerHTML">
-        <div class="text-neutral-600 text-sm">loading...</div>
+        <div class="text-neutral-600 text-sm">جارٍ التحميل…</div>
       </div>
     </section>
 
 
     <section><details><summary>النشاط الأخير</summary>
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-neutral-600">every call an outside client makes</span>
+        <span class="text-xs text-neutral-600">استدعاءات العملاء الخارجيين</span>
       </div>
       {# hx-include carries the machine filter (rendered inside this div) into
          the poll, so auto-refresh doesn't reset it. #}
       <div id="activity" hx-get="/partials/activity" hx-trigger="load, every 4s, refresh"
            hx-swap="innerHTML" hx-include="#activity-filters">
-        <div class="text-neutral-600 text-sm">loading...</div>
+        <div class="text-neutral-600 text-sm">جارٍ التحميل…</div>
       </div>
     </details></section>
 
     <section><details><summary>مفاتيح MCP</summary>
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-neutral-600">one machine each · revocable</span>
+        <span class="text-xs text-neutral-600">مفتاح لكل جهاز · قابل للإلغاء</span>
       </div>
-      <div id="keys"><div class="text-neutral-600 text-sm">loading...</div></div>
+      <div id="keys"><div class="text-neutral-600 text-sm">جارٍ التحميل…</div></div>
     </details></section>
 
     <section><details><summary>روابط المشاركة</summary>
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-neutral-600">a screen for a person, not a key for a program</span>
+        <span class="text-xs text-neutral-600">مشاركة شاشة مع شخص</span>
       </div>
-      <div id="shares"><div class="text-neutral-600 text-sm">loading...</div></div>
+      <div id="shares"><div class="text-neutral-600 text-sm">جارٍ التحميل…</div></div>
     </details></section>
 
     <section><details><summary>سجل التغييرات</summary>
       <div class="flex items-center justify-between mb-3">
-        <span class="text-xs text-neutral-600">every change, and every guest</span>
+        <span class="text-xs text-neutral-600">التغييرات وزيارات الضيوف</span>
       </div>
       <div id="audit" hx-get="/partials/audit" hx-trigger="load, every 15s, refresh"
            hx-swap="innerHTML">
-        <div class="text-neutral-600 text-sm">loading...</div>
+        <div class="text-neutral-600 text-sm">جارٍ التحميل…</div>
       </div>
     </details></section>
 
@@ -293,6 +287,19 @@
         (b.dataset.size === 'md' ? 'bg-amber-500 text-neutral-950' : 'bg-neutral-800');
     });
     applyWallFilter();
+    document.querySelectorAll('.wall-tile[data-shot-url]').forEach(tile => {
+      const image = tile.querySelector('.wall-shot');
+      const next = tile.dataset.shotUrl;
+      if (!image || image.getAttribute('src') === next || image.dataset.pending === next) return;
+      image.dataset.pending = next;
+      const fresh = new Image();
+      fresh.onload = () => {
+        if (image.isConnected && image.dataset.pending === next) image.src = next;
+        if (image.dataset.pending === next) delete image.dataset.pending;
+      };
+      fresh.onerror = () => { if (image.dataset.pending === next) delete image.dataset.pending; };
+      fresh.src = next;
+    });
   });
 
   // Full interactive session for one machine. A sleeping machine is woken
@@ -300,9 +307,9 @@
   async function openLive(id, name, url){
     const tile = document.querySelector('.wall-tile[data-id="' + id + '"]');
     if(tile && tile.dataset.sleeping === '1'){
-      openModal('Waking — ' + name);
+      openModal('إيقاظ — ' + name);
       document.getElementById('modal-body').innerHTML =
-        '<div class="text-sm text-neutral-300">starting the desktop…</div>' +
+        '<div class="text-sm text-neutral-300">جارٍ تشغيل الجهاز…</div>' +
         '<div class="text-xs text-neutral-500 mt-1">A cold desktop takes a few ' +
         'seconds to bring up X and start its Driver.</div>';
       const j = await (await fetch('/api/v1/computers/' + id + '/wake',
@@ -311,11 +318,11 @@
       if(!j.ok){
         document.getElementById('modal-body').innerHTML =
           '<div class="text-sm text-red-400"></div>';
-        document.querySelector('#modal-body div').textContent = j.error || 'wake failed';
+        document.querySelector('#modal-body div').textContent = j.error || 'تعذّر الإيقاظ';
         return;
       }
     }
-    openModal('Live — ' + name);
+    openModal('تحكم مباشر — ' + name);
     document.getElementById('modal-body').innerHTML =
       '<div class="bg-black rounded overflow-hidden" style="aspect-ratio:16/10">' +
       '<iframe src="' + url + '" style="width:100%;height:100%;border:0"></iframe></div>' +
@@ -332,7 +339,7 @@
       const sel = document.getElementById('new-computer-snapshot');
       const prev = sel.value;
       sel.innerHTML = '';
-      sel.add(new Option('clean desktop', ''));
+      sel.add(new Option('جهاز جديد', ''));
       for(const s of j.data) sel.add(new Option('from: ' + s.name, s.name));
       sel.value = [...sel.options].some(o => o.value === prev) ? prev : '';
     } catch(_){}
@@ -340,18 +347,18 @@
   refreshSnapshots();
 
   async function pruneSpace(){
-    if(!confirm('Reclaim Docker build cache and dangling layers?\n\n' +
-                'Tagged images — including every snapshot — are left alone.')) return;
+    if(!confirm('تحرير مساحة البناء والصور غير المستخدمة؟\n\n' +
+                'لن تتأثر الصور المسماة أو لقطات النظام.')) return;
     const j = await (await fetch('/api/v1/maintenance/prune', {method:'POST'})).json();
     if(!j.ok){ alert(j.error || 'prune failed'); return; }
-    alert(`Reclaimed ${j.data.reclaimed_gb} GB.\n` +
-          `Disk free: ${j.data.disk_free_gb_before} GB -> ${j.data.disk_free_gb_after} GB.`);
+    alert(`تم تحرير ${j.data.reclaimed_gb} GB.\n` +
+          `المساحة المتاحة: ${j.data.disk_free_gb_before} GB -> ${j.data.disk_free_gb_after} GB.`);
     htmx.trigger('#guards','refresh');
   }
 
   // ------------------------------------------------------------- files
   function openFiles(id, name){
-    openModal('Files — ' + name);
+    openModal('الملفات — ' + name);
     browseFiles(id, '');
   }
 
@@ -391,7 +398,7 @@
 
   // ------------------------------------------------------------- backups
   async function openBackups(id, name){
-    openModal('Backups — ' + name);
+    openModal('النسخ الاحتياطية — ' + name);
     await refreshBackups(id);
   }
 
@@ -416,7 +423,7 @@
   }
 
   async function deleteBackup(id, name){
-    if(!confirm(`Delete backup ${name}?`)) return;
+    if(!confirm(`حذف النسخة الاحتياطية ${name}؟`)) return;
     const j = await (await fetch(`/api/v1/computers/${id}/backups/${name}`,
                                  {method:'DELETE'})).json();
     await refreshBackups(id);
@@ -424,11 +431,11 @@
   }
 
   async function restoreBackup(id, name){
-    if(!confirm(`Restore ${name}?\n\n` +
-                'This REPLACES the machine\'s home directory — anything not in the ' +
-                'backup is removed. The machine is stopped while it happens, so open ' +
-                'windows are lost, and started again afterwards.')) return;
-    backupNote('restoring — the machine is stopped for this…');
+    if(!confirm(`استعادة ${name}؟\n\n` +
+                'هذا يستبدل مجلد المستخدم ويحذف ما ليس في ' +
+                'النسخة. يتوقف الجهاز أثناء الاستعادة وتُفقد ' +
+                'النوافذ المفتوحة ثم يُشغّل مجددًا.')) return;
+    backupNote('جارٍ الاستعادة؛ الجهاز متوقف مؤقتًا…');
     const j = await (await fetch(`/api/v1/computers/${id}/restore`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({backup: name})
@@ -441,10 +448,10 @@
 
   async function restoreFromFile(id, file){
     if(!file) return;
-    if(!confirm(`Restore "${file.name}" onto this machine?\n\n` +
-                'This REPLACES its home directory. Only use a file that came from ' +
-                'a deskswarm backup.')) return;
-    backupNote('uploading…');
+    if(!confirm(`استعادة "${file.name}" على هذا الجهاز؟\n\n` +
+                'هذا يستبدل مجلد المستخدم. استخدم ملفًا صادرًا من ' +
+                'نسخة DeskSwarm احتياطية.')) return;
+    backupNote('جارٍ الرفع…');
     const fd = new FormData();
     fd.append('file', file);
     const j = await (await fetch(`/api/v1/computers/${id}/restore/upload`,
@@ -457,34 +464,34 @@
 
   // -------------------------------------------------------------- shares
   async function openShare(id, name){
-    openModal('Share — ' + name);
+    openModal('مشاركة — ' + name);
     const body = document.getElementById('modal-body');
     body.innerHTML = `
       <div class="grid sm:grid-cols-4 gap-2 items-end">
-        <label class="text-xs text-neutral-500 sm:col-span-2">who is it for
-          <input id="share-label" placeholder="e.g. Sara, or client-review"
+        <label class="text-xs text-neutral-500 sm:col-span-2">اسم المستلم
+          <input id="share-label" placeholder="مثل: سارة أو مراجعة العميل"
             class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
         </label>
-        <label class="text-xs text-neutral-500">they can
+        <label class="text-xs text-neutral-500">الصلاحيات
           <select id="share-mode"
             class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
-            <option value="watch">watch only</option>
-            <option value="control">watch and control</option>
+            <option value="watch">مشاهدة فقط</option>
+            <option value="control">مشاهدة وتحكم</option>
           </select>
         </label>
-        <label class="text-xs text-neutral-500">for
+        <label class="text-xs text-neutral-500">المدة
           <select id="share-hours"
             class="w-full mt-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-sm">
-            <option value="1">1 hour</option>
-            <option value="24" selected>24 hours</option>
-            <option value="168">7 days</option>
-            <option value="720">30 days</option>
+            <option value="1">ساعة</option>
+            <option value="24" selected>24 ساعة</option>
+            <option value="168">7 أيام</option>
+            <option value="720">30 يومًا</option>
           </select>
         </label>
       </div>
       <button onclick="createShare(${id})"
         class="mt-3 bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold text-xs px-3 py-1.5 rounded">
-        create link</button>
+        إنشاء رابط</button>
       <div id="share-out" class="mt-3"></div>
       <div class="text-[11px] text-neutral-500 mt-4 leading-relaxed border-t border-neutral-800 pt-3">
         <strong class="text-neutral-300">watch</strong> serves the screen through the
@@ -493,13 +500,13 @@
         machine's screen password — revoking closes the page, but cannot take back a
         URL they already saved. Rotate the machine's password to retract it for good.
         <button onclick="rotatePassword(${id})"
-          class="ml-1 underline hover:text-amber-400">rotate now</button>
+          class="ml-1 underline hover:text-amber-400">تغيير كلمة المرور الآن</button>
       </div>`;
   }
 
   async function createShare(id){
     const out = document.getElementById('share-out');
-    out.innerHTML = '<div class="text-xs text-neutral-500">creating…</div>';
+    out.innerHTML = '<div class="text-xs text-neutral-500">جارٍ الإنشاء…</div>';
     const j = await (await fetch(`/api/v1/computers/${id}/shares`, {
       method:'POST', headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
@@ -514,7 +521,7 @@
       <div class="text-xs text-neutral-500 mb-1">send this link — it works until ${j.data.expires_at} UTC</div>
       <div class="flex gap-2">
         <input readonly class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-2 py-1.5 text-xs mono">
-        <button class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 rounded">copy</button>
+        <button class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 rounded">نسخ</button>
       </div>`;
     const input = out.querySelector('input');
     input.value = j.data.url;
@@ -549,13 +556,13 @@
           s.status === 'live' ? '<span class="text-emerald-400">live</span>'
           : '<span class="text-neutral-600">' + s.status + '</span>'}</td>
         <td class="py-1.5 text-right">${s.status === 'live'
-          ? `<button onclick="revokeShare(${s.id})" class="bg-neutral-800 hover:bg-red-600 text-[11px] px-2 py-0.5 rounded">revoke</button>`
+          ? `<button onclick="revokeShare(${s.id})" class="bg-neutral-800 hover:bg-red-600 text-[11px] px-2 py-0.5 rounded">إلغاء المفتاح</button>`
           : ''}</td>
       </tr>`).join('');
     box.innerHTML = `<div class="overflow-x-auto"><table class="w-full text-xs">
       <thead class="text-neutral-500 border-b border-neutral-800"><tr class="text-left">
         <th class="py-1.5 pr-3 font-medium">for</th>
-        <th class="py-1.5 pr-3 font-medium">machine</th>
+        <th class="py-1.5 pr-3 font-medium">الجهاز</th>
         <th class="py-1.5 pr-3 font-medium">can</th>
         <th class="py-1.5 pr-3 font-medium">until (UTC)</th>
         <th class="py-1.5 pr-3 font-medium">opened</th>
@@ -571,18 +578,18 @@
   }
 
   async function revokeShare(id){
-    if(!confirm('Revoke this link?')) return;
+    if(!confirm('إلغاء هذا الرابط؟')) return;
     const j = await (await fetch(`/api/v1/shares/${id}`, {method:'DELETE'})).json();
     if(j.ok && j.data.note) alert('Revoked.\n\n' + j.data.note + '.');
     refreshShares();
   }
 
   async function rotatePassword(id){
-    if(!confirm('Give this machine a new screen password?\n\n' +
-                'Every saved noVNC link for it stops working, including any a guest ' +
-                'kept. The machine restarts — open windows are lost, files are not.')) return;
+    if(!confirm('تغيير كلمة مرور شاشة هذا الجهاز؟\n\n' +
+                'ستتوقف روابط noVNC السابقة، بما فيها ما احتفظ به ' +
+                'الضيوف. يُعاد تشغيل الجهاز وتُفقد النوافذ المفتوحة وتبقى الملفات المحفوظة.')) return;
     const j = await (await fetch(`/api/v1/computers/${id}/rotate-password`, {method:'POST'})).json();
-    alert(j.ok ? 'Done — old links are dead.' : (j.error || 'failed'));
+    alert(j.ok ? 'تم إلغاء صلاحية الروابط القديمة.' : (j.error || 'failed'));
     refreshShares();
     htmx.trigger('#fleet-status','refresh');
   }
@@ -604,20 +611,20 @@
 
   // --------------------------------------------------------- sleep / wake
   async function sleepComputer(id, name){
-    if(!confirm(`Put "${name}" to sleep?\n\n` +
-                'Its containers stop, so it stops using memory and CPU entirely. ' +
-                'Everything saved on the machine is kept — but the desktop session ' +
-                'ends, so open windows and unsaved work are lost.\n\n' +
-                'Click its picture to wake it again.')) return;
+    if(!confirm(`إيقاف "${name}"؟\n\n` +
+                'تتوقف الحاويات ويتوقف استهلاك الرام والمعالج. ' +
+                'تبقى الملفات المحفوظة لكن جلسة سطح المكتب ' +
+                'تنتهي؛ تُفقد النوافذ والعمل غير المحفوظ.\n\n' +
+                'اضغط المعاينة لإيقاظه مجددًا.')) return;
     const j = await (await fetch(`/api/v1/computers/${id}/sleep`, {method:'POST'})).json();
-    if(!j.ok) alert(j.error || 'could not sleep');
+    if(!j.ok) alert(j.error || 'تعذّر الإيقاف');
     htmx.trigger('#fleet-status','refresh');
     htmx.trigger('#guards','refresh');
   }
 
   async function wakeComputer(id, name){
     const j = await (await fetch(`/api/v1/computers/${id}/wake`, {method:'POST'})).json();
-    if(!j.ok) alert(j.error || 'could not wake');
+    if(!j.ok) alert(j.error || 'تعذّر الإيقاظ');
     htmx.trigger('#fleet-status','refresh');
     htmx.trigger('#guards','refresh');
   }
@@ -627,11 +634,11 @@
   // for anything outside latin-1, which makes Arabic impossible; this moves
   // the text as UTF-8 through the machine's own X clipboard instead.
   function openClipboard(id, name){
-    openModal('Clipboard — ' + name);
+    openModal('الحافظة — ' + name);
     document.getElementById('modal-body').innerHTML = `
       <textarea id="clip-text" rows="8" dir="auto"
         class="w-full bg-neutral-950 border border-neutral-800 rounded p-2 text-sm mono"
-        placeholder="Type or paste here, then send it to the machine…"></textarea>
+        placeholder="اكتب أو الصق هنا ثم أرسل للجهاز…"></textarea>
       <div class="flex flex-wrap gap-2 mt-2">
         <button onclick="clipSend(${id}, false)"
           class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-1.5 rounded">
@@ -670,21 +677,21 @@
   }
 
   async function clipGet(id){
-    clipNote('reading…');
+    clipNote('جارٍ القراءة…');
     const j = await (await fetch(`/api/v1/computers/${id}/clipboard`)).json();
     if(!j.ok){ clipNote(j.error || 'failed', true); return; }
     document.getElementById('clip-text').value = j.data.text;
-    clipNote(j.data.text ? 'copied from the machine — select and copy it here'
+    clipNote(j.data.text ? 'تم النسخ from the machine — select and copy it here'
                          : "the machine's clipboard is empty");
   }
 
   async function restartComputer(id, name){
-    if(!confirm(`Recreate the containers for "${name}"?\n\n` +
-                'It keeps its name, port, snapshot and home directory — open ' +
-                'windows are lost, saved files are not.')) return;
+    if(!confirm(`إعادة إنشاء حاويات الجهاز "${name}"?\n\n` +
+                'يبقى الاسم والمنفذ واللقطة ومجلد المستخدم؛ ' +
+                'تُفقد النوافذ المفتوحة وتبقى الملفات المحفوظة.')) return;
     const r = await fetch(`/api/v1/computers/${id}/restart`, {method: 'POST'});
     const j = await r.json();
-    if(!j.ok) alert(j.error || 'restart failed');
+    if(!j.ok) alert(j.error || 'تعذّرت إعادة التشغيل');
     htmx.trigger('#fleet-status','refresh');
   }
 
@@ -698,7 +705,7 @@
       body: JSON.stringify({name: snap.trim()})
     });
     const j = await r.json();
-    if(!j.ok) alert(j.error || 'snapshot failed');
+    if(!j.ok) alert(j.error || 'تعذّر حفظ اللقطة');
     else refreshSnapshots();
   }
 
@@ -715,16 +722,16 @@
     const n = JSON.stringify(name);
     document.getElementById('modal-body').innerHTML =
       '<div class="space-y-0.5">' +
-      item('clip', 'copy and paste text between here and this machine', `openClipboard(${id}, ${n})`) +
-      item('share', 'give one person a link to this machine only', `openShare(${id}, ${n})`) +
-      item('backups', "archive this machine's home, or put an archive back", `openBackups(${id}, ${n})`) +
-      item('snapshot', 'save what is installed, to create new machines from', `snapshotComputer(${id}, ${n})`) +
-      item('rename', 'change the display name; the endpoint and keys are unaffected', `renameComputer(${id}, ${n})`) +
-      item(reserved ? 'unreserve' : 'reserve',
-           reserved ? 'allow keys to be issued for it again'
-                    : 'keep it for yourself — no new key can be issued for it',
+      item('الحافظة', 'نسخ ولصق النص بين المتصفح والجهاز', `openClipboard(${id}, ${n})`) +
+      item('مشاركة', 'مشاركة رابط لهذا الجهاز فقط', `openShare(${id}, ${n})`) +
+      item('النسخ الاحتياطية', "أرشفة مجلد المستخدم أو استعادته", `openBackups(${id}, ${n})`) +
+      item('لقطة النظام', 'حفظ البرامج لإنشاء أجهزة مماثلة', `snapshotComputer(${id}, ${n})`) +
+      item('تغيير الاسم', 'تغيير الاسم مع بقاء الاتصال والمفاتيح', `renameComputer(${id}, ${n})`) +
+      item(reserved ? 'إنهاء الحجز' : 'حجز',
+           reserved ? 'السماح بإصدار مفاتيح مجددًا'
+                    : 'حجز الجهاز ومنع إصدار مفاتيح جديدة',
            `toggleReserved(${id}, ${reserved ? 0 : 1})`) +
-      item('restart', 'recreate its containers, keeping its files', `restartComputer(${id}, ${n})`) +
+      item('إعادة التشغيل', 'إعادة إنشاء الحاويات مع حفظ الملفات', `restartComputer(${id}, ${n})`) +
       '</div>';
   }
 
@@ -734,7 +741,7 @@
   // the step between "I have a key" and "it works" is where people give up.
 
   function openAccess(id, name){
-    openModal('Access — ' + name);
+    openModal('الوصول — ' + name);
     document.getElementById('modal-body').innerHTML =
       '<div class="text-neutral-600 text-sm">loading…</div>';
     htmx.ajax('GET', '/partials/computers/' + id + '/access', '#modal-body');
@@ -754,8 +761,8 @@
   }
 
   async function revokeKey(id, label, compId){
-    if(!confirm('Revoke the key "' + label + '"?\n\n' +
-                'Any client using it stops working on its next call.')) return;
+    if(!confirm('إلغاء المفتاح "' + label + '"?\n\n' +
+                'سيتوقف أي عميل يستخدمه عند الاستدعاء التالي.')) return;
     await fetch('/api/v1/keys/' + id, {method: 'DELETE'});
     if(compId) htmx.ajax('GET', '/partials/computers/' + compId + '/access', '#modal-body');
     refreshKeys();
@@ -766,9 +773,9 @@
   async function copyText(text, btn){
     try {
       await navigator.clipboard.writeText(text);
-      if(btn){ const was = btn.textContent; btn.textContent = 'copied'; setTimeout(() => btn.textContent = was, 1200); }
+      if(btn){ const was = btn.textContent; btn.textContent = 'تم النسخ'; setTimeout(() => btn.textContent = was, 1200); }
     } catch(_) {
-      window.prompt('Copy this:', text);
+      window.prompt('انسخ التالي:', text);
     }
   }
 
@@ -779,7 +786,7 @@
     if(!j.ok) return;
     if(!j.data.length){
       box.innerHTML = '<div class="text-neutral-600 text-sm">No keys yet — open a machine\'s ' +
-        '<span class="text-neutral-400">access</span> panel to issue one.</div>';
+        '<span class="text-neutral-400">الوصول</span> panel to issue one.</div>';
       return;
     }
     const rows = j.data.map(k => {
@@ -794,11 +801,11 @@
         '<td class="py-1.5 pr-3 mono text-neutral-500">' + esc(k.expires_at || 'no expiry') + '</td>' +
         '<td class="py-1.5 text-right">' + (dead ? '' :
           '<button class="text-red-400 hover:text-red-300" onclick="revokeKey(' + k.id +
-          ', ' + JSON.stringify(k.label) + ')">revoke</button>') + '</td></tr>';
+          ', ' + JSON.stringify(k.label) + ')">إلغاء المفتاح</button>') + '</td></tr>';
     }).join('');
     box.innerHTML =
       '<div class="overflow-x-auto"><table class="w-full text-xs"><thead class="text-neutral-500">' +
-      '<tr><th class="text-left font-medium pb-1">machine</th>' +
+      '<tr><th class="text-left font-medium pb-1">الجهاز</th>' +
       '<th class="text-left font-medium pb-1">label</th>' +
       '<th class="text-left font-medium pb-1">status</th>' +
       '<th class="text-left font-medium pb-1">calls</th>' +
@@ -817,7 +824,7 @@
     const name = input.value.trim();
     if(!name) return;
     const snapshot = document.getElementById('new-computer-snapshot').value;
-    btn.disabled = true; btn.textContent = 'creating…';
+    btn.disabled = true; btn.textContent = 'جارٍ الإنشاء…';
     try {
       const r = await fetch('/api/v1/computers', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -828,13 +835,13 @@
       else {
         // A batch reports per-name failures without blocking the ones that worked.
         if(j.data && j.data.errors && j.data.errors.length){
-          alert('Some machines were not created:\n' +
+          alert('تعذّر إنشاء بعض الأجهزة:\n' +
                 j.data.errors.map(e => `${e.name}: ${e.error}`).join('\n'));
         }
         input.value = ''; htmx.trigger('#fleet-status','refresh'); refreshTargets();
       }
     } catch(err){ alert(err); }
-    btn.disabled = false; btn.textContent = '+ add computer';
+    btn.disabled = false; btn.textContent = '+ إضافة جهاز';
   }
 
   async function removeComputer(id, name){
@@ -846,7 +853,7 @@
   }
 
   async function renameComputer(id, current){
-    const name = prompt('Rename computer', current);
+    const name = prompt('تغيير اسم الجهاز', current);
     if(!name || name === current) return;
     const r = await fetch('/api/v1/computers/' + id, {
       method: 'PATCH', headers: {'Content-Type':'application/json'},
@@ -872,7 +879,7 @@
 
   // ------------------------------------------------------------- software
   function openInventory(id, name){
-    openModal('Installed software — ' + name);
+    openModal('البرامج المثبتة — ' + name);
     const body = document.getElementById('modal-body');
     body.innerHTML = '<div class="text-neutral-500 text-xs">inspecting the machine…</div>';
     fetch('/partials/computers/' + id + '/inventory')
@@ -883,7 +890,7 @@
 
   // ------------------------------------------------------------- terminal
   function openTerminal(id, name){
-    openModal('Terminal — ' + name);
+    openModal('الأوامر — ' + name);
     document.getElementById('modal-body').innerHTML = `
       <div class="space-y-3">
         <div id="term-out" class="bg-black border border-neutral-800 rounded p-3 h-80 overflow-y-auto mono text-xs whitespace-pre-wrap text-neutral-300"

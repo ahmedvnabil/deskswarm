@@ -4,38 +4,37 @@
 <div class="space-y-5">
 
   <div>
-    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">MCP endpoint</div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1">عنوان اتصال MCP</div>
     <div class="flex items-center gap-2">
       <code class="flex-1 bg-neutral-950 border border-neutral-800 rounded px-3 py-2 text-xs mono break-all">{{ url }}</code>
       <button onclick="copyText({{ url|tojson }}, this)"
-        class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-2 rounded shrink-0">copy</button>
+        class="bg-neutral-800 hover:bg-neutral-700 text-xs px-3 py-2 rounded shrink-0">نسخ</button>
     </div>
     <div class="text-[11px] text-neutral-500 mt-1.5">
-      Streamable HTTP. This URL reaches <span class="mono text-neutral-400">{{ comp.name }}</span> and
-      nothing else — a key issued for another machine is refused here.
+      Streamable HTTP. هذا العنوان يتصل بـ <span class="mono text-neutral-400">{{ comp.name }}</span> فقط، ويُرفض مفتاح أي جهاز آخر.
     </div>
   </div>
 
   <div>
-    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Issue a key</div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">إصدار مفتاح</div>
     <div class="flex items-center gap-2 flex-wrap">
       <input id="key-label" placeholder="what is this for — 'claude code', 'research bot'…"
         class="flex-1 min-w-56 bg-neutral-950 border border-neutral-700 rounded px-3 py-1.5 text-sm">
       <select id="key-days" class="bg-neutral-950 border border-neutral-700 rounded px-2 py-1.5 text-sm">
-        <option value="7">7 days</option>
-        <option value="30" selected>30 days</option>
-        <option value="90">90 days</option>
-        <option value="365">a year</option>
-        <option value="0">no expiry</option>
+        <option value="7">7 أيام</option>
+        <option value="30" selected>30 يومًا</option>
+        <option value="90">90 يومًا</option>
+        <option value="365">سنة</option>
+        <option value="0">بدون انتهاء</option>
       </select>
       <button onclick="createKey({{ comp.id }})"
-        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">issue</button>
+        class="bg-amber-500 hover:bg-amber-400 text-neutral-950 font-semibold px-4 py-1.5 rounded text-sm">إصدار</button>
     </div>
   </div>
 
   {% if keys.length %}
   <div>
-    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Keys for this machine</div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">مفاتيح هذا الجهاز</div>
     <div class="space-y-2">
       {% for k in keys %}
       <div class="bg-neutral-950 border rounded p-3
@@ -54,7 +53,7 @@
           </span>
           {% if k.status == 'live' %}
           <button onclick="revokeKey({{ k.id }}, {{ k.label|tojson }}, {{ comp.id }})"
-            class="text-[11px] text-red-400 hover:text-red-300">revoke</button>
+            class="text-[11px] text-red-400 hover:text-red-300">إلغاء المفتاح</button>
           {% endif %}
         </div>
 
@@ -62,13 +61,13 @@
         <div class="flex items-center gap-2 mb-1.5">
           <code class="flex-1 bg-black/40 border border-neutral-800 rounded px-2 py-1.5 text-[11px] mono break-all">{{ k.token }}</code>
           <button onclick="copyText({{ k.token|tojson }}, this)"
-            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">copy key</button>
+            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">نسخ المفتاح</button>
         </div>
         {# The one command between having a key and having a working client. #}
         <div class="flex items-center gap-2">
           <code class="flex-1 bg-black/40 border border-neutral-800 rounded px-2 py-1.5 text-[11px] mono break-all">{{ k.claude_code }}</code>
           <button onclick="copyText({{ k.claude_code|tojson }}, this)"
-            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">copy command</button>
+            class="bg-neutral-800 hover:bg-neutral-700 text-[11px] px-2 py-1.5 rounded shrink-0">نسخ الأمر</button>
         </div>
         {% endif %}
       </div>
@@ -79,7 +78,7 @@
 
   {% if recent.length %}
   <div>
-    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">Just now</div>
+    <div class="text-[10px] text-neutral-500 uppercase tracking-wide mb-1.5">الآن</div>
     <div class="bg-neutral-950 border border-neutral-800 rounded divide-y divide-neutral-900">
       {% for r in recent %}
       <div class="px-3 py-1.5 text-[11px] flex items-center gap-2">
@@ -101,10 +100,7 @@
         class="text-[10px] mono bg-neutral-800 text-neutral-300 rounded px-1.5 py-0.5">{{ t.name }}</span>
       {% endfor %}
     </div>
-    <div class="text-[11px] text-neutral-500 mt-2">
-      A key is full control of this machine: its screen, a root shell and its home
-      directory. Hand one out the way you would hand out the machine.
-    </div>
+    <div class="text-[11px] text-neutral-500 mt-2">المفتاح يمنح التحكم الكامل بالشاشة والأوامر والملفات. شاركه فقط مع شخص تثق به.</div>
   </div>
 
 </div>

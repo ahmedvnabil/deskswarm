@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
@@ -221,13 +221,13 @@
         }
       }
     </style>
-    <link rel="stylesheet" href="/static/panels.css?v=20261024-compact-final" />
-    <script src="/static/panels.js?v=20261024-compact-final"></script>
+    <link rel="stylesheet" href="/static/panels.css?v=20261024-ar-mobile2" />
+    <script src="/static/panels.js?v=20261024-ar-mobile2"></script>
   </head>
   <body class="agents-view">
     <header>
       <h1>DeskSwarm <span class="muted">/ Agents</span></h1>
-      <a href="/">Back to desktops</a>
+      <a href="/">العودة للأجهزة</a>
     </header>
     <main>
       <p class="muted">
@@ -259,7 +259,7 @@
         <aside>
           <section class="panel">
             <h2>المهام الأخيرة</h2>
-            <div id="runs" class="empty">Loading…</div>
+            <div id="runs" class="empty">جارٍ التحميل…</div>
           </section>
         </aside>
         <div>
@@ -305,8 +305,7 @@
                   /></label>
                 </div>
                 <small
-                  >Provider usage may be billed. Desktop and file contents used
-                  by the agent go to the selected provider.</small
+                  >قد يُحتسب استخدام المزوّد. تُرسل الشاشة ومحتويات الملفات المستخدمة إلى المزوّد المختار.</small
                 >
               </details>
               <button class="primary" id="start" type="submit">
@@ -324,11 +323,9 @@
               <button id="stop" class="danger">إيقاف Agent</button
               ><button id="takeover">استلام التحكم</button
               ><a id="watch" class="button" target="_blank" rel="noopener"
-                >Watch desktop</a
+                >متابعة الجهاز</a
               ><a id="download" class="button hidden">تنزيل النتيجة</a
-              ><button id="release" class="hidden">
-                Release manual control
-              </button>
+              ><button id="release" class="hidden">إنهاء التحكم اليدوي</button>
             </div>
             <p id="run-hint" class="muted"></p>
             <pre id="run-summary" tabindex="0"></pre>
@@ -345,11 +342,9 @@
                   border-radius: 8px;
                 "
               />
-              <figcaption class="muted">
-                Desktop preview · refreshes while the agent runs
-              </figcaption>
+              <figcaption class="muted">معاينة الجهاز · تتحدث أثناء التنفيذ</figcaption>
             </figure>
-            <h3>Activity</h3>
+            <h3>النشاط</h3>
             <ol id="events" class="events"></ol>
             <p id="outputs" class="muted"></p>
             <p class="muted">
@@ -360,10 +355,7 @@
           <section class="panel">
             <details id="settings">
               <summary>إعدادات الموديلات</summary>
-              <p class="muted">
-                Configure a Responses or Chat Completions endpoint. API keys are
-                encrypted on this server and are never returned to the browser.
-              </p>
+              <p class="muted">اربط خدمة Responses أو Chat Completions. تُحفظ المفاتيح مشفّرة على السيرفر ولا تُعاد إلى المتصفح.</p>
               <form id="model-form">
                 <label
                   >إدارة تسجيل الدخول<select id="model-managed">
@@ -377,30 +369,30 @@
                   </select></label
                 >
                 <input id="model-id" type="hidden" /><label
-                  >Display name<input
+                  >الاسم المعروض<input
                     id="model-name"
                     required
                     maxlength="100"
-                    placeholder="My work model" /></label
+                    placeholder="موديل العمل" /></label
                 ><label
-                  >Model ID<input
+                  >معرّف الموديل<input
                     id="model-code"
                     required
                     maxlength="200"
                     placeholder="Model ID from your provider" /></label
                 ><label
-                  >API base URL<input
+                  >عنوان خدمة API<input
                     id="model-url"
                     type="url"
                     required
                     value="https://api.openai.com/v1" /></label
                 ><label
-                  >Protocol<select id="model-protocol">
+                  >البروتوكول<select id="model-protocol">
                     <option value="responses">Responses</option>
                     <option value="chat">Chat Completions</option>
                   </select></label
                 ><label
-                  >API key<input
+                  >مفتاح API<input
                     id="model-key"
                     type="password"
                     autocomplete="off"
@@ -411,10 +403,9 @@
                     type="checkbox"
                     checked
                     style="display: inline; width: auto"
-                  />
-                  Model supports screenshots</label
-                ><button type="submit">Save connection</button
-                ><button id="new-model" type="button">New connection</button>
+                  />الموديل يدعم الصور</label
+                ><button type="submit">حفظ الاتصال</button
+                ><button id="new-model" type="button">اتصال جديد</button>
               </form>
               <div id="model-list"></div>
             </details>
@@ -471,9 +462,9 @@
               "option",
               c.name +
                 (c.agent_run_id
-                  ? " — agent running"
+                  ? " — مهمة نشطة"
                   : c.reserved
-                    ? " — manual control"
+                    ? " — تحكم يدوي"
                     : ""),
             );
             n.value = c.id;
@@ -494,7 +485,7 @@
         $("start").disabled = !models.length || !computers.length;
         if (!models.length) {
           $("settings").open = true;
-          notice("Add a model connection to start your first run.");
+          notice("أضف موديلًا لبدء أول مهمة.");
         }
         const buttons = models.map((m) => {
           const b = node("button", m.name + (m.has_key ? " · key saved" : ""));
@@ -742,7 +733,7 @@
             vision: $("model-vision").checked,
           });
           $("model-key").value = "";
-          notice("Model connection saved.");
+          notice("تم حفظ اتصال الموديل.");
           await loadChoices();
         } catch (err) {
           notice(err.message);
@@ -761,7 +752,7 @@
           });
           selected = job.id;
           notice(
-            "Agent started. You can watch, stop, or request control below.",
+            "بدأ التنفيذ. يمكنك المتابعة أو الإيقاف أو استلام التحكم.",
           );
           await refresh();
         } catch (err) {
@@ -776,8 +767,8 @@
           await api(`/api/v1/agents/runs/${selected}/${name}`, "POST", {});
           notice(
             name === "takeover"
-              ? "Taking control after the current action stops…"
-              : "Stopping after the current action…",
+              ? "جارٍ استلام التحكم بعد انتهاء الإجراء الحالي…"
+              : "جارٍ الإيقاف بعد الإجراء الحالي…",
           );
           await refresh();
         } catch (err) {
@@ -792,12 +783,13 @@
           await api(`/api/v1/computers/${job.computer_id}`, "PATCH", {
             reserved: false,
           });
-          notice("Manual reservation released. You can start another run.");
+          notice("انتهى التحكم اليدوي. يمكنك بدء مهمة جديدة.");
           await loadChoices();
         } catch (err) {
           notice(err.message);
         }
       };
+      function statusLabel(s) { return ({queued:"في الانتظار",running:"يعمل",stopping:"جارٍ الإيقاف",completed:"مكتمل",failed:"فشل",stopped:"متوقف",taken_over:"تحكم يدوي",interrupted:"انقطع التنفيذ"})[s] || s; }
       async function refresh() {
         if (document.documentElement.dataset.panelActive === "false") return;
         if (polling) return;
@@ -809,7 +801,7 @@
             ...runs.map((r) => {
               const b = node(
                 "button",
-                `#${r.id} · ${r.computer_name || "Deleted desktop"}\n${r.status}`,
+                `#${r.id} · ${r.computer_name || "جهاز محذوف"}\n${statusLabel(r.status)}`,
                 "run",
               );
               b.onclick = () => {
@@ -823,7 +815,7 @@
             $("runs").append(
               node(
                 "p",
-                "Your completed and stopped tasks will appear here.",
+                "تظهر مهامك المكتملة والمتوقفة هنا.",
                 "empty",
               ),
             );
@@ -839,25 +831,25 @@
               $("desktop-preview").src =
                 `/api/v1/computers/${r.computer_id}/screenshot?t=${previewAt}`;
             }
-            $("run-title").textContent = `Run #${r.id}`;
-            $("run-status").textContent = r.status;
+            $("run-title").textContent = `مهمة #${r.id}`;
+            $("run-status").textContent = statusLabel(r.status);
             $("run-task").textContent = r.task;
             $("run-summary").textContent = r.summary || r.error || "";
             $("stop").disabled = !r.lease || r.status === "stopping";
             $("takeover").disabled = !r.lease || r.status === "stopping";
             $("watch").href = r.viewer_url || "#";
-            $("watch").textContent = r.lease ? "Watch desktop" : "Open desktop";
+            $("watch").textContent = r.lease ? "متابعة الجهاز" : "فتح الجهاز";
             $("download").classList.toggle("hidden", !!r.lease);
             $("download").href = `/api/v1/agents/runs/${r.id}/result`;
             $("release").classList.toggle("hidden", !r.manual_reserved);
             $("run-hint").textContent =
               r.status === "stopping"
-                ? "Waiting for the current action to finish. No new actions will start."
+                ? "ننتظر انتهاء الإجراء الحالي؛ لن تبدأ إجراءات جديدة."
                 : r.status === "interrupted"
-                  ? "The dashboard restarted. This task will not replay. Take control after the drain period to release the desktop."
+                  ? "أُعيد تشغيل التطبيق؛ لن تُعاد المهمة. استلم التحكم بعد انتهاء الإجراء الحالي لتحرير الجهاز."
                   : r.lease
-                    ? `Agent owns this desktop · ${r.steps}/${r.max_steps} model turns`
-                    : "Agent has released the desktop.";
+                    ? `الجهاز تحت تحكم الـAgent · ${r.steps}/${r.max_steps} خطوة`
+                    : "انتهى تحكم الـAgent بالجهاز.";
             $("events").replaceChildren(
               ...r.events.map((ev) => {
                 const li = node("li", ev.message);
@@ -866,7 +858,7 @@
               }),
             );
             $("outputs").textContent = r.artifacts.length
-              ? `${r.artifacts.length} saved file(s) · ${(r.artifacts.reduce((n, f) => n + f.bytes, 0) / 1024).toFixed(1)} KB`
+              ? `${r.artifacts.length} ملف محفوظ · ${(r.artifacts.reduce((n, f) => n + f.bytes, 0) / 1024).toFixed(1)} KB`
               : "";
           }
         } catch (err) {

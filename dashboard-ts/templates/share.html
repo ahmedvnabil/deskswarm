@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -37,10 +37,7 @@
     <iframe src="{{ view.novnc_url }}" style="width:100%;height:100%;border:0"
             allow="clipboard-read; clipboard-write"></iframe>
   </div>
-  <p class="text-xs text-neutral-500 mt-3">
-    Your keyboard and mouse go to the real machine. Anything you do there is
-    recorded against this link.
-  </p>
+  <p class="text-xs text-neutral-500 mt-3">الماوس والكيبورد يتحكمان بالجهاز الفعلي. تُسجّل الإجراءات باسم هذا الرابط.</p>
 {% else %}
   <div class="bg-black rounded-lg overflow-hidden border border-neutral-800 relative"
        style="aspect-ratio:16/10">
@@ -49,17 +46,12 @@
     <div id="stale" class="hidden absolute inset-0 flex items-center justify-center
                            bg-neutral-950/80 text-sm text-neutral-400"></div>
   </div>
-  <p class="text-xs text-neutral-500 mt-3">
-    A live view of the screen, refreshed every few seconds. You are watching,
-    not driving.
-  </p>
+  <p class="text-xs text-neutral-500 mt-3">معاينة للشاشة تتحدث تلقائيًا. هذا الرابط للمشاهدة فقط.</p>
 {% endif %}
 </main>
 
-<footer class="border-t border-neutral-800 px-4 sm:px-6 py-2 text-[11px] text-neutral-600">
-  Shared with <span class="text-neutral-400">{{ share.label }}</span>.
-  This link reaches this one machine — nothing else on the fleet — and can be
-  revoked at any time.
+<footer class="border-t border-neutral-800 px-4 sm:px-6 py-2 text-[11px] text-neutral-600">مُشارك مع<span class="text-neutral-400">{{ share.label }}</span>.
+  الرابط يصل لهذا الجهاز فقط ويمكن إلغاؤه في أي وقت.
 </footer>
 
 {% if share.mode != 'control' %}
