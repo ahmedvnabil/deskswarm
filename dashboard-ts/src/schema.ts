@@ -13,6 +13,7 @@ import * as audit from "./audit";
 import * as auth from "./auth";
 import * as shares from "./shares";
 import * as keys from "./mcp/keys";
+import { initAgents } from "./agents/store";
 
 function columns(table: string): Set<string> {
   return new Set(
@@ -21,12 +22,10 @@ function columns(table: string): Set<string> {
 }
 
 /**
- * Drop what the agent-task layer left behind.
+ * Remove the obsolete Python task/schedule schema.
  *
- * deskswarm used to dispatch agent sessions itself, and kept a row per task
- * and per schedule. Machines are now driven from outside over MCP, so nothing
- * reads either table — and leaving them would keep a dead schema, a dead
- * `cost_usd` column and a table full of old prompts around for ever.
+ * The new managed Agents implementation uses agent_* tables and never reads
+ * or replays these legacy prompts and schedules.
  *
  * Idempotent, so a fresh database and an upgraded one end up identical.
  */
@@ -93,6 +92,7 @@ export function initDb(): void {
   auth.init();
   shares.init();
   keys.init();
+  initAgents();
 
   db.exec(
     "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",

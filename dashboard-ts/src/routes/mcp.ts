@@ -21,6 +21,7 @@
  * otherwise.
  */
 
+import { owner, beginExternalAction } from "../agents/store";
 import { Hono, type Context } from "hono";
 import * as audit from "./../audit";
 import * as keys from "./../mcp/keys";
@@ -160,6 +161,9 @@ function explain(err: any, comp: Computer): string {
  * its memory.
  */
 async function ensureAwake(comp: Computer): Promise<string | null> {
+  if (owner(comp.id))
+    return "A managed agent owns this machine; stop it or take control first";
+  if (comp.reserved) return "This machine is reserved for human control";
   const backend = providerFor(comp);
   // Ask Docker before the Driver. Probing a stopped machine's Driver burns the
   // full control timeout to learn what the container state already says — the
@@ -200,6 +204,7 @@ async function callTool(
   let ok = true;
   let out: unknown;
 
+  const release = beginExternalAction(comp.id);
   try {
     const asleep = await ensureAwake(comp);
     if (asleep) throw new ToolError(asleep);
@@ -221,6 +226,8 @@ async function callTool(
   } catch (err: any) {
     ok = false;
     out = toolFailure(explain(err, comp));
+  } finally {
+    release();
   }
 
   keys.noteUse(key.id, name, ip || null);

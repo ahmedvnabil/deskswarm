@@ -20,6 +20,8 @@ import { shares } from "./routes/shares";
 import { keyRoutes } from "./routes/keys";
 import { mcpRoutes } from "./routes/mcp";
 import { auditRoutes } from "./routes/audit";
+import { agentRoutes } from "./routes/agents";
+import { owner, beginExternalAction } from "./agents/store";
 
 export function createApp() {
   initDb();
@@ -35,6 +37,29 @@ export function createApp() {
   // every router so nothing can be reached without a person or a token.
   app.use("*", requireSession);
 
+  // Managed runs own machine mutations until their in-flight action drains.
+  app.use("/api/v1/computers/*", async (c, next) => {
+    const match = c.req.path.match(/^\/api\/v1\/computers\/(\d+)(?:\/|$)/);
+    if (
+      match &&
+      !["GET", "HEAD", "OPTIONS"].includes(c.req.method) &&
+      owner(Number(match[1]))
+    )
+      return fail(
+        c,
+        "An agent owns this machine. Stop it or take control from Agents first.",
+        409,
+      );
+    if (!match || ["GET", "HEAD", "OPTIONS"].includes(c.req.method))
+      return next();
+    const release = beginExternalAction(Number(match[1]));
+    try {
+      return await next();
+    } finally {
+      release();
+    }
+  });
+
   // Order matters only where paths overlap; each router owns a disjoint slice.
   for (const router of [
     authRoutes,
@@ -47,6 +72,7 @@ export function createApp() {
     keyRoutes,
     mcpRoutes,
     auditRoutes,
+    agentRoutes,
   ]) {
     app.route("/", router);
   }

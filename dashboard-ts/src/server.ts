@@ -2,18 +2,17 @@
  * The entry point: build the app, make sure someone can sign in, start the
  * housekeeping loop, listen.
  *
- * There is no longer a reclaim step. When the dashboard drove agent sessions
- * itself, a restart left half-finished tasks behind that had to be failed on
- * the way up; now that machines are driven from outside over MCP, a restart
- * interrupts nothing it owns — the worst it costs a connected client is one
- * failed call.
+ * Interrupted managed runs retain ownership for explicit human takeover;
+ * they are never replayed automatically.
  */
 
+import { recoverInterrupted } from "./agents/store";
 import { app } from "./app";
 import { ensureAdmin } from "./auth";
 import { startHousekeeping } from "./housekeeping";
 import { DISABLE_HOUSEKEEPING, PORT } from "./settings";
 
+recoverInterrupted();
 await ensureAdmin();
 
 if (!DISABLE_HOUSEKEEPING) startHousekeeping();

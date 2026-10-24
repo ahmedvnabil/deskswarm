@@ -1,0 +1,588 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Agents — DeskSwarm</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        background: #0b0c0f;
+        color: #e9e9ed;
+        font:
+          15px system-ui,
+          sans-serif;
+      }
+      header {
+        padding: 22px 32px;
+        border-bottom: 1px solid #292b32;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+      a {
+        color: #ffcb70;
+      }
+      main {
+        max-width: 1240px;
+        margin: 28px auto;
+        padding: 0 24px;
+      }
+      .columns {
+        display: grid;
+        grid-template-columns: 310px 1fr;
+        gap: 24px;
+      }
+      .panel {
+        background: #121419;
+        border: 1px solid #2b2e36;
+        border-radius: 14px;
+        padding: 22px;
+        margin-bottom: 20px;
+      }
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+      h2 {
+        font-size: 19px;
+        margin: 0 0 18px;
+      }
+      .muted,
+      small {
+        color: #9fa5b2;
+      }
+      label {
+        display: block;
+        margin: 14px 0 6px;
+      }
+      input,
+      textarea,
+      select {
+        display: block;
+        width: 100%;
+        background: #0b0c0f;
+        border: 1px solid #3b404d;
+        border-radius: 7px;
+        color: inherit;
+        padding: 10px;
+        font: inherit;
+      }
+      textarea {
+        min-height: 115px;
+        resize: vertical;
+      }
+      button,
+      .button {
+        display: inline-block;
+        border: 1px solid #444a59;
+        border-radius: 7px;
+        background: #252a34;
+        color: #fff;
+        padding: 10px 15px;
+        font: inherit;
+        cursor: pointer;
+        text-decoration: none;
+      }
+      button.primary {
+        background: #f7b94b;
+        color: #17120a;
+        border-color: #f7b94b;
+        font-weight: 650;
+      }
+      button.danger {
+        background: #542326;
+      }
+      button:disabled {
+        opacity: 0.4;
+        cursor: wait;
+      }
+      .row {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        align-items: center;
+      }
+      .row > label {
+        flex: 1;
+      }
+      .run {
+        display: block;
+        width: 100%;
+        text-align: left;
+        margin-top: 10px;
+        overflow-wrap: anywhere;
+      }
+      .status {
+        font:
+          12px ui-monospace,
+          monospace;
+        text-transform: uppercase;
+        color: #ffcb70;
+      }
+      .events {
+        padding: 0;
+        list-style: none;
+        max-height: 330px;
+        overflow: auto;
+      }
+      .events li {
+        border-bottom: 1px solid #292b32;
+        padding: 10px 0;
+        font-size: 14px;
+      }
+      .events time {
+        color: #888f9d;
+        font-size: 12px;
+        display: block;
+      }
+      pre {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+        font: 14px system-ui;
+        line-height: 1.7;
+      }
+      #notice {
+        min-height: 26px;
+        margin: 12px 0;
+        color: #ffce79;
+      }
+      details {
+        margin: 18px 0;
+      }
+      summary {
+        cursor: pointer;
+      }
+      .limit {
+        width: 140px;
+      }
+      .empty {
+        padding: 20px 0;
+        color: #888f9d;
+      }
+      .hidden {
+        display: none;
+      }
+      @media (max-width: 800px) {
+        header {
+          padding: 18px;
+        }
+        .columns {
+          grid-template-columns: 1fr;
+        }
+        main {
+          padding: 0 14px;
+          margin: 18px auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>DeskSwarm <span class="muted">/ Agents</span></h1>
+      <a href="/">Back to desktops</a>
+    </header>
+    <main>
+      <p class="muted">
+        Give one agent a desktop and a task. Follow its progress, take control
+        when needed, and keep the results.
+      </p>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <div class="columns">
+        <aside>
+          <section class="panel">
+            <h2>Recent runs</h2>
+            <div id="runs" class="empty">Loading…</div>
+          </section>
+        </aside>
+        <div>
+          <section class="panel">
+            <h2>Start a task</h2>
+            <form id="task-form">
+              <label for="machine">Desktop</label
+              ><select id="machine" required></select>
+              <label for="model">Model</label
+              ><select id="model" required></select
+              ><small
+                >Models are configured below. One agent can own a desktop at a
+                time.</small
+              >
+              <label for="task">What should the agent do?</label
+              ><textarea
+                id="task"
+                required
+                maxlength="20000"
+                placeholder="Create a report, test an application, or work with files. Describe the result you want to download."
+              ></textarea>
+              <details>
+                <summary>Execution limits</summary>
+                <div class="row">
+                  <label
+                    >Maximum model turns<input
+                      id="max-steps"
+                      class="limit"
+                      type="number"
+                      min="1"
+                      max="100"
+                      value="30" /></label
+                  ><label
+                    >Time limit (seconds)<input
+                      id="max-seconds"
+                      class="limit"
+                      type="number"
+                      min="10"
+                      max="900"
+                      value="300"
+                  /></label>
+                </div>
+                <small
+                  >Provider usage may be billed. Desktop and file contents used
+                  by the agent go to the selected provider.</small
+                >
+              </details>
+              <button class="primary" id="start" type="submit">
+                Run agent
+              </button>
+            </form>
+          </section>
+          <section id="detail" class="panel hidden" aria-live="polite">
+            <div class="row">
+              <h2 id="run-title"></h2>
+              <span id="run-status" class="status"></span>
+            </div>
+            <p id="run-task" class="muted"></p>
+            <div class="row">
+              <button id="stop" class="danger">Stop agent</button
+              ><button id="takeover">Take control</button
+              ><a id="watch" class="button" target="_blank" rel="noopener"
+                >Watch desktop</a
+              ><a id="download" class="button hidden">Download results</a
+              ><button id="release" class="hidden">
+                Release manual control
+              </button>
+            </div>
+            <p id="run-hint" class="muted"></p>
+            <pre id="run-summary"></pre>
+            <figure style="margin: 18px 0">
+              <img
+                id="desktop-preview"
+                alt="Latest desktop screenshot"
+                style="
+                  display: block;
+                  width: 100%;
+                  max-height: 420px;
+                  object-fit: contain;
+                  background: #090a0d;
+                  border-radius: 8px;
+                "
+              />
+              <figcaption class="muted">
+                Desktop preview · refreshes while the agent runs
+              </figcaption>
+            </figure>
+            <h3>Activity</h3>
+            <ol id="events" class="events"></ol>
+            <p id="outputs" class="muted"></p>
+          </section>
+          <section class="panel">
+            <details id="settings">
+              <summary>Model connections</summary>
+              <p class="muted">
+                Configure a Responses or Chat Completions endpoint. API keys are
+                encrypted on this server and are never returned to the browser.
+              </p>
+              <form id="model-form">
+                <input id="model-id" type="hidden" /><label
+                  >Display name<input
+                    id="model-name"
+                    required
+                    maxlength="100"
+                    placeholder="My work model" /></label
+                ><label
+                  >Model ID<input
+                    id="model-code"
+                    required
+                    maxlength="200"
+                    placeholder="Model ID from your provider" /></label
+                ><label
+                  >API base URL<input
+                    id="model-url"
+                    type="url"
+                    required
+                    value="https://api.openai.com/v1" /></label
+                ><label
+                  >Protocol<select id="model-protocol">
+                    <option value="responses">Responses</option>
+                    <option value="chat">Chat Completions</option>
+                  </select></label
+                ><label
+                  >API key<input
+                    id="model-key"
+                    type="password"
+                    autocomplete="off"
+                    placeholder="Leave blank to keep an existing key; optional for local providers" /></label
+                ><label
+                  ><input
+                    id="model-vision"
+                    type="checkbox"
+                    checked
+                    style="display: inline; width: auto"
+                  />
+                  Model supports screenshots</label
+                ><button type="submit">Save connection</button
+                ><button id="new-model" type="button">New connection</button>
+              </form>
+              <div id="model-list"></div>
+            </details>
+          </section>
+        </div>
+      </div>
+    </main>
+    <script>
+      const $ = (id) => document.getElementById(id);
+      let selected = null,
+        modelRows = [],
+        computerRows = [],
+        polling = false,
+        previewAt = 0,
+        previewComputer = null;
+      const notice = (s) => {
+        $("notice").textContent = s || "";
+      };
+      async function api(path, method = "GET", data) {
+        const res = await fetch(path, {
+          method,
+          headers:
+            method === "GET" ? {} : { "content-type": "application/json" },
+          body: data === undefined ? undefined : JSON.stringify(data),
+        });
+        const b = await res.json();
+        if (!res.ok || !b.ok) throw Error(b.error || "Request failed");
+        return b.data;
+      }
+      function node(tag, text, cls) {
+        const n = document.createElement(tag);
+        n.textContent = text;
+        if (cls) n.className = cls;
+        return n;
+      }
+      async function loadChoices() {
+        const [computers, models] = await Promise.all([
+          api("/api/v1/computers"),
+          api("/api/v1/agents/models"),
+        ]);
+        computerRows = computers;
+        modelRows = models;
+        const machine = $("machine").value,
+          model = $("model").value;
+        $("machine").replaceChildren(
+          ...computers.map((c) => {
+            const n = node(
+              "option",
+              c.name +
+                (c.agent_run_id
+                  ? " — agent running"
+                  : c.reserved
+                    ? " — manual control"
+                    : ""),
+            );
+            n.value = c.id;
+            return n;
+          }),
+        );
+        $("model").replaceChildren(
+          ...models.map((m) => {
+            const n = node("option", m.name);
+            n.value = m.id;
+            return n;
+          }),
+        );
+        if (computers.some((c) => String(c.id) === machine))
+          $("machine").value = machine;
+        if (models.some((m) => String(m.id) === model))
+          $("model").value = model;
+        $("start").disabled = !models.length || !computers.length;
+        if (!models.length) {
+          $("settings").open = true;
+          notice("Add a model connection to start your first run.");
+        }
+        const buttons = models.map((m) => {
+          const b = node("button", m.name + (m.has_key ? " · key saved" : ""));
+          b.type = "button";
+          b.style.margin = "10px 10px 0 0";
+          b.onclick = () => editModel(m);
+          return b;
+        });
+        $("model-list").replaceChildren(...buttons);
+      }
+      function editModel(m) {
+        $("model-id").value = m.id;
+        $("model-name").value = m.name;
+        $("model-code").value = m.model;
+        $("model-url").value = m.base_url;
+        $("model-protocol").value = m.protocol;
+        $("model-vision").checked = !!m.vision;
+        $("model-key").value = "";
+      }
+      $("new-model").onclick = () => {
+        $("model-form").reset();
+        $("model-id").value = "";
+      };
+      $("model-form").onsubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await api("/api/v1/agents/models", "POST", {
+            id: Number($("model-id").value) || undefined,
+            name: $("model-name").value,
+            model: $("model-code").value,
+            base_url: $("model-url").value,
+            protocol: $("model-protocol").value,
+            api_key: $("model-key").value,
+            vision: $("model-vision").checked,
+          });
+          $("model-key").value = "";
+          notice("Model connection saved.");
+          await loadChoices();
+        } catch (err) {
+          notice(err.message);
+        }
+      };
+      $("task-form").onsubmit = async (e) => {
+        e.preventDefault();
+        $("start").disabled = true;
+        try {
+          const job = await api("/api/v1/agents/runs", "POST", {
+            computer_id: Number($("machine").value),
+            model_id: Number($("model").value),
+            task: $("task").value,
+            max_steps: Number($("max-steps").value),
+            max_seconds: Number($("max-seconds").value),
+          });
+          selected = job.id;
+          notice(
+            "Agent started. You can watch, stop, or request control below.",
+          );
+          await refresh();
+        } catch (err) {
+          notice(err.message);
+        } finally {
+          $("start").disabled = false;
+        }
+      };
+      async function action(name) {
+        if (!selected) return;
+        try {
+          await api(`/api/v1/agents/runs/${selected}/${name}`, "POST", {});
+          notice(
+            name === "takeover"
+              ? "Taking control after the current action stops…"
+              : "Stopping after the current action…",
+          );
+          await refresh();
+        } catch (err) {
+          notice(err.message);
+        }
+      }
+      $("stop").onclick = () => action("stop");
+      $("takeover").onclick = () => action("takeover");
+      $("release").onclick = async () => {
+        try {
+          const job = await api(`/api/v1/agents/runs/${selected}`);
+          await api(`/api/v1/computers/${job.computer_id}`, "PATCH", {
+            reserved: false,
+          });
+          notice("Manual reservation released. You can start another run.");
+          await loadChoices();
+        } catch (err) {
+          notice(err.message);
+        }
+      };
+      async function refresh() {
+        if (polling) return;
+        polling = true;
+        try {
+          const runs = await api("/api/v1/agents/runs");
+          if (!selected && runs.length) selected = runs[0].id;
+          $("runs").replaceChildren(
+            ...runs.map((r) => {
+              const b = node(
+                "button",
+                `#${r.id} · ${r.computer_name || "Deleted desktop"}\n${r.status}`,
+                "run",
+              );
+              b.onclick = () => {
+                selected = r.id;
+                refresh();
+              };
+              return b;
+            }),
+          );
+          if (!runs.length)
+            $("runs").append(
+              node(
+                "p",
+                "Your completed and stopped tasks will appear here.",
+                "empty",
+              ),
+            );
+          if (selected) {
+            const r = await api(`/api/v1/agents/runs/${selected}`);
+            $("detail").classList.remove("hidden");
+            if (
+              previewComputer !== r.computer_id ||
+              (r.lease && Date.now() - previewAt > 5000)
+            ) {
+              previewComputer = r.computer_id;
+              previewAt = Date.now();
+              $("desktop-preview").src =
+                `/api/v1/computers/${r.computer_id}/screenshot?t=${previewAt}`;
+            }
+            $("run-title").textContent = `Run #${r.id}`;
+            $("run-status").textContent = r.status;
+            $("run-task").textContent = r.task;
+            $("run-summary").textContent = r.summary || r.error || "";
+            $("stop").disabled = !r.lease || r.status === "stopping";
+            $("takeover").disabled = !r.lease || r.status === "stopping";
+            $("watch").href = r.viewer_url || "#";
+            $("watch").textContent = r.lease ? "Watch desktop" : "Open desktop";
+            $("download").classList.toggle("hidden", !!r.lease);
+            $("download").href = `/api/v1/agents/runs/${r.id}/result`;
+            $("release").classList.toggle("hidden", !r.manual_reserved);
+            $("run-hint").textContent =
+              r.status === "stopping"
+                ? "Waiting for the current action to finish. No new actions will start."
+                : r.status === "interrupted"
+                  ? "The dashboard restarted. This task will not replay. Take control after the drain period to release the desktop."
+                  : r.lease
+                    ? `Agent owns this desktop · ${r.steps}/${r.max_steps} model turns`
+                    : "Agent has released the desktop.";
+            $("events").replaceChildren(
+              ...r.events.map((ev) => {
+                const li = node("li", ev.message);
+                li.prepend(node("time", ev.created_at));
+                return li;
+              }),
+            );
+            $("outputs").textContent = r.artifacts.length
+              ? `${r.artifacts.length} saved file(s) · ${(r.artifacts.reduce((n, f) => n + f.bytes, 0) / 1024).toFixed(1)} KB`
+              : "";
+          }
+        } catch (err) {
+          notice(err.message);
+        } finally {
+          polling = false;
+        }
+      }
+      loadChoices()
+        .then(refresh)
+        .catch((err) => notice(err.message));
+      setInterval(refresh, 2000);
+    </script>
+  </body>
+</html>

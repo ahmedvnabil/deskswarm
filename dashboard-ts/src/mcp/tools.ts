@@ -15,6 +15,7 @@
  */
 
 import { controlCommand } from "./../control";
+import { posix } from "node:path";
 import { providerFor } from "./../providers";
 import { invalidateScreen } from "./../screens";
 import { MAX_CLIPBOARD_KB } from "./../settings";
@@ -389,13 +390,16 @@ export const TOOLS: Tool[] = [
       if (!filename) throw new ToolError(`'${rel}' does not name a file`);
 
       const backend = providerFor(ctx.comp);
+      const targetDir = posix.normalize(posix.join("/home/cua", dir));
+      if (targetDir !== "/home/cua" && !targetDir.startsWith("/home/cua/"))
+        throw new ToolError("Path is outside the home directory");
       if (dir) {
         // uploadToHome puts a file into a directory that already exists, so a
         // nested path has to be made first — as the desktop user, or the
         // session cannot write into the directory it was just given.
         const res = await backend.execInDesktopResult(
           ctx.comp.slug,
-          `install -d -o cua -g cua ${JSON.stringify(`/home/cua/${dir}`)}`,
+          `install -d -o cua -g cua -- '${targetDir.replace(/'/g, `'"'"'`)}'`,
         );
         if (res.exit_code !== 0) {
           throw new ToolError(`could not create '${dir}': ${res.output.trim()}`);

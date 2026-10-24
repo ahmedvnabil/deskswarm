@@ -2,19 +2,11 @@
  * The background loop: idle machines, nightly backups, trimming what has aged
  * out.
  *
- * This was `scheduler.ts`, and most of it was dispatching agent tasks that had
- * come due. That part is gone with the rest of the agent layer — but the rest
- * of the loop was never about tasks at all, and a fleet with no nightly backup
- * and an audit table that grows for ever is a worse deal than the one this
- * replaced.
- *
- * The conditional-UPDATE claiming below is no longer strictly required — one
- * Bun process replaces the several gunicorn workers that each ran this loop —
- * but it is kept because it is also what makes it safe to point a second
- * dashboard at the same database, and because losing it would be invisible
- * until the day someone does.
+ * Managed runs are excluded from idle suspension, including while draining.
+ * Run one dashboard process per data volume so ownership recovery is local.
  */
 
+import { owner } from "./agents/store";
 import * as audit from "./audit";
 import * as auth from "./auth";
 import * as backups from "./backups";
@@ -29,7 +21,7 @@ import { envInt, nowIso, parseIso } from "./settings";
 /**
  * Put machines nobody is watching to sleep.
  *
- * Two things count as "in use": a browser with the screen open (an established
+ * Managed runs, plus two external signals, count as "in use": a browser with the screen open (an established
  * connection to websockify inside the desktop) and an MCP client that has
  * called the machine recently. The second used to be "a task is running";
  * without it, a machine an outside agent is working in would be suspended
@@ -50,7 +42,7 @@ export async function idleTick(): Promise<void> {
     run("UPDATE computers SET last_active_at = ? WHERE id = ?", nowIso(), id);
 
   for (const comp of rows) {
-    if (busy.has(comp.name)) {
+    if (owner(comp.id) || busy.has(comp.name)) {
       touch(comp.id);
       continue;
     }

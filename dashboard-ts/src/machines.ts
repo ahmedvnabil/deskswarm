@@ -5,6 +5,7 @@
  * routes on top of this are in routes/machines.ts.
  */
 
+import { owner } from "./agents/store";
 import {
   defaultProviderName,
   providerByName,
@@ -44,6 +45,8 @@ export const getComputerByName = (name: string): Computer | null =>
 
 export interface ComputerView {
   provider: string;
+  agent_run_id?: number;
+  agent_status?: string;
   id: number;
   name: string;
   slug: string;
@@ -84,6 +87,12 @@ export async function computerView(
     control_ok: false,
     sleeping: false,
   };
+  const managed = owner(comp.id);
+  if (managed) {
+    view.agent_run_id = managed.id;
+    view.agent_status = managed.status;
+    view.novnc_url += "&view_only=true";
+  }
   if (withState) {
     try {
       Object.assign(view, await backend.containerState(comp.slug));
@@ -101,7 +110,10 @@ export async function computerView(
   return view;
 }
 
-export async function checkControl(view: { slug: string; provider?: string | null }): Promise<boolean> {
+export async function checkControl(view: {
+  slug: string;
+  provider?: string | null;
+}): Promise<boolean> {
   const { controlReady } = await import("./control");
   return controlReady(view);
 }

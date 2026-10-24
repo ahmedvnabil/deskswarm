@@ -4,9 +4,10 @@ Self-hosted Linux desktops for people and AI agents. Create independent XFCE
 machines from one dashboard, watch their screens, share a machine, or give an
 MCP client its own revocable access key.
 
-**Each machine is one desktop container with Cua Driver inside it.** The
-client brings the model; DeskSwarm provides the computer. DeskSwarm does not
-call a model API or require a model API key.
+**Each machine is one desktop container with Cua Driver inside it.** Use the
+Agents page to choose a desktop and model, run a task and download its results,
+or connect your own external MCP client. Managed Agents call the model endpoint
+you configure; external clients continue to bring their own model.
 
 ## Run
 
@@ -52,7 +53,25 @@ host budget in `.env.example` for that case. Size capacity for the applications
 actually running, especially browsers. Cached tiles avoid a live video stream
 for every machine on the wall.
 
-## Connect an agent
+## Run a managed agent
+
+Open **Agents** from the dashboard. Under **Model connections**, add your
+provider base URL, exact model ID, API key and protocol (Responses or Chat
+Completions). Enable screenshots only for a vision-capable model. Select a
+desktop and connection, describe the task, then choose **Run agent**. The page
+shows a refreshing desktop preview and activity log. **Watch desktop** opens
+a viewer; **Stop agent** stops further work, and **Take control** also reserves
+the desktop for you. Release manual control before starting another run.
+
+**Download results** provides a `.tar.gz` containing the report, activity log
+and files the agent explicitly saved. Failed and stopped runs retain partial
+results. One managed agent owns each desktop; another managed run and external
+MCP actions are refused until the current action drains.
+
+See [Agents setup, limits and live validation](docs/AGENTS.md), including the
+optional local gateway for an already signed-in Codex CLI.
+
+## Connect an external agent
 
 Issue a key from the machine's access panel and use the command shown there:
 

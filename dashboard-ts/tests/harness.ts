@@ -45,6 +45,8 @@ export const createNativeComputer = realFleet.createComputer;
 export const world = {
   driverUp: true,
   watchers: 0,
+  execGate: null as Promise<void> | null,
+  endSessionGate: null as Promise<void> | null,
   /** Set to a message to make every Driver command answer success:false —
    *  the "the machine said no" path, as opposed to "the machine is gone". */
   driverRefuses: "" as string,
@@ -104,7 +106,13 @@ async function restoreHome(slug: string, tarPath: string, wipe = true) {
 
 const png = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
 const stubs = {
-  driverCall: async (_slug: string, tool: string, args: Record<string, unknown>) => {
+  driverCall: async (
+    _slug: string,
+    tool: string,
+    args: Record<string, unknown>,
+  ) => {
+    if (tool === "end_session" && world.endSessionGate)
+      await world.endSessionGate;
     if (!world.driverUp) throw new Error("driver is down");
     if (world.driverRefuses && tool !== "get_screen_size") throw new Error(world.driverRefuses);
     if (tool === "get_screen_size") return { width: 1024, height: 768 };
@@ -163,6 +171,7 @@ const stubs = {
   removeImage: async () => {},
   execInDesktopResult: async (_slug: string, command: string) => {
     execLog.push(command);
+    if ((command.includes("setsid bash") || command === "external-inflight") && world.execGate) await world.execGate;
     return { ...execResult };
   },
   homeArchiveStream,
@@ -249,6 +258,8 @@ export function reset(): void {
   activity.reset();
   world.driverUp = true;
   world.watchers = 0;
+  world.execGate = null;
+  world.endSessionGate = null;
   world.driverRefuses = "";
   delete process.env.DESKSWARM_IDLE_SUSPEND_MINUTES;
   delete process.env.DESKSWARM_WAKE_TIMEOUT;

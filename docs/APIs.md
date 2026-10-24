@@ -533,3 +533,29 @@ The dashboard also accepts deep links: `/?open=terminal&computer=<id>` and
 These are HTMX-polled fragments, not intended for external consumers — use
 the `/api/v1/*` JSON endpoints instead if you're integrating deskswarm with
 something else (n8n, a cron job, another agent, etc).
+
+## Managed Agents
+
+These endpoints require the same session or dashboard token as fleet APIs.
+Mutations also pass the existing cross-site guard. JSON responses use the
+standard `{ok,data,error}` envelope.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| GET | `/agents` | Agents page |
+| GET | `/api/v1/agents/models` | Connections, with `has_key`; no secret |
+| POST | `/api/v1/agents/models` | Create/edit (`id` optional): `name`, `model`, `base_url`, `protocol` (`responses`/`chat`), `vision`, `api_key` |
+| DELETE | `/api/v1/agents/models/:id` | Remove a connection with no active lease |
+| GET | `/api/v1/agents/runs` | Latest 100 runs |
+| POST | `/api/v1/agents/runs` | Start: `computer_id`, `model_id`, `task`, optional `max_steps` / `max_seconds`; 202 or 409 if owned/reserved |
+| GET | `/api/v1/agents/runs/:id` | Status, events, artifacts, viewer URL |
+| POST | `/api/v1/agents/runs/:id/stop` | Request cancellation; 202, poll until `lease=0` |
+| POST | `/api/v1/agents/runs/:id/takeover` | Cancel, drain and reserve desktop for manual use |
+| GET | `/api/v1/agents/runs/:id/result` | Download `.tar.gz`; 409 while leased |
+
+Run states: `queued`, `running`, `stopping`, `completed`, `failed`, `stopped`,
+`taken_over`, `interrupted`. `lease=1` is the ownership indicator, including
+restart recovery and draining. A 202 cancellation response is acknowledgement,
+not evidence that every in-flight action has finished. Release manual takeover
+with the existing machine PATCH `{ "reserved": false }`.
+See [Agents operation and limits](AGENTS.md).

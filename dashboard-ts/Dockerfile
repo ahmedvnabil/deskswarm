@@ -1,10 +1,7 @@
 # Bun runs the dashboard. Nothing else is in here.
 #
-# This used to carry a Python venv with the cua agent SDK, because the
-# dashboard drove agent sessions itself and shelled out to run_task.py for
-# each one. Machines are now driven from outside over MCP, so the loop, the
-# worker and the interpreter under them are all gone — along with about
-# 300 MB of image.
+# Managed agents run in Bun and call configured model APIs. The optional
+# host Codex gateway is separate; no CLI credentials enter this image.
 #
 # Two stages so the runtime carries no toolchain: bun's download cache alone
 # was 60 MB of an image that never installs anything again.
