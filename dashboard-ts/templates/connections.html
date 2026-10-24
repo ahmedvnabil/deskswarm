@@ -271,10 +271,14 @@
             info.append(
               node(
                 "p",
-                `آخر فحص SSH/Docker: ${p.server_checked_at} · ${p.server_status}`,
+                `آخر فحص SSH/Docker: ${p.server_checked_at} · ${p.server_status === "connected" ? "جاهز — نجح SSH وDocker" : "فشل الاتصال"}`,
               ),
             );
           if (p.last_seen) info.append(node("p", "آخر ظهور: " + p.last_seen));
+          if (p.diagnostic && (!p.server_checked_at || p.server_status !== "connected" || p.diagnostic.checked_at > p.server_checked_at)) {
+            info.append(node("p", "آخر تشخيص: " + p.diagnostic.message));
+            info.append(node("p", `${p.diagnostic.checked_at}${p.diagnostic.username ? " · المستخدم: " + p.diagnostic.username : ""}`));
+          }
           row.append(info);
           if (p.server_id) {
             const check = node("button", "اختبار SSH وDocker");
@@ -323,7 +327,7 @@
           $("overview").append(card);
         }
         for (const server of data.servers) {
-          const card=node("div");card.className="card";card.append(node("strong",server.name),node("p",server.status));
+          const card=node("div");card.className="card";card.append(node("strong",server.name),node("p",server.status === "connected" ? "جاهز — نجح SSH وDocker" : "تعذّر الاتصال — راجع التشخيص أدناه"));
           const remove=node("button","إزالة ربط SSH");remove.onclick=async()=>{remove.disabled=true;try{await api("servers/"+server.id,undefined,"DELETE");await load();note("تمت إزالة الربط")}catch(e){note(e.message);remove.disabled=false}};
           card.append(remove);$("overview").append(card);
         }

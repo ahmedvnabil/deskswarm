@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { recordHostFailure } from "../connections/netbird";
 import { all, one, run } from "../db";
 import { serverBusy } from "../providers/docker-engine";
 import {
@@ -29,11 +30,13 @@ serverRoutes.get("/api/v1/servers", (c) =>
   ]),
 );
 serverRoutes.post("/api/v1/servers/test", requireToken, async (c) => {
+  let config: ReturnType<typeof validateServer> | undefined;
   try {
-    const config = validateServer(await jsonBody(c));
+    config = validateServer(await jsonBody(c));
     c.set("auditDetail", "SSH connection test; credentials omitted");
     return ok(c, await testServer(config));
   } catch (error: any) {
+    if (config) recordHostFailure(config.host, config.username, error);
     return fail(
       c,
       error?.message?.startsWith("أ") ||
@@ -78,7 +81,8 @@ serverRoutes.post("/api/v1/servers/:id/test", requireToken, async (c) => {
       id,
     );
     return ok(c, publicServer(serverById(id!)!));
-  } catch {
+  } catch (error) {
+    recordHostFailure(row.host, row.username, error);
     run(
       "UPDATE servers SET status='unreachable',checked_at=? WHERE id=?",
       nowIso(),

@@ -154,6 +154,8 @@ test("maps existing SSH hosts separately from network online state and saves reu
   ).toBe(400);
 });
 test("all network inventory and preference routes require authentication and reject cross-site writes", async () => {
+  expect((await post("/api/v1/netbird/peers/linux-online/diagnostic", {noCookie: true, json: {code: "offline"}})).status).toBe(401);
+  expect((await post("/api/v1/netbird/peers/linux-online/diagnostic", {headers: {origin: "https://attacker.example"}, json: {code: "offline"}})).status).toBe(403);
   expect((await get("/api/v1/netbird/peers", { noCookie: true })).status).toBe(
     401,
   );
@@ -199,4 +201,19 @@ test("actual HTTP peer service receives the provider authorization protocol and 
   } finally {
     server.stop(true);
   }
+});
+
+test("peer diagnostics persist across sync, use safe messages, and cannot claim readiness", async () => {
+  await connect();
+  const path = "/api/v1/netbird/peers/linux-online/diagnostic";
+  expect((await post(path, {json: {code: "auth_failed", username: "ubuntu"}})).status).toBe(200);
+  await post("/api/v1/netbird/sync", {json: {}});
+  const peer = (await get("/api/v1/netbird/peers")).json.data.peers.find((p: any) => p.id === "linux-online");
+  expect(peer.diagnostic.code).toBe("auth_failed");
+  expect(peer.diagnostic.username).toBe("ubuntu");
+  expect(peer.diagnostic.message).toContain("رفض SSH");
+  expect(peer.readiness).toBe("unconfigured");
+  expect((await post(path, {json: {code: "ready", username: "root"}})).status).toBe(400);
+  expect((await post(path, {json: {code: "auth_failed", username: "secret injected value"}})).status).toBe(400);
+  expect((await post("/api/v1/netbird/peers/missing/diagnostic", {json: {code: "offline"}})).status).toBe(400);
 });

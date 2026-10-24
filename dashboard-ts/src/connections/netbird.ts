@@ -7,6 +7,7 @@ import { serverRows } from "../servers";
 export function initConnections() {
   getDb()
     .exec(`CREATE TABLE IF NOT EXISTS netbird_connection(id INTEGER PRIMARY KEY CHECK(id=1),base_url TEXT NOT NULL,secret TEXT NOT NULL,checked_at TEXT NOT NULL,error TEXT NOT NULL DEFAULT '');
+  CREATE TABLE IF NOT EXISTS netbird_diagnostics(peer_id TEXT PRIMARY KEY,code TEXT NOT NULL,username TEXT NOT NULL,checked_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS netbird_peers(id TEXT PRIMARY KEY,name TEXT NOT NULL,ip TEXT NOT NULL,dns_label TEXT NOT NULL,os TEXT NOT NULL,connected INTEGER NOT NULL,last_seen TEXT NOT NULL,synced_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS connection_preferences(id INTEGER PRIMARY KEY CHECK(id=1),ssh_user TEXT NOT NULL,ssh_port INTEGER NOT NULL);`);
 }
@@ -203,6 +204,7 @@ export function peers() {
         (s) => s.host === p.ip || (!!p.dns_label && s.host === p.dns_label),
       );
       const linux = /linux|ubuntu|debian|fedora|centos|rocky|alma|alpine|arch|suse|rhel|red hat|raspbian|raspberry pi os/i.test(p.os);
+      const diagnostic = one("SELECT * FROM netbird_diagnostics WHERE peer_id=?", p.id);
       return {
         ...p,
         connected: !!p.connected,
@@ -212,7 +214,31 @@ export function peers() {
         readiness: server ? "configured" : "unconfigured",
         linux,
         connectable: !!p.ip && linux,
+        diagnostic: diagnostic ? {code: diagnostic.code, username: diagnostic.username, checked_at: diagnostic.checked_at, message: diagnosticMessages[diagnostic.code as keyof typeof diagnosticMessages]} : null,
       };
     },
   );
+}
+
+const diagnosticMessages = {
+  connection_failed: "فشل اختبار SSH أو Docker؛ تحقق من المفتاح والبصمة والشبكة وصلاحيات Docker",
+  offline: "الجهاز غير متصل بنفق NetBird موثّق؛ تحقق من تشغيل العميل وسياسة الشبكة",
+  unreachable: "تعذّر الوصول إلى SSH أو جلب بصمته؛ تحقق من المنفذ وسياسة الشبكة",
+  auth_failed: "رفض SSH المفتاح للمستخدمين الذين جرت تجربتهم؛ أضف المفتاح العام أو صحّح اسم المستخدم",
+  docker_missing: "نجح SSH لكن Docker غير مثبت",
+  docker_failed: "نجح SSH لكن فحص Docker فشل؛ تحقق من تشغيل الخدمة وصلاحيات المستخدم",
+};
+export function recordHostFailure(host: string, username: string, error: unknown) {
+  const peer = one("SELECT id FROM netbird_peers WHERE ip=? OR dns_label=?", host, host);
+  if (!peer) return;
+  const message = error instanceof Error ? error.message : "";
+  const code = /authentication|Permission denied|All configured authentication/i.test(message) ? "auth_failed" : "connection_failed";
+  recordDiagnostic(peer.id, {code, username});
+}
+export function recordDiagnostic(peerId: string, body: Record<string, any>) {
+  if (!one("SELECT id FROM netbird_peers WHERE id=?", peerId)) throw Error("الجهاز غير موجود");
+  const code = String(body.code || ""), username = String(body.username || "");
+  if (!Object.hasOwn(diagnosticMessages, code) || (username && !/^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}$/.test(username))) throw Error("تشخيص غير صالح");
+  run("INSERT OR REPLACE INTO netbird_diagnostics VALUES(?,?,?,?)", peerId, code, username, nowIso());
+  return {saved: true};
 }

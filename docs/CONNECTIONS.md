@@ -114,3 +114,23 @@ switching views (cleared after testing; no Agent was started), and an embedded
 synthetic offline NetBird peer opening the parent SSH form with port 2222 without
 navigation. Mobile layout at 390 CSS pixels had no horizontal overflow. The final
 application screenshot is `images/unified-workspace.png`.
+
+### Per-peer connection diagnostics
+
+The NetBird inventory now shows the last SSH/Docker check, its time, the last
+attempted SSH user, and a fixed, actionable failure message. Network presence
+and Docker readiness remain separate: only a successful pinned SSH/Docker test
+creates a managed server. Failed saved-server checks and connection attempts
+update the matching peer diagnostic without storing raw SSH errors or secrets.
+
+Authenticated local provisioning tools may report a bounded failure code through
+`POST /api/v1/netbird/peers/:id/diagnostic` with `{code, username}`. Accepted codes:
+`offline`, `unreachable`, `auth_failed`, `docker_missing`, `docker_failed`, and
+`connection_failed`. This endpoint cannot mark a server ready. Diagnostics survive
+inventory synchronization; a newer successful server check supersedes them.
+
+For the October 24 Linux provisioning validation, Docker Engine was installed
+from Docker's official Debian repository, started with systemd, and verified by
+running the disposable `hello-world` container. No public Docker TCP endpoint was
+opened. Remote credentials and actual peer inventories are local deployment data
+and are excluded from this repository.

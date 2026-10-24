@@ -46,6 +46,10 @@ connectionRoutes.use("/api/v1/netbird/*", async (c, next) => {
 connectionRoutes.get("/api/v1/netbird/peers", (c) =>
   ok(c, { connection: netbird.status(), peers: netbird.peers() }),
 );
+connectionRoutes.post("/api/v1/netbird/peers/:id/diagnostic", requireToken, async c => {
+  try { return ok(c, netbird.recordDiagnostic(c.req.param("id"), await jsonBody(c))); }
+  catch { return fail(c, "تعذّر حفظ تشخيص الجهاز", 400); }
+});
 for (const action of ["test", "connection", "sync"] as const) {
   connectionRoutes.post(
     `/api/v1/netbird/${action}`,
