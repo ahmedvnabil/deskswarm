@@ -224,7 +224,7 @@ Tunnel API reference: [Cloudflare's remotely managed Tunnel workflow](https://de
 
 ## Quick install buttons
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ahmedvnabil/deskswarm)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zadstack/deskswarm)
 [![Open Tunnel setup](https://img.shields.io/badge/Cloudflare-Open_Tunnel_setup-F38020?logo=cloudflare&logoColor=white)](http://localhost:7861/settings/cloudflare)
 
 ### Recommended: managed setup from DeskSwarm

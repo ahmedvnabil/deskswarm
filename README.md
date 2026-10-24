@@ -9,7 +9,7 @@ Agents page to choose a desktop and model, run a task and download its results,
 or connect your own external MCP client. Managed Agents call the model endpoint
 you configure; external clients continue to bring their own model.
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ahmedvnabil/deskswarm)
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/zadstack/deskswarm)
 [![Set up Cloudflare Tunnel](https://img.shields.io/badge/Cloudflare-Tunnel_setup-F38020?logo=cloudflare&logoColor=white)](http://localhost:7861/settings/cloudflare)
 [![Quick start](https://img.shields.io/badge/Linux-Quick_start-0f766e?logo=linux&logoColor=white)](#run)
 
@@ -23,7 +23,7 @@ running dashboard. [Choose your Cloudflare setup path](docs/CLOUDFLARE.md#quick-
 Docker and Docker Compose are required:
 
 ```sh
-git clone https://github.com/ahmedvnabil/deskswarm.git
+git clone https://github.com/zadstack/deskswarm.git
 cd deskswarm
 docker compose up -d --build
 ```
