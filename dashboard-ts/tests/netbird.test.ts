@@ -17,7 +17,7 @@ beforeEach(() => {
       name: "Linux lab",
       ip: "100.64.1.2",
       connected: true,
-      os: "Linux",
+      os: "Ubuntu 24.04",
       last_seen: "2026-10-24T06:00:00Z",
     },
     {
@@ -63,6 +63,7 @@ test("tests and encrypts PAT, uses Token authentication, and preserves offline u
   const result = await get("/api/v1/netbird/peers");
   expect(result.text).not.toContain(credentials.token);
   expect(result.json.data.peers).toHaveLength(3);
+  expect(result.json.data.peers.find((p: any) => p.id === "linux-online").connectable).toBe(true);
   const offline = result.json.data.peers.find(
     (p: any) => p.id === "linux-offline",
   );

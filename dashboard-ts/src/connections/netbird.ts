@@ -202,6 +202,7 @@ export function peers() {
       const server = servers.find(
         (s) => s.host === p.ip || (!!p.dns_label && s.host === p.dns_label),
       );
+      const linux = /linux|ubuntu|debian|fedora|centos|rocky|alma|alpine|arch|suse|rhel|red hat|raspbian|raspberry pi os/i.test(p.os);
       return {
         ...p,
         connected: !!p.connected,
@@ -209,8 +210,8 @@ export function peers() {
         server_status: server?.status || null,
         server_checked_at: server?.checked_at || null,
         readiness: server ? "configured" : "unconfigured",
-        linux: /linux/i.test(p.os),
-        connectable: !!p.ip && /linux/i.test(p.os),
+        linux,
+        connectable: !!p.ip && linux,
       };
     },
   );
