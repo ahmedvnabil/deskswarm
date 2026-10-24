@@ -1,0 +1,25 @@
+{
+  "name": "deskswarm-edge",
+  "private": true,
+  "version": "1.0.0",
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "check:edge": "wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "4.152.0"
+  },
+  "cloudflare": {
+    "bindings": {
+      "ORIGIN": {
+        "description": "Required: public HTTPS origin of your running Linux DeskSwarm dashboard, without a path. Set up its Tunnel in DeskSwarm first. Never use this Worker URL."
+      },
+      "EDGE_SECRET": {
+        "description": "Generate a unique random secret (openssl rand -hex 32). Protects only /_edge/health; dashboard login still protects the application."
+      }
+    }
+  },
+  "overrides": {
+    "undici": "7.30.1"
+  }
+}

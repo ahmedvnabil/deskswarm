@@ -1,0 +1,2 @@
+# Replace with a unique random value; never commit the real secret.
+EDGE_SECRET=

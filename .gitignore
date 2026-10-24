@@ -8,3 +8,9 @@ data/
 DeskSwarm.app/
 .deskswarm-build-stamp
 node_modules/
+
+# Cloudflare local state and secrets
+.wrangler/
+.dev.vars
+.dev.vars.*
+!.dev.vars.example

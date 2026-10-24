@@ -1,0 +1,28 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "deskswarm-edge",
+  "main": "dashboard-ts/src/cloudflare/worker.js",
+  "compatibility_date": "2026-07-30",
+  "workers_dev": true,
+  "vars": {
+    "ORIGIN": "https://replace-with-your-linux-origin.example.com",
+    "RELEASE": "deploy-button",
+    "DESKSWARM_APP": "deskswarm-edge-v1"
+  },
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "DEVICES",
+        "class_name": "DeviceSession"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "deskswarm-v1",
+      "new_sqlite_classes": [
+        "DeviceSession"
+      ]
+    }
+  ]
+}

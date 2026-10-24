@@ -221,3 +221,51 @@ References: [authorization](https://developers.cloudflare.com/workers/authorizat
 - `POST /api/v1/cloudflare/tunnels/:id/stop`: `{}` → stop owned connector, retain resources.
 
 Tunnel API reference: [Cloudflare's remotely managed Tunnel workflow](https://developers.cloudflare.com/cloudflare-one/networks/connectors/cloudflare-tunnel/get-started/create-remote-tunnel-api/).
+
+## Quick install buttons
+
+[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/ahmedvnabil/deskswarm)
+[![Open Tunnel setup](https://img.shields.io/badge/Cloudflare-Open_Tunnel_setup-F38020?logo=cloudflare&logoColor=white)](http://localhost:7861/settings/cloudflare)
+
+### Recommended: managed setup from DeskSwarm
+
+1. Start DeskSwarm on Linux (or connect its Linux Docker server through SSH).
+2. Open the **Tunnel setup** button on the computer running the dashboard. For a
+   remote dashboard, use its own Settings → Cloudflare panel instead of localhost.
+3. Enter the scoped Cloudflare token locally, discover the service and zone,
+   choose a new origin hostname, test and create the Tunnel.
+4. Enable Worker + Durable Objects deployment in the tracked setup operation.
+   Use the same panel for progress, connector restart and Worker rollback.
+
+### Alternative: official Deploy to Cloudflare button
+
+Use this when the Linux dashboard already has a healthy public HTTPS origin.
+The repository root contains a Wrangler template pointing at the **same Worker
+source** used by the managed installer; it provisions the `DEVICES` SQLite
+Durable Object binding and `deskswarm-v1` migration.
+
+1. Click **Deploy to Cloudflare** and authorize Cloudflare's repository workflow.
+2. Replace `ORIGIN` with the dashboard origin, such as
+   `https://origin.example.com`, without a path. Never enter the Worker URL.
+3. Set `EDGE_SECRET` to a unique random value (for example, generated locally
+   with `openssl rand -hex 32`). Keep it secret; it protects the edge health
+   endpoint, while normal dashboard authentication remains on Linux.
+4. Deploy, then open the Worker URL and sign in. Verify a desktop preview and
+   input, not just the deployment status. `/_edge/health`
+   requires `Authorization: Bearer <EDGE_SECRET>`.
+
+The button does not install Linux, Docker, cloudflared or DNS, and it does not
+save a Cloudflare API token into your Linux dashboard. For automatic Tunnel
+installation and deployment history in DeskSwarm, use the managed setup path.
+Manage a button-created Worker's versions in Cloudflare; do not alternate
+Wrangler and DeskSwarm deployments on the same Worker without reviewing its
+bindings and migration history. Separate Worker names are simplest.
+
+For a local packaging check, run `npm ci && npm run check:edge` from the repository
+root. For CLI deployment, configure `ORIGIN`, authenticate Wrangler, set
+`EDGE_SECRET` with `npx wrangler secret put EDGE_SECRET`, then `npm run deploy`.
+Local secrets belong in ignored `.dev.vars`; the example contains no real token.
+
+Button behavior follows the official [Cloudflare deploy button documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/).
+A successful local package/runtime test does not constitute a live Cloudflare
+account deployment; that requires your own account, origin and credentials.
