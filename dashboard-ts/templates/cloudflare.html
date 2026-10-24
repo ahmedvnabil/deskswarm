@@ -121,7 +121,18 @@
         Worker يستقبل الطلبات وDurable Objects تنسّق مسارات الأجهزة. خدمة
         DeskSwarm الحالية تظل على Linux لتشغيل Docker والـAgents وحفظ البيانات.
       </p>
-      <section>
+      <section aria-labelledby="quick-title" class="cloudflare-quick">
+        <h2 id="quick-title">ابدأ بسرعة — من السيرفر للنشر</h2>
+        <p>ابدأ بسيرفر Linux عليه DeskSwarm شغّال. ربط سيرفر Docker وحده لا يثبّت لوحة التطبيق عليه؛ تقدر تختار اللوحة المحلية الحالية بدلًا منه.</p>
+        <ol class="setup-steps">
+          <li><strong>١. اختَر سيرفر Linux</strong><p>اربطه عبر SSH أو NetBird، أو استخدم Docker المحلي، ثم اكتشف خدمة DeskSwarm.</p><div class="actions"><a class="button" href="/settings/connections">ربط سيرفر Linux / NetBird</a><button type="button" data-setup-target="tunnel-setup" data-setup-focus="tunnel-server">اختيار السيرفر واكتشاف الخدمة</button></div></li>
+          <li><strong>٢. اربط حساب Cloudflare</strong><p>أدخل API Token، اكتشف الحساب واختر اسم Worker. عنوان Linux يتجهّز تلقائيًا بعد إنشاء Tunnel.</p><button type="button" data-setup-target="account-setup" data-setup-focus="cloudflare-token">إعداد الحساب</button></li>
+          <li><strong>٣. أنشئ Tunnel وانشر التطبيق</strong><p>حمّل الدومينات، اختر عنوانًا جديدًا، وافحص الإعدادات. خيار نشر Worker مفعّل لتكمل العملية من هنا.</p><button type="button" id="quick-tunnel" data-setup-target="tunnel-setup" data-setup-focus="discover-zones">إعداد Tunnel + نشر Worker</button></li>
+        </ol>
+        <div class="actions"><button type="button" data-setup-target="release-setup" data-setup-focus="refresh">متابعة النشر والإصدارات</button><a class="button" href="https://deploy.workers.cloudflare.com/?url=https://github.com/ahmedvnabil/deskswarm" target="_blank" rel="noopener noreferrer">☁ Deploy to Cloudflare ↗</a></div>
+        <p><small>زر Cloudflare الخارجي مسار بديل لمن لديه عنوان HTTPS جاهز؛ يفتح Cloudflare في تبويب جديد ولا يسجّل النشر في سجل DeskSwarm. للمسار التلقائي استخدم الخطوات أعلاه. الأجهزة والبيانات تظل على Linux.</small></p>
+      </section>
+      <section id="account-setup" tabindex="-1">
         <h2>ربط الحساب</h2>
         <p>
           أدخل API Token محدود الصلاحيات وAccount ID واسم Worker. يمكنك إنشاء عنوان الخدمة تلقائيًا من قسم Tunnel أدناه، أو اختبار عنوان HTTPS موجود. فعّل workers.dev للحساب. المفتاح يُحفظ مشفّرًا ولا يظهر بعد الحفظ.
@@ -158,6 +169,7 @@
           ><label class="wide"
             >API Token<input
               name="token"
+              id="cloudflare-token"
               type="password"
               dir="ltr"
               required
@@ -173,7 +185,7 @@
         <p id="connection-message" role="status" aria-live="polite"></p>
         <p id="saved"></p>
       </section>
-      <section>
+      <section id="tunnel-setup" tabindex="-1">
         <h2>إعداد Cloudflare Tunnel تلقائيًا</h2>
         <p>
           اختر السيرفر وخدمة DeskSwarm المكتشفة، والدومين واسم النطاق الفرعي.
@@ -241,7 +253,7 @@
         </p>
         <div id="tunnels"></div>
       </section>
-      <section>
+      <section id="release-setup" tabindex="-1">
         <h2>النشر والإصدارات</h2>
         <p>
           النشر يفعّل عنوان workers.dev عامًا مع الاحتفاظ بتسجيل الدخول الحالي.
@@ -269,6 +281,12 @@
       let ticket = "",
         busy = false;
       const el = (id) => document.getElementById(id);
+      document.querySelectorAll("[data-setup-target]").forEach(button => {
+        button.addEventListener("click", () => {
+          el(button.dataset.setupTarget).scrollIntoView({ block: "start" });
+          el(button.dataset.setupFocus).focus({ preventScroll: true });
+        });
+      });
       function note(text) {
         message.textContent = text;
       }
@@ -644,16 +662,24 @@
           el("tunnels").append(box);
         }
       }
+      async function refreshServers() {
+        const response = await fetch("/api/v1/servers");
+        const servers = await response.json();
+        if (!response.ok || !servers.ok) throw Error("تعذّر تحميل السيرفرات؛ أعد المحاولة");
+        const selector = el("tunnel-server"), selected = selector.value;
+        selector.replaceChildren(new Option("Local — سيرفر Docker الحالي", "0"));
+        for (const server of servers.data || [])
+          if (server.id) selector.add(new Option(server.name, server.id));
+        if (Array.from(selector.options).some(option => option.value === selected)) selector.value = selected;
+        else { tunnelTicket = ""; el("start-tunnel").disabled = true; el("tunnel-backend").replaceChildren(new Option("اكتشف الخدمات أولًا", "")); }
+      }
+      addEventListener("message", event => {
+        if (event.source === parent && event.origin === location.origin && event.data?.type === "deskswarm:panel-active" && event.data.active)
+          refreshServers().catch(error => tunnelNote(error.message));
+      });
       (async () => {
-        try {
-          const servers = await fetch("/api/v1/servers").then((r) => r.json());
-          for (const server of servers.data || [])
-            if (server.id)
-              el("tunnel-server").add(new Option(server.name, server.id));
-          await tunnelStatus();
-        } catch (e) {
-          tunnelNote(e.message);
-        }
+        try { await refreshServers(); await tunnelStatus(); }
+        catch (error) { tunnelNote(error.message); }
       })();
       setInterval(() => {
         if (!document.hidden && document.documentElement.dataset.panelActive !== "false") tunnelStatus().catch(() => {});

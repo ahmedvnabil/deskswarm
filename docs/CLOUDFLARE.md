@@ -269,3 +269,25 @@ Local secrets belong in ignored `.dev.vars`; the example contains no real token.
 Button behavior follows the official [Cloudflare deploy button documentation](https://developers.cloudflare.com/workers/platform/deploy-buttons/).
 A successful local package/runtime test does not constitute a live Cloudflare
 account deployment; that requires your own account, origin and credentials.
+
+### Quick setup inside the workspace
+
+The Cloudflare panel starts with three compact steps: choose/link Linux through
+SSH or NetBird, enter the Cloudflare account, then create the Tunnel and deploy
+Worker + Durable Objects. The internal buttons scroll to and focus the relevant
+controls without leaving the device preview. Connecting a Docker host does not
+install the DeskSwarm dashboard there: service discovery must find a running
+dashboard, or choose the current local Docker host.
+
+The server selector refreshes when returning from Connections, while preserving
+the selected server, account draft and discovered service. If the selected server
+was removed, the service selection and tested Tunnel ticket are cleared. The
+external Deploy to Cloudflare button opens a separate tab and is explicitly
+labelled as an alternative for an existing HTTPS origin.
+
+Validation: all 305 application tests passed; the dashboard image built. In the
+running dashboard, service discovery selected `deskswarm-dashboard:7000`, the
+quick buttons focused the correct controls, and a Worker name draft survived
+switching to Connections and back without changing the outer workspace URL.
+No live Cloudflare resources were created for this UI validation because no
+Cloudflare account credentials are configured.
