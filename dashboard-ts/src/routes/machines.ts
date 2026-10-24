@@ -119,6 +119,7 @@ machines.post("/api/v1/computers", requireToken, async (c) => {
     return fail(c, String(err.message));
   }
 
+  if (one("SELECT id FROM proxmox_operations WHERE 'server:'||child_server_id=? AND status='running'", providerName)) return fail(c,"انتظر اكتمال عملية CT قبل إنشاء كمبيوترات أخرى",409);
   const fleetSize = await budgetedMachineCount(providerName);
   for (const [passed, msg] of [
     guards.checkMemory(names.length, fleetSize),

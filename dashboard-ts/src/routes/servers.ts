@@ -104,6 +104,7 @@ serverRoutes.delete("/api/v1/servers/:id", requireToken, (c) => {
   if (!id || !serverById(id)) return notFound(c);
   if (
     serverBusy(id) ||
+    one("SELECT id FROM proxmox_operations WHERE status='running' AND (server_id=? OR child_server_id=?)", id, id) ||
     one("SELECT id FROM proxmox_jobs WHERE status='running' AND (server_id=? OR result_server_id=?)", id, id) ||
     one("SELECT id FROM cloudflare_tunnels WHERE server_id=? AND status<>'stopped'", id) ||
     one("SELECT id FROM computers WHERE provider=?", `server:${id}`) ||

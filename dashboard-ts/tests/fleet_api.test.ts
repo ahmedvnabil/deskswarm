@@ -73,3 +73,9 @@ test("creating from an unknown snapshot fails", async () => {
   expect(r.status).toBe(400);
   expect(r.json.error).toContain("unknown snapshot");
 });
+
+test("concurrent creation cannot replace a desktop with the same name", async () => {
+  const results=await Promise.all([addMachine("concurrent-name"),addMachine("concurrent-name")]);
+  expect(results.map(r=>r.status).sort()).toEqual([201,409]);
+  expect((await get("/api/v1/computers")).json.data.filter((c:any)=>c.name==="concurrent-name")).toHaveLength(1);
+});

@@ -209,12 +209,12 @@ export async function createOneComputer(
   providerName = defaultProviderName(),
 ): Promise<ComputerView> {
   const slug = slugify(name);
-  const clash = one("SELECT 1 AS x FROM computers WHERE name = ? OR slug = ?", name, slug);
-  if (clash) throw new ValidationError(`'${name}' already exists`);
 
   const backend = providerByName(providerName);
 
   await withCreateLock(async () => {
+    const clash = one("SELECT 1 AS x FROM computers WHERE name = ? OR slug = ?", name, slug);
+    if (clash) throw new ValidationError(`'${name}' already exists`);
     const reserved = all<{ novnc_port: number }>(
       "SELECT novnc_port FROM computers",
     ).map((r) => r.novnc_port);

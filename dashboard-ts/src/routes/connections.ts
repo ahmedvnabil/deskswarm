@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { ok, fail, jsonBody, type Env } from "../http";
 import { requireToken } from "../security";
 import { pageView } from "../page-view";
+import {listCTs,beginCTOperation} from "../connections/proxmox-ct";
 import * as proxmox from "../connections/proxmox";
 import * as netbird from "../connections/netbird";
 import { publicConfig, jobs } from "../cloudflare/control";
@@ -90,4 +91,13 @@ for(const action of ["discover","settings","create"] as const) connectionRoutes.
   c.set("auditDetail","Proxmox "+action+"; credentials omitted");
   try{const body=await jsonBody(c);return ok(c,await (action==="discover"?proxmox.discover(Number(body.server_id)):action==="settings"?proxmox.saveProxmox(body):proxmox.createCT(body)))}
   catch(error){return fail(c,error instanceof Error && /^(اختر|قيمة|موارد|توجد|تعذّر|فشلت|القالب|مساحة|لم )/.test(error.message)?error.message:"تعذّر تنفيذ طلب Proxmox",400)}
+});
+
+connectionRoutes.get("/api/v1/connections/proxmox/cts",async c=>{
+  try{return ok(c,await listCTs(c.req.query("server_id")))}catch{return fail(c,"تعذّر تحديث قائمة CTs؛ تحقق من اتصال Proxmox",400)}
+});
+connectionRoutes.post("/api/v1/connections/proxmox/cts/:vmid/actions",requireToken,async c=>{
+  c.set("auditDetail","Proxmox CT operation; credentials omitted");
+  try{const body=await jsonBody(c);return ok(c,await beginCTOperation(body.server_id,c.req.param("vmid"),body),202)}
+  catch(error){return fail(c,error instanceof Error&&/^(معرّف|إجراء|اختر|توجد|أوقف|CT |تغيّرت|شغّل|يلزم|الرام|مساحة)/.test(error.message)?error.message:"تعذّر بدء عملية CT",409)}
 });

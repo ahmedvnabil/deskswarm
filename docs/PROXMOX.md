@@ -44,7 +44,7 @@ server remains usable: select that server in the normal **جهاز جديد** di
 Current provisioning supports the local node of each saved SSH connection,
 existing Debian 12/13 or Ubuntu 22.04/24.04/26.04 templates, DHCP IPv4, and root
 SSH access. Multi-node API-token orchestration, template downloads, static network
-configuration, lifecycle deletion and automatic NetBird enrollment are not included.
+configuration, CT deletion and automatic NetBird enrollment are not included.
 
 ## Validation
 
@@ -68,3 +68,50 @@ All routes require dashboard authentication; writes also use the same-origin gua
 - `POST /api/v1/connections/proxmox/create`: create one asynchronous job, returning
   `{id,vmid}`. Fields: `server_id`, `hostname`, `template`, `storage`, `bridge`,
   `cores`, `memory` (MB), `disk` (GB), `start_desktop` (boolean).
+
+## CT management and multiple desktops
+
+The same panel now lists local CTs with state, CPU utilization and allocated
+cores, used/total RAM and disk, and linked DeskSwarm desktops. Metrics come from
+Proxmox's `/cluster/resources` samples; their freshness follows `pvestatd`.
+Linked CT state is additionally checked with `status/current` to avoid treating a
+recently stopped CT as running because of a delayed metrics sample. Missing
+metrics display a dash. The view refreshes every 15 seconds while visible;
+auto-refresh can be disabled, and manual refresh is always available.
+
+- **تشغيل** starts the selected CT.
+- **إيقاف** uses `pct shutdown --timeout 60`, with no forced stop or deletion.
+- **إعادة تشغيل** uses `pct reboot --timeout 60`.
+
+Changing CT state affects every computer inside it. Operations are serialized
+per CT, persisted and audited; changing state is refused when a linked computer
+is owned by an Agent or has an active external operation. New computer mutations
+and server removal are blocked while a lifecycle operation runs. After start or
+reboot, the dashboard checks the CT's SSH fingerprint through its pinned parent,
+refreshes its DHCP address if needed, and waits for SSH/Docker readiness. Existing
+host keys are never silently replaced. Restarting the dashboard marks unfinished
+operations interrupted; it never repeats a previous reboot or creation.
+
+For a running CT registered by DeskSwarm provisioning, select the CT, a name
+prefix, and a count (1–10). Desktop names are numbered automatically and skip
+existing names across the fleet. The job records each created computer and
+individual failures, so partial successes stay usable. Basic RAM/disk headroom
+checks reject clearly oversized batches; workloads still share the CT's limits.
+The CT list includes other existing CTs, but creating desktops requires a mapped
+Docker server from DeskSwarm provisioning. It does not install credentials into
+unmapped CTs or infer ownership from a hostname alone.
+
+The lifecycle validation on CT 100 exercised graceful shutdown, start and reboot,
+verified a persistent Arabic test file after both transitions, then created two
+additional desktops in one batch. Driver commands and screenshots worked on
+both, and a file written inside one desktop was absent from the other.
+
+Additional API routes:
+
+- `GET /api/v1/connections/proxmox/cts?server_id=<pinned SSH server>`:
+  live inventory, resource samples, linked computers and recent operations.
+- `POST /api/v1/connections/proxmox/cts/:vmid/actions`: body
+  `{server_id, expected_name, action}` with `start`, `stop`, `restart`, or
+  `computers`. The latter also takes `prefix` and integer `count`. Returns HTTP
+  202 with an operation ID; inspect it in the inventory's `operations` list.
+  A stale CT name, concurrent operation, active Agent or invalid batch is refused.

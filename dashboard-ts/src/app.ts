@@ -5,6 +5,7 @@
  * listening socket or a port to collide on.
  */
 
+import { one } from "./db";
 import { Hono } from "hono";
 import { blockCrossSite, requireSession, writeAudit } from "./security";
 import { initDb } from "./schema";
@@ -56,6 +57,8 @@ export function createApp() {
       );
     if (!match || ["GET", "HEAD", "OPTIONS"].includes(c.req.method))
       return next();
+    if (one("SELECT o.id FROM proxmox_operations o JOIN computers c ON c.provider='server:'||o.child_server_id WHERE c.id=? AND o.status='running' AND o.action<>'computers'", Number(match[1])))
+      return fail(c, "انتظر اكتمال تغيير حالة CT قبل التحكم في الكمبيوتر", 409);
     const release = beginExternalAction(Number(match[1]));
     try {
       return await next();

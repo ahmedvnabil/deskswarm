@@ -190,8 +190,22 @@
       <section id="proxmox-panel">
         <h2>Proxmox · إنشاء CT سريع</h2>
         <p>استخدم سيرفر Proxmox المربوط عبر SSH. ينشئ CT غير مميّز مع nesting، ويثبّت Docker وSSH ويربطه تلقائيًا لتشغيل أجهزة DeskSwarm داخله.</p>
+        <label>سيرفر Proxmox<select name="server_id" id="pve-server" form="proxmox-form" required></select></label>
+        <div class="actions"><button type="button" id="ct-refresh">تحديث CTs والموارد</button><label><input type="checkbox" id="ct-auto" checked> تحديث تلقائي كل ١٥ ثانية</label><span id="ct-checked" class="muted"></span></div>
+        <p class="muted">إيقاف CT أو إعادة تشغيله يؤثر على كل الكمبيوترات داخله. الإيقاف هنا سليم بدون إجبار أو حذف.</p>
+        <p id="ct-message" role="status" aria-live="polite"></p>
+        <div class="server-table-wrap"><table class="server-table ct-table"><thead><tr><th scope="col">CT</th><th scope="col">الحالة</th><th scope="col">CPU</th><th scope="col">الرام</th><th scope="col">القرص</th><th scope="col">الكمبيوترات / التحكم</th></tr></thead><tbody id="ct-rows"></tbody></table></div>
+        <form id="ct-computers-form">
+          <label>CT المستهدف<select name="vmid" id="ct-target" required></select></label>
+          <label>بداية أسماء الكمبيوترات<input name="prefix" value="ct-pc" pattern="[a-zA-Z0-9][a-zA-Z0-9_-]{0,47}" required></label>
+          <label>عدد الكمبيوترات<input name="count" type="number" value="2" min="1" max="10" required></label>
+          <div class="actions"><button id="ct-create-computers" class="primary" disabled>إنشاء الكمبيوترات داخل CT</button></div>
+        </form>
+        <p class="muted">الأسماء تُرقّم تلقائيًا بدون تكرار. إنشاء الكمبيوترات متاح للـCTs المربوطة بسيرفر Docker، والنتائج الجزئية محفوظة.</p>
+        <div id="ct-operations" aria-live="polite"></div>
+        <details class="account-settings"><summary>إنشاء CT جديد وإعدادات Proxmox</summary>
         <form id="proxmox-form">
-          <label>سيرفر Proxmox<select name="server_id" id="pve-server" required></select></label>
+
           <div class="actions"><button type="button" id="pve-discover">اختبار واكتشاف الإعدادات</button></div>
           <label>اسم CT<input name="hostname" value="deskswarm-ct" pattern="[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}" required></label>
           <label>قالب النظام<select name="template" required><option value="">اكتشف القوالب أولًا</option></select></label>
@@ -203,6 +217,7 @@
           <label><span><input name="start_desktop" type="checkbox" checked> إنشاء أول كمبيوتر داخل CT بعد التجهيز</span></label>
           <div class="actions wide"><button type="button" id="pve-save" disabled>حفظ الإعدادات</button><button type="submit" id="pve-create" class="primary" disabled>إنشاء CT وتجهيزه</button></div>
         </form>
+        </details>
         <p id="pve-message" role="status" aria-live="polite"></p>
         <p class="muted">الشبكة تستخدم DHCP. إنشاء CT يستهلك الموارد المحددة، وبناء أول صورة قد يستغرق دقائق. لا تُحذف الموارد تلقائيًا عند التعطل.</p>
         <div id="pve-jobs" aria-live="polite"></div>
@@ -275,11 +290,11 @@
         for (const p of shown) {
           const row = node("tr"), name = node("td"), state = node("td"), detail = node("td"), actions = node("td");
           name.append(node("strong", p.name), node("small", p.ip || "بدون عنوان"));
-          const badge = node("span", isReady(p) ? "جاهز" : p.linux ? "محتاج تجهيز" : "غير مدعوم");
+          const badge = node("span", isReady(p) ? "جاهز" : p.server_status === "stopped" ? "متوقف" : p.linux ? "محتاج تجهيز" : "غير مدعوم");
           badge.className = "state-badge " + (isReady(p) ? "ready" : "pending");
           state.append(badge, node("small", p.direct_server ? "اتصال SSH مباشر" : p.connected ? "NetBird: متصل حسب آخر مزامنة" : "NetBird: غير متصل"));
           const diagnostic = p.diagnostic && (!isReady(p) || !p.server_checked_at || p.diagnostic.checked_at > p.server_checked_at);
-          detail.append(node("span", diagnostic ? p.diagnostic.message : isReady(p) ? "نجح SSH وDocker" : p.linux ? "جهّز بيانات SSH واختبر Docker" : "يتطلب Linux لتشغيل الأجهزة"));
+          detail.append(node("span", diagnostic ? p.diagnostic.message : isReady(p) ? "نجح SSH وDocker" : p.server_status === "stopped" ? "شغّل CT من إدارة Proxmox" : p.linux ? "جهّز بيانات SSH واختبر Docker" : "يتطلب Linux لتشغيل الأجهزة"));
           const when = diagnostic ? p.diagnostic.checked_at : p.server_checked_at;
           if (when) detail.append(node("small", "آخر فحص: " + new Date(when).toLocaleString("ar-EG", {timeZone:"Asia/Dubai"}) + (diagnostic && p.diagnostic.username ? " · " + p.diagnostic.username : "")));
           if (p.netbird_ssh) detail.append(node("small", "آخر فحص NetBird SSH: الخدمة غير متاحة على الجهاز"));
@@ -400,7 +415,7 @@
           $("preference-message").textContent = e.message;
         }
       };
-      let pveInventory = null, pveSettings = null, pvePolling = false;
+      let pveInventory = null, pveSettings = null, pvePolling = false, ctData = null, ctLoading = false;
       const pveForm = $("proxmox-form");
       function pveValues() { const result=Object.fromEntries(new FormData(pveForm)); result.start_desktop=pveForm.elements.start_desktop.checked; return result; }
       function fillOptions(name,items,current) { const select=pveForm.elements[name];select.replaceChildren();for(const item of items){const option=node("option",item.label);option.value=item.value;select.append(option);}if(current && items.some(i=>i.value===current))select.value=current; }
@@ -415,7 +430,7 @@
         }catch(e){$("pve-message").textContent=e.message;$("pve-save").disabled=$("pve-create").disabled=true;}finally{$("pve-discover").disabled=false;}
       }
       $("pve-discover").onclick=discoverPve;
-      $("pve-server").onchange=()=>{pveInventory=null;pveSettings=null;$("pve-save").disabled=$("pve-create").disabled=true;};
+      $("pve-server").onchange=()=>{pveInventory=null;pveSettings=null;ctData=null;$("ct-rows").replaceChildren();$("ct-operations").replaceChildren();$("ct-checked").textContent="";$("ct-target").replaceChildren();$("ct-create-computers").disabled=true;$("pve-save").disabled=$("pve-create").disabled=true;loadCTs().catch(()=>{});};
       $("pve-save").onclick=async()=>{ $("pve-save").disabled=true;try{await api("connections/proxmox/settings",pveValues());$("pve-message").textContent="تم حفظ إعدادات Proxmox";}catch(e){$("pve-message").textContent=e.message;}finally{$("pve-save").disabled=false;} };
       pveForm.onsubmit=async e=>{e.preventDefault();$("pve-create").disabled=true;try{const job=await api("connections/proxmox/create",pveValues());$("pve-message").textContent="بدأ تجهيز CT "+job.vmid;await loadPve();}catch(e){$("pve-message").textContent=e.message;$("pve-create").disabled=false;}};
       async function loadPve(){
@@ -425,11 +440,50 @@
         for(const job of data.jobs){const row=node("div");row.className="pve-job";row.append(node("strong",`${job.name} · CT ${job.vmid}`),node("p",`${job.status === "running" ? "جارٍ التجهيز" : job.status === "completed" ? "جاهز" : "تعطّل التجهيز"} · ${job.stage}`));if(job.error)row.append(node("p",job.error));if(job.result_server_id)row.append(node("p","سيرفر Docker مربوط: "+job.result_server_id));if(job.computer_id){const link=node("a","فتح الكمبيوتر");link.href="/?computer_id="+job.computer_id;row.append(link);}$("pve-jobs").append(row);}
         const wasPolling=pvePolling;
         pvePolling=data.jobs.some(j=>j.status==="running");
-        if(wasPolling&&!pvePolling) await load();
+        if(wasPolling&&!pvePolling) {await load();await loadCTs();}
         $("pve-create").disabled=pvePolling||!pveInventory;
       }
+      const ctNames={start:"تشغيل",stop:"إيقاف",restart:"إعادة تشغيل",computers:"إنشاء كمبيوترات"};
+      const metric=(used,total)=>used===null||total===null||total<=0?"—":`${(used/1073741824).toFixed(1)} / ${(total/1073741824).toFixed(1)} GB`;
+      function renderCTs(){
+        $("ct-rows").replaceChildren();
+        const options=[],previous=$("ct-target").value;
+        for(const ct of ctData.containers){
+          const tr=node("tr"),name=node("td"),state=node("td"),cpu=node("td"),ram=node("td"),disk=node("td"),actions=node("td");
+          name.append(node("strong",ct.name),node("small","CT "+ct.vmid));state.append(node("span",ct.status==="running"?"يعمل":ct.status==="stopped"?"متوقف":ct.status));
+          if(ct.operation)state.append(node("small",ct.operation.stage));if(ct.status_error)state.append(node("small",ct.status_error));
+          cpu.textContent=ct.cpu_percent===null?"—":ct.cpu_percent.toFixed(1)+"%";cpu.append(node("small",(ct.cores??"—")+" CPU"));ram.textContent=metric(ct.memory_used,ct.memory_total);disk.textContent=metric(ct.disk_used,ct.disk_total);
+          for(const action of ["start","stop","restart"]){const button=node("button",ctNames[action]);button.disabled=!!ct.operation||ct.template||(action==="start"?ct.status==="running":ct.status!=="running");button.onclick=()=>runCT(ct,action);actions.append(button);}
+          actions.append(node("small",ct.child_server_id?`${ct.computers.length} كمبيوتر · Docker مربوط`:"لا يوجد ربط CT موثّق بسيرفر Docker"));
+          for(const computer of ct.computers){const a=node("a",computer.name);a.href="/?computer_id="+computer.id;actions.append(a);}
+          if(ct.child_server_id&&ct.status==="running"&&!ct.operation)options.push({value:String(ct.vmid),label:`${ct.name} · CT ${ct.vmid}`});
+          tr.append(name,state,cpu,ram,disk,actions);$("ct-rows").append(tr);
+        }
+        if(!ctData.containers.length){const tr=node("tr"),td=node("td","لا توجد CTs على هذه العقدة");td.colSpan=6;tr.append(td);$("ct-rows").append(tr);}
+        const target=$("ct-target");target.replaceChildren();for(const item of options){const option=node("option",item.label);option.value=item.value;target.append(option);}if(options.some(o=>o.value===previous))target.value=previous;
+        $("ct-create-computers").disabled=!options.length;
+        $("ct-operations").replaceChildren();
+        for(const op of ctData.operations){const row=node("div");row.className="pve-job";const result=JSON.parse(op.result);row.append(node("strong",`CT ${op.vmid} · ${ctNames[op.action]||op.action}`),node("p",`${op.status==="running"?"جارٍ التنفيذ":op.status==="completed"?"نجح":op.status==="partial"?"اكتمل جزئيًا":"تعذّر الإكمال"} · ${op.stage}`));if(op.error)row.append(node("p",op.error));for(const computer of result.created||[]){const a=node("a",computer.name);a.href="/?computer_id="+computer.id;row.append(a);}for(const failure of result.failed||[])row.append(node("p",failure.name+": "+failure.error));$("ct-operations").append(row);}
+      }
+      async function loadCTs(){
+        if(ctLoading||!$("pve-server").value)return;ctLoading=true;$("ct-refresh").disabled=true;
+        const serverId=$("pve-server").value;
+        try{const previousRunning=ctData?.operations.some(o=>o.status==="running");const data=await api("connections/proxmox/cts?server_id="+encodeURIComponent(serverId));if($("pve-server").value!==serverId)return;ctData=data;if($("ct-message").dataset.refreshError){$("ct-message").textContent="";delete $("ct-message").dataset.refreshError;}renderCTs();$("ct-checked").textContent="آخر قراءة: "+new Date(data.checked_at).toLocaleTimeString("ar-EG",{timeZone:"Asia/Dubai"});if(previousRunning&&!data.operations.some(o=>o.status==="running"))await load();}
+        catch(e){$("ct-message").dataset.refreshError="true";$("ct-message").textContent=e.message+"؛ المعروض آخر بيانات محفوظة";}
+        finally{ctLoading=false;$("ct-refresh").disabled=false;if($("pve-server").value!==serverId)void loadCTs();}
+      }
+      async function runCT(ct,action,extra={}){
+        if(!ctData||Number($("pve-server").value)!==ctData.server_id){$("ct-message").textContent="حدّث قائمة CTs أولًا";return;}
+        const targetServer=ctData.server_id;delete $("ct-message").dataset.refreshError;
+        $("ct-message").textContent="جارٍ إرسال الطلب…";
+        try{await api(`connections/proxmox/cts/${ct.vmid}/actions`,{server_id:targetServer,expected_name:ct.name,action,...extra});$("ct-message").textContent="بدأت عملية "+ctNames[action]+" على CT "+ct.vmid;await loadCTs();}
+        catch(e){$("ct-message").textContent=e.message;}
+      }
+      $("ct-refresh").onclick=loadCTs;
+      $("ct-computers-form").onsubmit=async e=>{e.preventDefault();const ct=ctData?.containers.find(c=>String(c.vmid)===$("ct-target").value);if(!ct)return;$("ct-create-computers").disabled=true;try{const values=Object.fromEntries(new FormData(e.target));await runCT(ct,"computers",{count:Number(values.count),prefix:values.prefix});}finally{if(ctData)renderCTs();}};
+      setInterval(()=>{if(!document.hidden&&document.documentElement.dataset.panelActive!=="false"&&ctData&&($("ct-auto").checked||ctData.operations.some(o=>o.status==="running")))loadCTs().catch(()=>{});},15000);
       setInterval(()=>{if(pvePolling&&!document.hidden&&document.documentElement.dataset.panelActive!=="false")loadPve().catch(()=>{});},4000);
-      load().then(loadPve).catch((e) => note(e.message));
+      load().then(loadPve).then(loadCTs).catch((e) => note(e.message));
     </script>
   </body>
 </html>

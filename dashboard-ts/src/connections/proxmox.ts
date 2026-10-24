@@ -9,7 +9,10 @@ import {createOneComputer} from "../machines";
 
 export function initProxmox() {
   getDb().exec(`CREATE TABLE IF NOT EXISTS proxmox_settings(id INTEGER PRIMARY KEY CHECK(id=1),server_id INTEGER NOT NULL,defaults TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS proxmox_jobs(id TEXT PRIMARY KEY,server_id INTEGER NOT NULL,vmid INTEGER NOT NULL,name TEXT NOT NULL,status TEXT NOT NULL,stage TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_server_id INTEGER,computer_id INTEGER,error TEXT NOT NULL DEFAULT '');`);
+  CREATE TABLE IF NOT EXISTS proxmox_jobs(id TEXT PRIMARY KEY,server_id INTEGER NOT NULL,vmid INTEGER NOT NULL,name TEXT NOT NULL,status TEXT NOT NULL,stage TEXT NOT NULL,created_at TEXT NOT NULL,updated_at TEXT NOT NULL,result_server_id INTEGER,computer_id INTEGER,error TEXT NOT NULL DEFAULT '');
+  CREATE TABLE IF NOT EXISTS proxmox_operations(id TEXT PRIMARY KEY,server_id INTEGER NOT NULL,vmid INTEGER NOT NULL,child_server_id INTEGER,action TEXT NOT NULL,status TEXT NOT NULL,stage TEXT NOT NULL,result TEXT NOT NULL DEFAULT '{}',error TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL,updated_at TEXT NOT NULL);
+  CREATE UNIQUE INDEX IF NOT EXISTS proxmox_one_operation ON proxmox_operations(server_id,vmid) WHERE status='running';`);
+  run("UPDATE proxmox_operations SET status='interrupted',error='توقفت خدمة DeskSwarm؛ راجع الحالة الفعلية قبل إعادة المحاولة' WHERE status='running'");
   run("UPDATE proxmox_jobs SET status='interrupted',error='توقفت خدمة DeskSwarm أثناء التجهيز؛ راجع الـCT الموجود في Proxmox قبل إنشاء آخر' WHERE status='running'");
 }
 const quote=(s:string)=>"'"+s.replace(/'/g,"'\\''")+"'";
@@ -29,10 +32,10 @@ export const proxmoxTransport={
     });
   }
 };
-function host(id:number){const row=serverById(id);if(!row||row.username!=="root")throw Error("اختر سيرفر Proxmox محفوظًا بمستخدم root");return configFor(row)}
+export function proxmoxHost(id:number){const row=serverById(id);if(!row||row.username!=="root")throw Error("اختر سيرفر Proxmox محفوظًا بمستخدم root");return configFor(row)}
 function word(value:unknown,label:string){const s=String(value||"");if(!/^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,62}$/.test(s))throw Error("قيمة غير صالحة: "+label);return s}
 export async function discover(serverId:number){
-  const c=host(serverId);
+  const c=proxmoxHost(serverId);
   const node=(await proxmoxTransport.exec(c,"hostname -s")).trim();word(node,"node");
   const get=async(path:string)=>JSON.parse(await proxmoxTransport.exec(c,`pvesh get ${quote(path)} --output-format json`));
   const [nodes,storages,network,containers,nextid]=await Promise.all([get("/nodes"),get(`/nodes/${node}/storage`),get(`/nodes/${node}/network`),get(`/nodes/${node}/lxc`),get("/cluster/nextid")]);
@@ -75,7 +78,7 @@ export async function createCT(body:Record<string,any>){
 }
 async function provision(id:string,vmid:number,c:ReturnType<typeof validate>){
   try{
-    const parent=host(c.server_id),key=utils.parseKey(parent.private_key,parent.passphrase||undefined);
+    const parent=proxmoxHost(c.server_id),key=utils.parseKey(parent.private_key,parent.passphrase||undefined);
     if(key instanceof Error||Array.isArray(key))throw Error("تعذّر قراءة مفتاح الربط");
     const publicKey=key.type+" "+key.getPublicSSH().toString("base64");
     const script=`set -eu\nkeyfile=$(mktemp /tmp/deskswarm-key.XXXXXX)\ntrap 'rm -f "$keyfile"' EXIT\nprintf '%s\\n' ${quote(publicKey)} > "$keyfile"\npct create ${vmid} ${quote(c.template)} --hostname ${quote(c.hostname)} --rootfs ${quote(c.storage+":"+c.disk)} --cores ${c.cores} --memory ${c.memory} --swap 512 --unprivileged 1 --features nesting=1,keyctl=1 --net0 ${quote("name=eth0,bridge="+c.bridge+",ip=dhcp")} --ssh-public-keys "$keyfile" --onboot 1 --tags deskswarm\npct start ${vmid}`;
