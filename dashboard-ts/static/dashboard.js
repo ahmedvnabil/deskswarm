@@ -219,7 +219,32 @@ function tree() {
 }
 let liveComputer = null;
 let liveOwned = false;
+let screenRatio = 16 / 10;
+let previousWorkspace = "/manage";
+function fitLiveScreen() {
+  const stage = document.querySelector('.screen-stage');
+  if (!liveComputer || document.body.classList.contains('desktop-maximized')) return;
+  stage.style.setProperty('--live-height', Math.round(stage.clientWidth / screenRatio) + 'px');
+}
+new ResizeObserver(fitLiveScreen).observe(document.querySelector('.screen-stage'));
+function notifyScreenFit(fill) { $("live-desktop").contentWindow?.postMessage({type:"deskswarm:screen-fit",fill},location.origin); }
+function setDesktopMaximized(on) {
+  document.body.classList.toggle("desktop-maximized", on);
+  $("maximize-desktop").textContent = on ? "تصغير" : "تكبير";
+  $("maximize-desktop").setAttribute("aria-pressed", String(on));
+  notifyScreenFit(on);fitLiveScreen();
+}
+$("maximize-desktop").onclick = () => setDesktopMaximized(!document.body.classList.contains("desktop-maximized"));
+$("fit-desktop").onclick = () => setDesktopMaximized(false);
+$("desktop-settings").onclick = () => openPanel(previousWorkspace);
+$("live-desktop").onload = () => notifyScreenFit(document.body.classList.contains("desktop-maximized"));
+addEventListener("message",e=>{
+  if(e.origin!==location.origin || e.source!==$("live-desktop").contentWindow || e.data?.type!=="deskswarm:screen-ratio")return;
+  const ratio=Number(e.data.ratio);if(Number.isFinite(ratio)&&ratio>.1&&ratio<10){screenRatio=ratio;fitLiveScreen()}
+});
 function closeLiveDesktop() {
+  setDesktopMaximized(false);
+  for(const id of ["maximize-desktop","fit-desktop","desktop-settings"])$(id).hidden=true;
   $("live-desktop").removeAttribute("src");
   $("live-desktop").hidden = true;
   $("close-live-desktop").hidden = true;
@@ -233,12 +258,18 @@ function openLiveDesktop() {
   const url = new URL(comp.novnc_url, location.href);
   liveOwned = !!comp.agent_run_id;
   if (liveOwned) url.searchParams.set("view_only", "true");
+  if (activePanel) previousWorkspace = activePanel;
   closePanel();
+  screenRatio = $("desktop-screen").naturalWidth / $("desktop-screen").naturalHeight || 16/10;
+  url.searchParams.set("desktop_fit","1");
+  url.searchParams.set("resize","scale");
   liveComputer = comp.id;
   $("live-desktop").src = url.href;
   $("live-desktop").hidden = false;
   $("close-live-desktop").hidden = false;
   document.body.classList.add("live-desktop-open");
+  for(const id of ["maximize-desktop","fit-desktop","desktop-settings"])$(id).hidden=false;
+  fitLiveScreen();
   $("live-desktop").scrollIntoView({block:"nearest"});
   $("live-desktop").focus();
 }

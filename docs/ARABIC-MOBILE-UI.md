@@ -50,3 +50,24 @@ panel window; computer IDs are resolved against the server inventory before open
 Live validation confirmed an encrypted noVNC connection, the Agents action, return
 to preview, and source removal on selecting a different device. No task was run and
 no desktop files were changed for this check. Full suite: 326 passed.
+
+## Fit and maximize
+
+Inline viewing sizes its frame from the actual VNC canvas aspect ratio, removing
+the fixed-height letterboxing. The Maximize button expands the viewer inside the
+application with its controls retained; Auto fit returns to the proportional view.
+A first-party, authenticated viewer module scales the canvas and requests remote
+resolution changes only in maximized, interactive sessions. View-only sessions
+never resize the agent's desktop, so maximized viewing can retain letterboxing
+when the agent's screen ratio differs from the viewport.
+
+The Settings button returns to an application panel without opening a new tab.
+Only the mounted viewer window on the same origin can report its aspect ratio.
+The pinned noVNC vendor files remain unchanged.
+
+Live fit validation on CT 401: maximized mobile canvas was 336×656 pixels in a
+337×656 frame after the VNC server accepted the resolution change. Auto fit
+returned to a 289×562 proportional frame; Settings disconnected the frame and
+opened the application panel on the same page. Suite: 326 passed (1091 assertions),
+TypeScript and JavaScript syntax checks passed. Viewport testing used the browser
+emulator, not a physical phone.

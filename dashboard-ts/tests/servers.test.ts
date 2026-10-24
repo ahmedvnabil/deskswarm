@@ -134,6 +134,11 @@ test("a remote provider routes viewer URLs through authenticated SSH proxy and c
   expect((await del("/api/v1/servers/" + saved.id)).status).toBe(409);
   // Assets come from our pinned client, even when the host is unreachable.
   expect((await get(`/remote-screen/${comp.id}/vnc.html`)).status).toBe(200);
+  const fitted = await get(`/remote-screen/${comp.id}/vnc.html?desktop_fit=1`);
+  expect(fitted.text).toContain('src="screen-fit.js"');
+  expect(fitted.headers.get("cache-control")).toBe("no-store");
+  expect((await get(`/remote-screen/${comp.id}/screen-fit.js`)).text).toContain('!UI.rfb.viewOnly');
+  expect((await get(`/remote-screen/${comp.id}/screen-fit.js`,{noCookie:true})).status).toBe(401);
   const clientAsset = await get(`/remote-screen/${comp.id}/core/rfb.js`);
   const required=(await get(`/remote-screen/${comp.id}/mandatory.json`)).json;
   expect(required.path).toBe(`/remote-screen/${comp.id}/websockify`);

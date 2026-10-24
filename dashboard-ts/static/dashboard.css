@@ -1065,3 +1065,11 @@ body.live-desktop-open .screen-stage{height:clamp(360px,72dvh,900px)!important;m
 body.live-desktop-open #desktop-screen,body.live-desktop-open #empty-screen{display:none!important}
 @media(max-width:720px){body.live-desktop-open .screen-stage{height:70dvh!important;min-height:300px!important}}
 #close-live-desktop[hidden]{display:none!important}
+#maximize-desktop[hidden],#fit-desktop[hidden],#desktop-settings[hidden]{display:none!important}
+body.live-desktop-open .screen-stage{height:var(--live-height,300px)!important;min-height:0!important;max-height:none!important}
+body.desktop-maximized .desktop-area{position:fixed;inset:49px 0 0;z-index:60;background:var(--bg);padding:8px;display:flex;flex-direction:column;min-width:0}
+body.desktop-maximized .desktop-heading,body.desktop-maximized .desktop-tools,body.desktop-maximized .workbench{display:none}
+body.desktop-maximized .screen-stage{flex:1;height:0!important;min-height:0!important;width:100%}
+body.desktop-maximized .screen-footer{flex-shrink:0;flex-wrap:wrap;padding:5px;margin:0;gap:5px}
+body.desktop-maximized #screen-caption,body.desktop-maximized #open-desktop{display:none}
+body.desktop-maximized{overflow:hidden}

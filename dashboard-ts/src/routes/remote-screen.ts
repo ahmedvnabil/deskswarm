@@ -148,6 +148,11 @@ remoteScreens.get("/remote-screen/:id/*", async (c) => {
       200,
       { "cache-control": "no-store" },
     );
+  if (path === "screen-fit.js") return new Response(Bun.file(join(import.meta.dir,"../screen-fit.js")), {headers:{"content-type":"text/javascript","cache-control":"no-store"}});
+  if (path === "vnc.html" && c.req.query("desktop_fit") === "1") {
+    const html = await Bun.file(join(import.meta.dir,"../../static/novnc/vnc.html")).text();
+    return c.html(html.replace("</body>", '<script type="module" src="screen-fit.js"></script></body>'),200,{"cache-control":"no-store","content-security-policy":"frame-ancestors 'self'"});
+  }
   // Serve a pinned, application-owned client. A container (or its agent)
   // must never inject JavaScript into the dashboard's authenticated origin.
   const file = Bun.file(join(import.meta.dir, "../../static/novnc", path));
