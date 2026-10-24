@@ -5,6 +5,7 @@
  * routes on top of this are in routes/machines.ts.
  */
 
+import { config as cloudflareConfig } from "./cloudflare/control";
 import { owner } from "./agents/store";
 import {
   defaultProviderName,
@@ -78,7 +79,9 @@ export async function computerView(
     name: comp.name,
     slug: comp.slug,
     novnc_port: comp.novnc_port,
-    novnc_url: backend.novncUrl(comp.novnc_port, comp.vnc_password, opts.host),
+    novnc_url: backend.name === "docker" && cloudflareConfig()
+      ? `/remote-screen/${comp.id}/vnc.html?autoconnect=true&resize=scale&path=/remote-screen/${comp.id}/websockify&password=${encodeURIComponent(comp.vnc_password)}`
+      : backend.novncUrl(comp.novnc_port, comp.vnc_password, opts.host),
     vnc_password: comp.vnc_password,
     created_at: comp.created_at,
     reserved: !!comp.reserved,

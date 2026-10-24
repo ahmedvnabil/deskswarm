@@ -3,6 +3,8 @@ import { Hono } from "hono";
 import { upgradeWebSocket } from "hono/bun";
 import { join } from "node:path";
 import WebSocket from "ws";
+import { docker } from "../providers/docker-engine";
+import { desktopContainerName, detectNetwork } from "../providers/docker";
 import { owner } from "../agents/store";
 import { getComputer } from "../machines";
 import { serverById, forwardScreen, channelSocket } from "../servers";
@@ -12,7 +14,9 @@ function target(id: string) {
   const comp = getComputer(Number(id));
   const match = comp?.provider?.match(/^server:(\d+)$/);
   const row = match ? serverById(Number(match[1])) : null;
-  return comp && row ? { comp, row } : null;
+  return comp && (row || comp.provider === "docker" || !comp.provider)
+    ? { comp, row }
+    : null;
 }
 remoteScreens.get(
   "/remote-screen/:id/websockify",
@@ -43,22 +47,32 @@ remoteScreens.get(
     return {
       async onOpen(_event, ws) {
         try {
-          const tunnel = await forwardScreen(row, comp.novnc_port);
-          closeTunnel = tunnel.close;
+          let screenUrl = `ws://127.0.0.1:${comp.novnc_port}/websockify`;
+          let connection: (() => any) | undefined;
+          if (row) {
+            const tunnel = await forwardScreen(row, comp.novnc_port);
+            closeTunnel = tunnel.close;
+            connection = () => channelSocket(tunnel.stream) as any;
+          } else if (process.platform === "linux") {
+            const info = await docker()
+              .getContainer(desktopContainerName(comp.slug))
+              .inspect();
+            const network = await detectNetwork();
+            const ip = info.NetworkSettings?.Networks?.[network]?.IPAddress;
+            if (!ip || !/^[0-9.]+$/.test(ip))
+              throw new Error("Desktop network unavailable");
+            screenUrl = `ws://${ip}:6901/websockify`;
+          }
           if (closed) {
-            tunnel.close();
+            closeTunnel?.();
             return;
           }
-          upstream = new WebSocket(
-            `ws://127.0.0.1:${comp.novnc_port}/websockify`,
-            ["binary"],
-            {
-              createConnection: () => channelSocket(tunnel.stream) as any,
-              handshakeTimeout: 10000,
-              maxPayload: 4 * 1024 * 1024,
-              perMessageDeflate: false,
-            },
-          );
+          upstream = new WebSocket(screenUrl, ["binary"], {
+            ...(connection ? { createConnection: connection } : {}),
+            handshakeTimeout: 10000,
+            maxPayload: 4 * 1024 * 1024,
+            perMessageDeflate: false,
+          });
           upstream.on("open", () => {
             for (const data of pending) upstream!.send(data);
             pending.length = 0;
@@ -118,8 +132,20 @@ remoteScreens.get("/remote-screen/:id/*", async (c) => {
     c.req.path.split(`/remote-screen/${selected.comp.id}/`)[1] || "vnc.html";
   if (!/^[a-zA-Z0-9_./-]+$/.test(path) || path.split("/").includes(".."))
     return fail(c, "Invalid screen path", 400);
-  if(path==="defaults.json")return c.json({},200,{"cache-control":"no-store"});
-  if(path==="mandatory.json")return c.json({host:"",port:0,path:`/remote-screen/${selected.comp.id}/websockify`,shared:true,...(owner(selected.comp.id)?{view_only:true}:{})},200,{"cache-control":"no-store"});
+  if (path === "defaults.json")
+    return c.json({}, 200, { "cache-control": "no-store" });
+  if (path === "mandatory.json")
+    return c.json(
+      {
+        host: "",
+        port: 0,
+        path: `/remote-screen/${selected.comp.id}/websockify`,
+        shared: true,
+        ...(owner(selected.comp.id) ? { view_only: true } : {}),
+      },
+      200,
+      { "cache-control": "no-store" },
+    );
   // Serve a pinned, application-owned client. A container (or its agent)
   // must never inject JavaScript into the dashboard's authenticated origin.
   const file = Bun.file(join(import.meta.dir, "../../static/novnc", path));

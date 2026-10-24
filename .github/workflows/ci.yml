@@ -16,6 +16,12 @@ jobs:
       - name: Install dependencies
         working-directory: dashboard-ts
         run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Cloudflare edge integration (local workerd)
+        working-directory: dashboard-ts
+        run: bun run test:cloudflare-edge
       - name: Typecheck
         working-directory: dashboard-ts
         run: bunx tsc --noEmit

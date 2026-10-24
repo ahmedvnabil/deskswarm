@@ -21,6 +21,7 @@ import { keyRoutes } from "./routes/keys";
 import { mcpRoutes } from "./routes/mcp";
 import { auditRoutes } from "./routes/audit";
 import { serverRoutes } from "./routes/servers";
+import { cloudflareRoutes } from "./routes/cloudflare";
 import { remoteScreens } from "./routes/remote-screen";
 import { agentRoutes } from "./routes/agents";
 import { owner, beginExternalAction } from "./agents/store";
@@ -76,6 +77,7 @@ export function createApp() {
     auditRoutes,
     agentRoutes,
     serverRoutes,
+    cloudflareRoutes,
     remoteScreens,
   ]) {
     app.route("/", router);

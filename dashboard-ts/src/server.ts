@@ -13,6 +13,9 @@ import { ensureAdmin } from "./auth";
 import { startHousekeeping } from "./housekeeping";
 import { DISABLE_HOUSEKEEPING, PORT } from "./settings";
 
+import { recoverCloudflare } from "./cloudflare/control";
+
+recoverCloudflare();
 recoverInterrupted();
 await ensureAdmin();
 

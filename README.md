@@ -160,3 +160,7 @@ backups, sharing, access keys and audit events. State-changing dashboard request
 require a valid session or dashboard token and pass the cross-site guard.
 
 Built on [Cua](https://github.com/trycua/cua). MIT; see [LICENSE](LICENSE).
+
+### Cloudflare edge deployment
+
+Connect a scoped Cloudflare API Token from Settings, test the account and Linux HTTPS origin, deploy Worker + SQLite Durable Objects, follow deployment stages, and roll back to a previous Worker version. Docker, Agents and persistent application data stay on Linux. See [Cloudflare setup, validation and recovery](docs/CLOUDFLARE.md).

@@ -143,7 +143,7 @@ shares.get("/s/:token", async (c) => {
   const comp = getComputer(row.computer_id);
   if (!comp) return c.html(render("share_gone.html"), 404);
   const view = await computerView(comp, { host: browserHost(c) });
-  if (row.mode === "control" && comp.provider?.startsWith("server:")) {
+  if (row.mode === "control" && view.novnc_url.startsWith("/remote-screen/")) {
     const secure = (
       c.req.header("x-forwarded-proto") || new URL(c.req.url).protocol
     ).startsWith("https");

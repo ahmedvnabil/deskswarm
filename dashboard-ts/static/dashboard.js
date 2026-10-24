@@ -634,6 +634,7 @@ $("nav-settings").onclick = () => {
   const body = utility("الإعدادات والإدارة"),
     links = node("div", undefined, "settings-links");
   for (const [text, url] of [
+    ["ربط Cloudflare والنشر", "/settings/cloudflare"],
     ["الموديلات والمهام", "/agents"],
     ["إدارة الأجهزة والنسخ الاحتياطي والمشاركة", "/manage"],
   ]) {

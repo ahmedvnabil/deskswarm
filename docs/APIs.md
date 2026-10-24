@@ -564,3 +564,7 @@ See [Agents operation and limits](AGENTS.md).
 
 See [Servers over SSH](SERVERS.md#json-api) for tested connection setup,
 server selection on desktop creation and authenticated remote viewer behavior.
+
+## Cloudflare deployment control
+
+Authenticated connection testing, encrypted token storage, background deployment tracking, version listing and rollback are documented with request bodies in [Cloudflare setup and API](CLOUDFLARE.md#api). The Linux backend remains the authority for desktop ownership and Agent execution.
