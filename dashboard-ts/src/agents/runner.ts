@@ -9,12 +9,12 @@ import { providerFor } from "../providers";
 import { controlCommand } from "../control";
 import { TOOLS, runTool, type Content } from "../mcp/tools";
 import { decryptSecret, event, modelById, runById } from "./store";
+import { agentShellCommand } from "./shell";
 import { imageMessage, requestModel, toolReply, type Message } from "./model";
 
 const active = new Map<number, AbortController>();
 const activeShell = new Set<number>();
 const stopping = new Map<number, Promise<void>>();
-const quote = (s: string) => `'${s.replace(/'/g, `'"'"'`)}'`;
 const readOnly = new Set([
   "screenshot",
   "screen_size",
@@ -269,13 +269,12 @@ async function executeRun(id: number, controller: AbortController) {
           } else if (call.name === "shell") {
             if (typeof args.command !== "string")
               throw new Error("command is required");
-            const inner = `echo $$ > /tmp/deskswarm-agent-${id}.pid; exec timeout --kill-after=2s 60s bash -lc ${quote(args.command)}`;
             activeShell.add(id);
             let result;
             try {
               result = await backend.execInDesktopResult(
                 comp.slug,
-                `DESKSWARM_AGENT_RUN_ID=${id} setsid bash -c ${quote(inner)}`,
+                agentShellCommand(id, args.command),
               );
             } finally {
               activeShell.delete(id);

@@ -275,7 +275,7 @@ test("takeover keeps its lease until both in-flight shell and Driver cleanup dra
     tool("shell", { command: "sleep 30" }),
   );
   const id = (await start(comp, model)).json.data.id;
-  await wait(() => execLog.some((c) => c.includes("setsid bash")));
+  await wait(() => execLog.some((c) => /setsid(?: --wait)? bash/.test(c)));
   process.env.DESKSWARM_IDLE_SUSPEND_MINUTES = "1";
   run(
     "UPDATE computers SET last_active_at='2000-01-01T00:00:00+00:00' WHERE id=?",

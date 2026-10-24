@@ -135,3 +135,54 @@ volume (database, master key and results). Returning to `4bcacce` restores the
 external-MCP-only dashboard; new `agent_*` tables remain unused and can be kept
 for a later upgrade. Do not delete machine volumes. This rollback does not
 restore the removed legacy bridge.
+
+## After moving the dashboard to Linux
+
+Model settings move with the database and encryption key; a host CLI login does
+not. `host.docker.internal` points at the new Docker host, not the computer that
+previously ran the dashboard. Check `codex login status` or `claude auth status`
+on the replacement host before treating a CLI connection as usable. An installed
+CLI alone is not an authenticated provider.
+
+For independent operation, sign in on the trusted Linux host using the provider's
+supported flow, then run the restricted model gateway there, or configure a normal
+API provider in Model connections. Never silently copy a personal CLI auth file
+into a desktop or dashboard container. See [official Codex authentication](https://learn.chatgpt.com/docs/auth)
+for device-code login on a headless host. The built-in API connections currently
+accept Responses or Chat Completions; a Claude CLI or Anthropic Messages endpoint
+needs an appropriate adapter rather than being entered as a Chat endpoint.
+
+A temporary operator-assisted test can reuse an already signed-in local Codex
+CLI through a pinned SSH reverse Unix socket. A token-protected gateway remains
+on local loopback; a relay on the dashboard's private Docker network forwards
+requests over the SSH socket. No relay ports should be published. The relay only
+transports model requests: desktop actions still execute on the selected Linux
+computer. Keep the random gateway token encrypted in Model connections. This
+path depends on the operator's computer and SSH session; label it clearly and do
+not describe it as an independent server login. If the connection is retired,
+stop the relay and SSH session and update or remove that model connection.
+
+## Live validation through Cloudflare and NetBird — 2026-10-24
+
+A real signed-in Codex CLI was connected through the private SSH path after the
+control plane moved to a permanent Linux CT. One remote desktop was used for all
+runs through the deployed Worker URL:
+
+- The model inspected the actual hostname, OS and disk, wrote a UTF-8 Markdown
+  report, read it back, and saved it for download. The downloaded archive contained
+  the real report and matching Arabic text, plus activity and summary files.
+- A second managed run on the owned desktop was rejected with HTTP 409.
+- The Stop and Take control buttons were exercised in the browser. Stopped and
+  taken-over runs released their leases after cleanup; both retained downloadable
+  partial reports. Manual reservation rejected another managed run until released.
+- In-flight shell cancellation was checked using separate start/completion files.
+  After the stop or takeover, the start file existed and the completion file did
+  not. The desktop was left with no active run or manual reservation.
+
+This validation found that `setsid` can fork when Docker exec starts it as a
+process-group leader. Without `--wait`, the action could appear complete while
+its shell continued, so a later stop missed it. The runner now waits for the
+session, retains ownership while it runs, and terminates the recorded run-specific
+process group on cancellation. A real Linux regression test forces that fork
+path and verifies both attachment and termination; mock-only tests cannot detect
+this behavior. All 307 tests and the TypeScript check passed after the fix.

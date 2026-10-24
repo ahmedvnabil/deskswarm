@@ -171,7 +171,7 @@ const stubs = {
   removeImage: async () => {},
   execInDesktopResult: async (_slug: string, command: string) => {
     execLog.push(command);
-    if ((command.includes("setsid bash") || command === "external-inflight") && world.execGate) await world.execGate;
+    if ((/setsid(?: --wait)? bash/.test(command) || command === "external-inflight") && world.execGate) await world.execGate;
     return { ...execResult };
   },
   homeArchiveStream,
