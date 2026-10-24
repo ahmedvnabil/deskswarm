@@ -138,9 +138,9 @@ function dockerChannel(c: ServerConfig): Promise<ClientChannel> {
       ssh.destroy();
       reject(Error("SSH Docker connection timeout"));
     }, 12000);
-    ssh.on("error", () => {
+    ssh.on("error", (error: Error & {level?: string}) => {
       clearTimeout(timer);
-      reject(Error("SSH Docker connection failed"));
+      reject(Error(error.level === "client-authentication" ? "SSH authentication failed" : "SSH Docker connection failed"));
     });
     ssh.on("ready", () =>
       ssh.exec("docker system dial-stdio", (error, stream) => {

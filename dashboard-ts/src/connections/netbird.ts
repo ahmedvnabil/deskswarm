@@ -3,11 +3,13 @@ import { isIP } from "node:net";
 import { all, one, run, getDb } from "../db";
 import { encryptSecret, decryptSecret } from "../agents/store";
 import { nowIso } from "../settings";
-import { serverRows } from "../servers";
+import { serverRows, validateServer, testServer, saveTestedServer, connectionProbe, configFor, type ServerConfig } from "../servers";
 export function initConnections() {
   getDb()
     .exec(`CREATE TABLE IF NOT EXISTS netbird_connection(id INTEGER PRIMARY KEY CHECK(id=1),base_url TEXT NOT NULL,secret TEXT NOT NULL,checked_at TEXT NOT NULL,error TEXT NOT NULL DEFAULT '');
   CREATE TABLE IF NOT EXISTS netbird_diagnostics(peer_id TEXT PRIMARY KEY,code TEXT NOT NULL,username TEXT NOT NULL,checked_at TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS netbird_retry_profiles(peer_id TEXT NOT NULL,username TEXT NOT NULL,host TEXT NOT NULL,secret TEXT NOT NULL,PRIMARY KEY(peer_id,username));
+  CREATE TABLE IF NOT EXISTS netbird_ssh_checks(peer_id TEXT PRIMARY KEY,checked_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS netbird_peers(id TEXT PRIMARY KEY,name TEXT NOT NULL,ip TEXT NOT NULL,dns_label TEXT NOT NULL,os TEXT NOT NULL,connected INTEGER NOT NULL,last_seen TEXT NOT NULL,synced_at TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS connection_preferences(id INTEGER PRIMARY KEY CHECK(id=1),ssh_user TEXT NOT NULL,ssh_port INTEGER NOT NULL);`);
 }
@@ -168,6 +170,12 @@ export async function save(body: Record<string, any>) {
   // Re-fetch before switching account, preserving the previous inventory on failure.
   const peers = await fetchPeers(c);
   getDb().transaction(() => {
+    const previous = connection();
+    if (previous && (previous.base_url !== c.base_url || decryptSecret(previous.secret) !== c.token)) {
+      run("DELETE FROM netbird_retry_profiles");
+      run("DELETE FROM netbird_diagnostics");
+      run("DELETE FROM netbird_ssh_checks");
+    }
     run(
       "INSERT OR REPLACE INTO netbird_connection VALUES(1,?,?,?,'')",
       c.base_url,
@@ -214,6 +222,8 @@ export function peers() {
         readiness: server ? "configured" : "unconfigured",
         linux,
         connectable: !!p.ip && linux,
+        retry_available: !!server || !!one("SELECT peer_id FROM netbird_retry_profiles WHERE peer_id=? AND host IN (?,?)", p.id, p.ip, p.dns_label),
+        netbird_ssh: one("SELECT checked_at FROM netbird_ssh_checks WHERE peer_id=?", p.id),
         diagnostic: diagnostic ? {code: diagnostic.code, username: diagnostic.username, checked_at: diagnostic.checked_at, message: diagnosticMessages[diagnostic.code as keyof typeof diagnosticMessages]} : null,
       };
     },
@@ -221,6 +231,7 @@ export function peers() {
 }
 
 const diagnosticMessages = {
+  netbird_ssh_unavailable: "NetBird SSH غير متاح على الجهاز؛ يلزم تفعيل خادم SSH وسياسة الوصول المتوافقة في NetBird",
   connection_failed: "فشل اختبار SSH أو Docker؛ تحقق من المفتاح والبصمة والشبكة وصلاحيات Docker",
   offline: "الجهاز غير متصل بنفق NetBird موثّق؛ تحقق من تشغيل العميل وسياسة الشبكة",
   unreachable: "تعذّر الوصول إلى SSH أو جلب بصمته؛ تحقق من المنفذ وسياسة الشبكة",
@@ -228,6 +239,50 @@ const diagnosticMessages = {
   docker_missing: "نجح SSH لكن Docker غير مثبت",
   docker_failed: "نجح SSH لكن فحص Docker فشل؛ تحقق من تشغيل الخدمة وصلاحيات المستخدم",
 };
+export function rememberRetryConfig(config: ServerConfig) {
+  if (serverRows().some(s => s.host === config.host)) return;
+  const peer = one("SELECT id FROM netbird_peers WHERE ip=? OR dns_label=?", config.host, config.host);
+  if (!peer) return;
+  run("INSERT OR REPLACE INTO netbird_retry_profiles VALUES(?,?,?,?)", peer.id, config.username, config.host, encryptSecret(JSON.stringify(config)));
+}
+export function clearRetryConfig(host: string) {
+  run("DELETE FROM netbird_retry_profiles WHERE host=?", host);
+}
+const retrying = new Set<string>();
+export async function retryPeer(peerId: string) {
+  if (retrying.has(peerId)) throw Error("إعادة المحاولة جارية بالفعل");
+  const peer = one("SELECT * FROM netbird_peers WHERE id=?", peerId);
+  if (!peer) throw Error("الجهاز غير موجود");
+  retrying.add(peerId);
+  try {
+    const server = serverRows().find(s => s.host === peer.ip || (!!peer.dns_label && s.host === peer.dns_label));
+    if (server) {
+      try {
+        const info = await connectionProbe.info(configFor(server));
+        run("UPDATE servers SET status='connected',checked_at=?,info=? WHERE id=?", nowIso(), JSON.stringify(info), server.id);
+        run("DELETE FROM netbird_diagnostics WHERE peer_id=?", peerId);
+        return {server_id: server.id};
+      } catch (error) {
+        recordHostFailure(server.host, server.username, error);
+        run("UPDATE servers SET status='unreachable',checked_at=? WHERE id=?", nowIso(), server.id);
+        throw Error("فشل الاتصال؛ راجع التشخيص وحدّث بيانات SSH إذا لزم");
+      }
+    }
+    const profiles = all("SELECT * FROM netbird_retry_profiles WHERE peer_id=? AND host IN (?,?) ORDER BY username", peerId, peer.ip, peer.dns_label);
+    if (!profiles.length) throw Error("جهّز بيانات SSH أولًا لتفعيل إعادة المحاولة");
+    for (const profile of profiles) {
+      const config = validateServer(JSON.parse(decryptSecret(profile.secret)));
+      try {
+        const tested = await testServer(config);
+        const saved = saveTestedServer(config, tested.test_token);
+        run("DELETE FROM netbird_retry_profiles WHERE peer_id=?", peerId);
+        run("DELETE FROM netbird_diagnostics WHERE peer_id=?", peerId);
+        return {server_id: saved.id};
+      } catch (error) { recordHostFailure(config.host, config.username, error); }
+    }
+    throw Error("فشلت إعادة المحاولة ببيانات SSH المحفوظة؛ راجع التشخيص");
+  } finally { retrying.delete(peerId); }
+}
 export function recordHostFailure(host: string, username: string, error: unknown) {
   const peer = one("SELECT id FROM netbird_peers WHERE ip=? OR dns_label=?", host, host);
   if (!peer) return;
@@ -239,6 +294,10 @@ export function recordDiagnostic(peerId: string, body: Record<string, any>) {
   if (!one("SELECT id FROM netbird_peers WHERE id=?", peerId)) throw Error("الجهاز غير موجود");
   const code = String(body.code || ""), username = String(body.username || "");
   if (!Object.hasOwn(diagnosticMessages, code) || (username && !/^[a-zA-Z_][a-zA-Z0-9_.-]{0,63}$/.test(username))) throw Error("تشخيص غير صالح");
+  if (code === "netbird_ssh_unavailable") {
+    run("INSERT OR REPLACE INTO netbird_ssh_checks VALUES(?,?)", peerId, nowIso());
+    return {saved: true};
+  }
   run("INSERT OR REPLACE INTO netbird_diagnostics VALUES(?,?,?,?)", peerId, code, username, nowIso());
   return {saved: true};
 }

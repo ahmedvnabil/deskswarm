@@ -134,3 +134,27 @@ from Docker's official Debian repository, started with systemd, and verified by
 running the disposable `hello-world` container. No public Docker TCP endpoint was
 opened. Remote credentials and actual peer inventories are local deployment data
 and are excluded from this repository.
+
+### Retry from the inventory
+
+A peer with a saved SSH connection or a previously validated failed connection
+attempt shows **إعادة محاولة الربط**. The dashboard retries the stored pinned
+connection, or each encrypted candidate username for an unconfigured peer, and
+refreshes the card even on failure. Successful retries save the Docker server
+once and discard pending credentials. Repeated clicks on the same peer are
+rejected while a retry is running. Refreshing inventory alone never attempts
+login. Editing a key or fingerprint still uses the SSH setup dialog.
+
+Failed-attempt credentials are encrypted with the existing local secret key and
+are never included in inventory responses. Pending profiles are restricted to
+the same peer/address and cleared when the NetBird account credentials change.
+The retry route is authenticated and requires the same-origin write guard:
+`POST /api/v1/netbird/peers/:id/retry`.
+
+NetBird's native SSH authentication is distinct from public-key SSH over the
+NetBird network. An administrative `netbird ssh` check can record
+`netbird_ssh_unavailable` through the diagnostic endpoint; its timestamp is shown
+separately from the regular SSH/Docker result. The Docker-hosted dashboard does
+not invoke the host's NetBird CLI or copy its OIDC session. The retry button uses
+saved pinned SSH credentials; enabling native NetBird SSH requires compatible
+remote clients and access policies. See the [NetBird SSH documentation](https://docs.netbird.io/manage/peers/ssh).

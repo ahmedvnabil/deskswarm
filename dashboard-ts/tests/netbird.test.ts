@@ -217,3 +217,15 @@ test("peer diagnostics persist across sync, use safe messages, and cannot claim 
   expect((await post(path, {json: {code: "auth_failed", username: "secret injected value"}})).status).toBe(400);
   expect((await post("/api/v1/netbird/peers/missing/diagnostic", {json: {code: "offline"}})).status).toBe(400);
 });
+
+test("switching NetBird credentials drops pending retry secrets and native SSH diagnostics", async () => {
+  await connect();
+  run("INSERT INTO netbird_retry_profiles VALUES(?,?,?,?)", "linux-online", "root", "100.64.1.2", "encrypted-fixture");
+  await post("/api/v1/netbird/peers/linux-online/diagnostic", {json: {code: "netbird_ssh_unavailable"}});
+  expect((await get("/api/v1/netbird/peers")).json.data.peers.find((p: any) => p.id === "linux-online").netbird_ssh).not.toBeNull();
+  const changed = {...credentials, token: "different-fixture-account-token"};
+  const tested = await post("/api/v1/netbird/test", {json: changed});
+  expect((await post("/api/v1/netbird/connection", {json: {...changed, test_token: tested.json.data.test_token}})).status).toBe(200);
+  expect(one("SELECT COUNT(*) n FROM netbird_retry_profiles")!.n).toBe(0);
+  expect(one("SELECT COUNT(*) n FROM netbird_ssh_checks")!.n).toBe(0);
+});

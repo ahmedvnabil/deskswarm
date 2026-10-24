@@ -278,3 +278,48 @@ test("static asset serving cannot reach private data paths", async () => {
     (await get("/static/fonts/NotoSansArabic.ttf", { noCookie: true })).status,
   ).toBe(401);
 });
+
+test("retrying an imported peer retains encrypted failed credentials and only saves after Docker succeeds", async () => {
+  run("INSERT INTO netbird_peers VALUES(?,?,?,?,?,?,?,?)", "retry-peer", "Remote", config.host, "", "Ubuntu", 1, "", "");
+  connectionProbe.info = async () => { throw Error("authentication failed private provider details"); };
+  expect((await post("/api/v1/servers/test", {json: config})).status).toBe(400);
+  const profile = one("SELECT * FROM netbird_retry_profiles WHERE peer_id='retry-peer'")!;
+  expect(profile.secret).not.toContain(private_key);
+  let inventory = await get("/api/v1/netbird/peers");
+  expect(inventory.text).not.toContain(private_key);
+  expect(inventory.json.data.peers[0].retry_available).toBe(true);
+  const retry = "/api/v1/netbird/peers/retry-peer/retry";
+  expect((await post(retry, {json: {}})).status).toBe(400);
+  expect(one("SELECT COUNT(*) n FROM servers")!.n).toBe(0);
+  connectionProbe.info = async c => {
+    expect(c.fingerprint).toBe(config.fingerprint);
+    expect(c.private_key).toBe(config.private_key);
+    return {hostname: "remote", version: "29", architecture: "amd64", cpus: 2, memory_mb: 4096, containers: 0};
+  };
+  expect((await post(retry, {json: {}})).status).toBe(200);
+  expect(one("SELECT COUNT(*) n FROM servers")!.n).toBe(1);
+  expect(one("SELECT COUNT(*) n FROM netbird_retry_profiles")!.n).toBe(0);
+  expect(one("SELECT COUNT(*) n FROM netbird_diagnostics")!.n).toBe(0);
+  expect((await post(retry, {json: {}})).status).toBe(200);
+  expect(one("SELECT COUNT(*) n FROM servers")!.n).toBe(1);
+});
+
+test("retry requires authentication, saved matching credentials, and rejects concurrent attempts", async () => {
+  const path = "/api/v1/netbird/peers/retry-peer/retry";
+  expect((await post(path, {noCookie: true, json: {}})).status).toBe(401);
+  expect((await post(path, {headers: {origin: "https://attacker.example"}, json: {}})).status).toBe(403);
+  expect((await post(path, {json: {}})).status).toBe(400);
+  run("INSERT INTO netbird_peers VALUES(?,?,?,?,?,?,?,?)", "retry-peer", "Remote", config.host, "", "Ubuntu", 1, "", "");
+  expect((await post(path, {json: {}})).status).toBe(400);
+  connectionProbe.info = async () => { throw Error("failed"); };
+  await post("/api/v1/servers/test", {json: config});
+  let release!: () => void;
+  const wait = new Promise<void>(resolve => {release = resolve;});
+  connectionProbe.info = async () => { await wait; throw Error("still unavailable"); };
+  const pending = post(path, {json: {}});
+  await new Promise(resolve => setTimeout(resolve, 20));
+  expect((await post(path, {json: {}})).status).toBe(400);
+  release(); await pending;
+  run("UPDATE netbird_peers SET ip='100.64.100.99' WHERE id='retry-peer'");
+  expect((await post(path, {json: {}})).status).toBe(400);
+});

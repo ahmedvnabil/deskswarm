@@ -50,6 +50,10 @@ connectionRoutes.post("/api/v1/netbird/peers/:id/diagnostic", requireToken, asyn
   try { return ok(c, netbird.recordDiagnostic(c.req.param("id"), await jsonBody(c))); }
   catch { return fail(c, "تعذّر حفظ تشخيص الجهاز", 400); }
 });
+connectionRoutes.post("/api/v1/netbird/peers/:id/retry", requireToken, async c => {
+  try { return ok(c, await netbird.retryPeer(c.req.param("id"))); }
+  catch (error) { return fail(c, error instanceof Error && /^(فشل|فشلت|جهّز|إعادة|الجهاز)/.test(error.message) ? error.message : "تعذّرت إعادة محاولة الربط", 400); }
+});
 for (const action of ["test", "connection", "sync"] as const) {
   connectionRoutes.post(
     `/api/v1/netbird/${action}`,

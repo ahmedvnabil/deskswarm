@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { recordHostFailure } from "../connections/netbird";
+import { recordHostFailure, rememberRetryConfig, clearRetryConfig } from "../connections/netbird";
 import { all, one, run } from "../db";
 import { serverBusy } from "../providers/docker-engine";
 import {
@@ -36,7 +36,10 @@ serverRoutes.post("/api/v1/servers/test", requireToken, async (c) => {
     c.set("auditDetail", "SSH connection test; credentials omitted");
     return ok(c, await testServer(config));
   } catch (error: any) {
-    if (config) recordHostFailure(config.host, config.username, error);
+    if (config) {
+      rememberRetryConfig(config);
+      recordHostFailure(config.host, config.username, error);
+    }
     return fail(
       c,
       error?.message?.startsWith("أ") ||
@@ -53,6 +56,7 @@ serverRoutes.post("/api/v1/servers", requireToken, async (c) => {
     const body = await jsonBody(c),
       config = validateServer(body);
     const result = saveTestedServer(config, String(body.test_token || ""));
+    clearRetryConfig(config.host);
     c.set(
       "auditDetail",
       `SSH server connected: ${config.name}; credentials omitted`,

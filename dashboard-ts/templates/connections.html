@@ -275,11 +275,25 @@
               ),
             );
           if (p.last_seen) info.append(node("p", "آخر ظهور: " + p.last_seen));
+          if (p.netbird_ssh) info.append(node("p", `آخر فحص NetBird SSH: ${p.netbird_ssh.checked_at} · لم يتوفر خادم NetBird SSH متوافق؛ يلزم تفعيله وإعداد سياسة الوصول على الجهاز.`));
           if (p.diagnostic && (!p.server_checked_at || p.server_status !== "connected" || p.diagnostic.checked_at > p.server_checked_at)) {
             info.append(node("p", "آخر تشخيص: " + p.diagnostic.message));
             info.append(node("p", `${p.diagnostic.checked_at}${p.diagnostic.username ? " · المستخدم: " + p.diagnostic.username : ""}`));
           }
           row.append(info);
+          if (p.retry_available) {
+            const retry = node("button", "إعادة محاولة الربط");
+            retry.onclick = async () => {
+              retry.disabled = true;
+              retry.textContent = "جارٍ إعادة المحاولة…";
+              let message;
+              try { await api("netbird/peers/" + encodeURIComponent(p.id) + "/retry", {}); message = "نجح الربط وفحص SSH وDocker"; }
+              catch (error) { message = error.message; }
+              finally { await load(); note(message); }
+            };
+            row.append(retry);
+            if (!p.server_id) info.append(node("p", "إعادة المحاولة تستخدم بيانات SSH السابقة المحفوظة مشفّرة؛ حدّث بيانات الربط إذا تغيّر المفتاح أو البصمة."));
+          }
           if (p.server_id) {
             const check = node("button", "اختبار SSH وDocker");
             check.onclick = async () => {
